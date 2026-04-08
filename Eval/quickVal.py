@@ -1,3 +1,6 @@
+import ast
+
+
 # This is where code will put in a quick validation
 
 class QuickVal:
@@ -79,15 +82,68 @@ class QuickVal:
                 self.issues.append(f"Forbiden import detected: {imp}")
 
     def _check_forbiden_functions(self):
+        try:
+            tree = ast.parse(self.code)
+        except SyntaxError:
+            # Syntax is already handled in _syntax_check; skip call analysis here.
+            return
+
+        called_functions = set()
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Call):
+                called_name = self._get_called_function_name(node.func)
+                if called_name:
+                    called_functions.add(called_name)
+
         for func in self.FORBIDENT_FUNCTIONS:
-            if func in self.code:
+            if func in called_functions:
                 self.risk_score += 3
                 self.issues.append(f"Forbiden function detected: {func}")
 
-    def _check_complexity(self):
-        # Simple check for loops and recursion
-        loop_count = self.code.count("for ") + self.code.count("while ")
+    def _get_called_function_name(self, node):
+        if isinstance(node, ast.Name):
+            return node.id
 
-        if loop_count > 5:
-            self.risk_score += 2
-            self.issues.append("Loop detected.")
+        if isinstance(node, ast.Attribute):
+            parts = []
+            current = node
+            while isinstance(current, ast.Attribute):
+                parts.append(current.attr)
+                current = current.value
+            if isinstance(current, ast.Name):
+                parts.append(current.id)
+                return ".".join(reversed(parts))
+
+        return None
+
+    def _check_complexity(self):
+        try:
+            tree = ast.parse(self.code)
+        except SyntaxError:
+            # Syntax is already handled in _syntax_check.
+            return
+
+        max_loop_depth = self._get_max_loop_depth(tree)
+        if max_loop_depth > 2:
+            self.risk_score += 3
+            self.issues.append(
+                f"Complexity risk detected: nested loop depth is {max_loop_depth}. "
+                "Expected complexity should not exceed O(n^2)."
+            )
+
+    def _get_max_loop_depth(self, tree):
+        max_depth = 0
+
+        def walk(node, current_depth):
+            nonlocal max_depth
+
+            is_loop = isinstance(node, (ast.For, ast.While, ast.AsyncFor))
+            next_depth = current_depth + 1 if is_loop else current_depth
+            if next_depth > max_depth:
+                max_depth = next_depth
+
+            for child in ast.iter_child_nodes(node):
+                walk(child, next_depth)
+
+        walk(tree, 0)
+        return max_depth
