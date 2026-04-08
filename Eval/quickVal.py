@@ -55,6 +55,9 @@ class QuickVal:
         }
 
     def _self_review(self):
+        if self.model is None or not hasattr(self.model, "review"):
+            return
+
         # Let the model review its own code
         review = self.model.review(self.code)
 
