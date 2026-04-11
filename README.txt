@@ -11,6 +11,24 @@ Setup:
 	- AWS_ACCESS_KEY_ID
 	- AWS_SECRET_ACCESS_KEY
 	- AWS_REGION
+- Optional for OpenRouter provider:
+	- OPENROUTER_API_KEY
+	- If UI API key field is empty, both UIs use OPENROUTER_API_KEY automatically.
+
+UI options:
+
+- Web UI (Streamlit):
+	- Install Streamlit: pip install streamlit
+	- Run: streamlit run ui_app.py
+- Desktop UI (tkinter):
+	- Run: python ui_desktop.py
+
+OpenRouter key examples:
+
+- bash/zsh session:
+	- export OPENROUTER_API_KEY=your_api_key_here
+- fish persistent:
+	- set -Ux OPENROUTER_API_KEY your_api_key_here
 
 Run full pipeline (generate + evaluate):
 
