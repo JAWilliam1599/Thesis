@@ -182,4 +182,4 @@ cython_debug/
 
 # Runtime log
 logs/
-ExecCode/run_*
+ExecCode/*
