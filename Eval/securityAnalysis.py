@@ -1,5 +1,6 @@
 import subprocess
 import json
+import shutil
 
 class Security:
     """
@@ -29,9 +30,20 @@ class Security:
 
     def __run_bandit(self, file_path):
         # Bandit analysis logic
-        result = subprocess.run(["bandit", "-r", file_path, "-f", "json"], capture_output=True, text=True)
-        if result.returncode != 0:
-            self.issues.append(f"Bandit analysis failed: {result.stderr}")
+        if shutil.which("bandit") is None:
+            self.warnings.append("Bandit is not installed; skipping Bandit scan.")
+            return
+
+        try:
+            result = subprocess.run(["bandit", "-r", file_path, "-f", "json"], capture_output=True, text=True)
+        except FileNotFoundError:
+            self.warnings.append("Bandit is not installed; skipping Bandit scan.")
+            return
+
+        # Bandit commonly returns 1 when issues are found; parse report for 0/1.
+        if result.returncode not in (0, 1):
+            stderr_text = (result.stderr or "").strip()
+            self.issues.append(f"Bandit analysis failed: {stderr_text or 'unknown error'}")
             return
 
         try:
@@ -48,9 +60,20 @@ class Security:
 
     def __run_semgrep(self, file_path):
         # Semgrep analysis logic
-        result = subprocess.run(["semgrep", "--config", "p/ci", file_path, "--json"], capture_output=True, text=True)
-        if result.returncode != 0:
-            self.issues.append(f"Semgrep analysis failed: {result.stderr}")
+        if shutil.which("semgrep") is None:
+            self.warnings.append("Semgrep is not installed; skipping Semgrep scan.")
+            return
+
+        try:
+            result = subprocess.run(["semgrep", "--config", "p/ci", file_path, "--json"], capture_output=True, text=True)
+        except FileNotFoundError:
+            self.warnings.append("Semgrep is not installed; skipping Semgrep scan.")
+            return
+
+        # Semgrep can return 1 when findings are present; parse report for 0/1.
+        if result.returncode not in (0, 1):
+            stderr_text = (result.stderr or "").strip()
+            self.issues.append(f"Semgrep analysis failed: {stderr_text or 'unknown error'}")
             return
         
         try:

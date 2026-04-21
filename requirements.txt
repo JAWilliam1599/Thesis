@@ -1,1 +1,5 @@
 boto3>=1.34.0
+botocore>=1.34.0
+streamlit>=1.34.0
+bandit>=1.7.9
+semgrep>=1.75.0
