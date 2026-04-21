@@ -146,6 +146,12 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--fail-below", type=int, default=60, help="Pipeline fails if eval score is below this value.")
     parser.add_argument("--max-regen", type=int, default=2, help="Number of auto-regeneration retries after a failed evaluation.")
+    parser.add_argument(
+        "--deployment-context",
+        choices=["public", "internal", "onprem", "sandbox"],
+        default="internal",
+        help="Deployment context used by the risk scorer to estimate exposure.",
+    )
     return parser.parse_args()
 
 
@@ -241,13 +247,13 @@ def main() -> int:
 
         logger.info("Generated file: %s", generated_path)
 
-        report = evaluator.evaluate_code_file(generated_path)
+        report = evaluator.evaluate_code_file(generated_path, deployment_context=args.deployment_context)
         last_report = report
         logger.info("Evaluation report: %s", json.dumps(report, ensure_ascii=False))
         if not args.verbose:
             print(json.dumps(report, indent=2))
 
-        passed = report.get("syntax_ok") and report.get("score", 0) >= args.fail_below
+        passed = report.get("syntax_ok") and report.get("approval") and report.get("score", 0) >= args.fail_below
         if passed:
             passed_code_path, passed_report_path = save_passed_code_snapshot(
                 source_path=generated_path,

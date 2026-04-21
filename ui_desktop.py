@@ -414,9 +414,11 @@ class PipelineUI:
         if latest_run_dir is not None:
             self.summary_text.insert(END, f"Run folder: {latest_run_dir}\n")
         if report_data is not None:
-            self.summary_text.insert(END, f"Score: {report_data.get('score', 'N/A')}\n")
-            self.summary_text.insert(END, f"Syntax OK: {report_data.get('syntax_ok', 'N/A')}\n")
+            self.summary_text.insert(END, f"Quality Score: {report_data.get('score', 'N/A')}\n")
             self.summary_text.insert(END, f"Risk Score: {report_data.get('risk_score', 'N/A')}\n")
+            self.summary_text.insert(END, f"Risk Level: {report_data.get('risk_level', 'N/A')}\n")
+            self.summary_text.insert(END, f"Risk Action: {report_data.get('risk_action', 'N/A')}\n")
+            self.summary_text.insert(END, f"Syntax OK: {report_data.get('syntax_ok', 'N/A')}\n")
             self.summary_text.insert(END, f"Approval: {report_data.get('approval', 'N/A')}\n")
         self.summary_text.config(state=DISABLED)
 

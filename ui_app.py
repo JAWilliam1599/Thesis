@@ -256,6 +256,11 @@ with tab1:
                         st.metric("Risk Score", f"{report.get('risk_score', 0):.2f}")
                     with col4:
                         st.metric("Approval", "✅" if report.get("approval") else "❌")
+
+                    st.info(
+                        f"Risk Level: {report.get('risk_level', 'N/A')} | "
+                        f"Recommended Action: {report.get('risk_action', 'N/A')}"
+                    )
                     
                     # Issues/Notes
                     if report.get("issues"):
