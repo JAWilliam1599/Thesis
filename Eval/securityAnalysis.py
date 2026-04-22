@@ -1,6 +1,10 @@
 import subprocess
 import json
 import shutil
+import tempfile
+import os
+
+DEPENDENCY_CHECK_TOOL = "Eval/dependency-check/bin/dependency-check.bat"  # Ensure this tool is installed and in PATH
 
 class Security:
     """
@@ -125,9 +129,53 @@ class Security:
         except json.JSONDecodeError:
             self.issues.append("semgrep: Failed to parse Semgrep output as JSON.")
         
+    def __find_dependencies(self, file_path):
+        directory = os.path.dirname(file_path)
+
+        dependencies = [
+            "requirements.txt",
+            "Pipfile.lock",
+            "poetry.lock",
+            "package-lock.json",
+            "pom.xml",
+            "build.gradle",
+        ]
+
+        for d in dependencies:
+            dep_path = os.path.join(directory, d)
+            if os.path.exists(dep_path):
+                return dep_path
+            
+        return directory
 
     def __run_OWASP_dependency_check(self, file_path):
         # Placeholder for OWASP Dependency-Check analysis logic
-        self.warnings.append("owasp: OWASP Dependency-Check is not implemented yet; skipping scan.")
+        target = self.__find_dependencies(file_path)
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            result = subprocess.run(
+                [DEPENDENCY_CHECK_TOOL, "--project", "SecurityAnalysis", "--scan", target, "--format", "JSON", "--out", temp_dir], capture_output=True, text=True)
+            if result.returncode != 0:
+                self.issues.append(f"OWASP Dependency-Check analysis failed: {result.stderr}")
+                return
+            
+            report_path = os.path.join(temp_dir, "dependency-check-report.json")
+            if os.path.exists(report_path):
+                try:
+                    with open(report_path, 'r') as f:
+                        dependency_report = json.load(f)
+                        for dependency in dependency_report.get("dependencies", []):
+                            for vulnerability in dependency.get("vulnerabilities", []):
+                                severity = vulnerability.get("severity", "LOW")
+                                if severity in ["HIGH", "MEDIUM"]:
+                                    self.issues.append(f"OWASP Dependency-Check {severity} issue: {vulnerability.get('description')}")
+                                else:
+                                    self.warnings.append(f"OWASP Dependency-Check {severity} warning: {vulnerability.get('description')}")
+                except json.JSONDecodeError:
+                    self.issues.append("Failed to parse OWASP Dependency-Check output as JSON.")
+            else:
+                self.issues.append("OWASP Dependency-Check report not found.")
+
+
 
     
