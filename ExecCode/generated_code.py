@@ -1,6 +1,10 @@
 import boto3
 from botocore.exceptions import ClientError, NoCredentialsError
-import json
+import logging
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 def create_s3_bucket(bucket_name, region='us-east-1'):
     """
@@ -19,77 +23,32 @@ def create_s3_bucket(bucket_name, region='us-east-1'):
                 Bucket=bucket_name,
                 CreateBucketConfiguration={'LocationConstraint': region}
             )
-        print(f"Bucket {bucket_name} created successfully")
+        logger.info(f"Bucket {bucket_name} created successfully")
         return True
     except ClientError as e:
-        print(f"Error creating bucket: {e}")
+        error_code = e.response['Error']['Code']
+        if error_code == 'BucketAlreadyExists':
+            logger.error(f"Bucket {bucket_name} already exists")
+        elif error_code == 'BucketAlreadyOwnedByYou':
+            logger.info(f"Bucket {bucket_name} already exists and is owned by you")
+            return True
+        else:
+            logger.error(f"Error creating bucket {bucket_name}: {e}")
         return False
     except NoCredentialsError:
-        print("AWS credentials not found")
+        logger.error("AWS credentials not found")
         return False
-
-def upload_file_to_s3(file_path, bucket_name, object_name=None):
-    """
-    Upload a file to an S3 bucket
-    
-    :param file_path: Path to file to upload
-    :param bucket_name: Bucket to upload to
-    :param object_name: S3 object name. If not specified, file_path name is used
-    :return: True if file was uploaded, else False
-    """
-    # If S3 object_name was not specified, use file_path name
-    if object_name is None:
-        object_name = file_path.split('/')[-1]
-    
-    try:
-        s3_client = boto3.client('s3')
-        s3_client.upload_file(file_path, bucket_name, object_name)
-        print(f"File {file_path} uploaded to {bucket_name}/{object_name}")
-        return True
-    except FileNotFoundError:
-        print(f"The file {file_path} was not found")
-        return False
-    except ClientError as e:
-        print(f"Error uploading file: {e}")
-        return False
-    except NoCredentialsError:
-        print("AWS credentials not found")
-        return False
-
-def list_s3_buckets():
-    """
-    List all S3 buckets
-    
-    :return: List of bucket names or None if error
-    """
-    try:
-        s3_client = boto3.client('s3')
-        response = s3_client.list_buckets()
-        buckets = [bucket['Name'] for bucket in response['Buckets']]
-        print("S3 Buckets:")
-        for bucket in buckets:
-            print(f"  {bucket}")
-        return buckets
-    except ClientError as e:
-        print(f"Error listing buckets: {e}")
-        return None
-    except NoCredentialsError:
-        print("AWS credentials not found")
-        return None
 
 def main():
-    """Main function to demonstrate S3 operations"""
-    # Example usage
-    bucket_name = 'my-test-bucket-12345'  # Change to your desired bucket name
+    """Main function to demonstrate S3 bucket creation"""
+    bucket_name = "my-test-bucket-12345"  # Use a unique name
+    region = "us-west-2"
     
-    # List existing buckets
-    list_s3_buckets()
-    
-    # Create a new bucket
-    create_s3_bucket(bucket_name, 'us-west-2')
-    
-    # Note: For uploading files, you would need to have a local file
-    # upload_file_to_s3('local_file.txt', bucket_name, 'remote_file.txt')
+    success = create_s3_bucket(bucket_name, region)
+    if success:
+        logger.info("S3 bucket creation completed successfully")
+    else:
+        logger.error("Failed to create S3 bucket")
 
 if __name__ == "__main__":
     main()
