@@ -1,54 +1,69 @@
 import boto3
-from botocore.exceptions import ClientError, NoCredentialsError
-import logging
+from botocore.exceptions import ClientError
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
-def create_s3_bucket(bucket_name, region='us-east-1'):
+def create_ec2_instance(instance_type='t2.micro', image_id='ami-0c55b159cbfafe1d0', key_name=None, security_group='default'):
     """
-    Create an S3 bucket in a specified region
+    Create an EC2 instance
     
-    :param bucket_name: Bucket to create
-    :param region: Region to create bucket in
-    :return: True if bucket created, else False
+    Args:
+        instance_type (str): Type of EC2 instance to create
+        image_id (str): AMI ID to use for the instance
+        key_name (str): Name of the key pair to use
+        security_group (str): Name of the security group to use
+    
+    Returns:
+        dict: Instance information or None if failed
     """
     try:
-        s3_client = boto3.client('s3', region_name=region)
-        if region == 'us-east-1':
-            s3_client.create_bucket(Bucket=bucket_name)
-        else:
-            s3_client.create_bucket(
-                Bucket=bucket_name,
-                CreateBucketConfiguration={'LocationConstraint': region}
-            )
-        logger.info(f"Bucket {bucket_name} created successfully")
-        return True
+        # Create EC2 client
+        ec2 = boto3.client('ec2')
+        
+        # Prepare instance launch parameters
+        params = {
+            'ImageId': image_id,
+            'MinCount': 1,
+            'MaxCount': 1,
+            'InstanceType': instance_type,
+            'SecurityGroups': [security_group]
+        }
+        
+        # Add key pair if provided
+        if key_name:
+            params['KeyName'] = key_name
+            
+        # Launch instance
+        response = ec2.run_instances(**params)
+        
+        instance = response['Instances'][0]
+        print(f"Instance created successfully!")
+        print(f"Instance ID: {instance['InstanceId']}")
+        print(f"Instance Type: {instance['InstanceType']}")
+        print(f"Public IP: {instance.get('PublicIpAddress', 'N/A')}")
+        
+        return {
+            'instance_id': instance['InstanceId'],
+            'instance_type': instance['InstanceType'],
+            'public_ip': instance.get('PublicIpAddress', None)
+        }
+        
     except ClientError as e:
-        error_code = e.response['Error']['Code']
-        if error_code == 'BucketAlreadyExists':
-            logger.error(f"Bucket {bucket_name} already exists")
-        elif error_code == 'BucketAlreadyOwnedByYou':
-            logger.info(f"Bucket {bucket_name} already exists and is owned by you")
-            return True
-        else:
-            logger.error(f"Error creating bucket {bucket_name}: {e}")
-        return False
-    except NoCredentialsError:
-        logger.error("AWS credentials not found")
-        return False
+        print(f"Error creating EC2 instance: {e}")
+        return None
+    except Exception as e:
+        print(f"Unexpected error: {e}")
+        return None
 
 def main():
-    """Main function to demonstrate S3 bucket creation"""
-    bucket_name = "my-test-bucket-12345"  # Use a unique name
-    region = "us-west-2"
+    """Main function to demonstrate EC2 instance creation"""
+    print("Creating EC2 instance...")
     
-    success = create_s3_bucket(bucket_name, region)
-    if success:
-        logger.info("S3 bucket creation completed successfully")
+    # Create instance with default parameters
+    instance_info = create_ec2_instance()
+    
+    if instance_info:
+        print("\nInstance creation completed successfully!")
     else:
-        logger.error("Failed to create S3 bucket")
+        print("\nFailed to create instance.")
 
 if __name__ == "__main__":
     main()

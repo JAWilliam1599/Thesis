@@ -34,6 +34,36 @@ def load_run_generation_module():
     return module
 
 
+def extract_json_report(output_text: str) -> dict | None:
+    """Extract the final JSON evaluation report from mixed log output."""
+    if not output_text:
+        return None
+
+    for line in reversed(output_text.splitlines()):
+        if "Evaluation report:" in line:
+            _, _, payload = line.partition("Evaluation report:")
+            payload = payload.strip()
+            if payload:
+                try:
+                    return json.loads(payload)
+                except json.JSONDecodeError:
+                    pass
+
+    first_brace = output_text.find("{")
+    if first_brace == -1:
+        return None
+
+    decoder = json.JSONDecoder()
+    try:
+        report, _ = decoder.raw_decode(output_text[first_brace:])
+        if isinstance(report, dict):
+            return report
+    except json.JSONDecodeError:
+        return None
+
+    return None
+
+
 # Initialize session state
 if "run_results" not in st.session_state:
     st.session_state.run_results = None
@@ -141,6 +171,7 @@ with tab1:
                 root_dir = Path(__file__).resolve().parent
                 cmd = [
                     sys.executable,
+                    "-u",
                     str(root_dir / "AIgen" / "run_generation_and_eval.py"),
                     "--provider", provider,
                     "--prompt", prompt,
@@ -166,38 +197,46 @@ with tab1:
                 
                 if verbose:
                     cmd.append("--verbose")
-                
-                # Run the pipeline
-                result = subprocess.run(
+
+                env["PYTHONUNBUFFERED"] = "1"
+
+                live_status = st.empty()
+                live_log = st.empty()
+                live_status.info("Streaming pipeline output in real time...")
+
+                process = subprocess.Popen(
                     cmd,
-                    capture_output=True,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
                     text=True,
                     cwd=str(root_dir / "AIgen"),
                     env=env,
+                    bufsize=1,
                 )
+
+                stdout_lines = []
+                if process.stdout is not None:
+                    for line in iter(process.stdout.readline, ""):
+                        stdout_lines.append(line)
+                        live_log.code("".join(stdout_lines[-400:]), language="text")
+                    process.stdout.close()
+
+                return_code = process.wait()
+                combined_output = "".join(stdout_lines)
                 
                 # Parse results
-                output_lines = result.stdout.strip().split('\n')
-                
-                # Try to extract JSON report from output
-                json_output = None
-                for line in output_lines:
-                    try:
-                        json_output = json.loads(line)
-                        break
-                    except json.JSONDecodeError:
-                        continue
+                json_output = extract_json_report(combined_output)
                 
                 # Try to find the generated code file
                 generated_code = None
-                generated_code_path = root_dir / "AIgen" / "generated_code.py"
+                generated_code_path = root_dir / "ExecCode" / "generated_code.py"
                 if generated_code_path.exists():
                     generated_code = generated_code_path.read_text(encoding="utf-8")
                 
                 st.session_state.run_results = {
-                    "return_code": result.returncode,
-                    "stdout": result.stdout,
-                    "stderr": result.stderr,
+                    "return_code": return_code,
+                    "stdout": combined_output,
+                    "stderr": "",
                     "json_output": json_output,
                     "generated_code": generated_code,
                     "timestamp": datetime.now().isoformat(),
