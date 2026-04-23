@@ -36,7 +36,7 @@ PUBLIC_FACING_PATTERNS = (
     r"request\.",
 )
 
-SANCDBOX_PATTERNS = (
+SANDBOX_PATTERNS = (
     r"pytest",
     r"unittest",
     r"test_",
@@ -235,7 +235,7 @@ class RiskScorer:
             return 1.0
         if any(re.search(pattern, code_lower) for pattern in INTERNAL_PATTERNS):
             return 0.6
-        if any(re.search(pattern, code_lower) for pattern in SANCDBOX_PATTERNS):
+        if any(re.search(pattern, code_lower) for pattern in SANDBOX_PATTERNS):
             return 0.1
         if "if __name__ == \"__main__\":" in code_lower:
             return 0.6
