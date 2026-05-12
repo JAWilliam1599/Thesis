@@ -64,6 +64,162 @@ def extract_json_report(output_text: str) -> dict | None:
     return None
 
 
+def format_report_value(value):
+    if isinstance(value, bool):
+        return "Yes" if value else "No"
+    if value is None:
+        return "N/A"
+    if isinstance(value, float):
+        return f"{value:.2f}"
+    if isinstance(value, (list, tuple, set)):
+        return str(len(value))
+    if isinstance(value, dict):
+        return f"{len(value)} items"
+    return str(value)
+
+
+def render_report_field(label, value, description, source):
+    st.metric(label, format_report_value(value), help=f"Source: {source}. {description}")
+    if isinstance(value, list) and value:
+        with st.expander(f"View {label.lower()}"):
+            for item in value:
+                if isinstance(item, dict):
+                    st.json(item)
+                else:
+                    st.write(f"• {item}")
+    elif isinstance(value, dict) and value:
+        with st.expander(f"View {label.lower()}"):
+            st.json(value)
+
+
+def format_run_label(run_dir: Path) -> str:
+    run_name = run_dir.name
+    if not run_name.startswith("run_"):
+        return run_name
+
+    timestamp_text = run_name[len("run_"):]
+    try:
+        parsed = datetime.strptime(timestamp_text, "%Y%m%dT%H%M%S%fZ")
+        return f"{run_name} | {parsed.strftime('%Y-%m-%d %H:%M:%S UTC')}"
+    except ValueError:
+        return run_name
+
+
+def render_evaluation_report(report: dict) -> None:
+    security_report = report.get("security_analysis", {}) if isinstance(report.get("security_analysis"), dict) else {}
+
+    st.subheader("Overview")
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        score = report.get("score", 0)
+        st.metric("Score", f"{score}/100", delta=f"{score - 50}", help="Source: QuickVal + Security analysis. Overall quality score from the evaluator.")
+    with col2:
+        st.metric("Syntax OK", "✅" if report.get("syntax_ok") else "❌", help="Source: QuickVal. Whether the generated code parsed successfully.")
+    with col3:
+        st.metric("Risk Score", f"{report.get('risk_score', 0):.2f}", help="Source: Risk Scoring. Estimated security risk from the risk scorer.")
+    with col4:
+        st.metric("Approval", "✅" if report.get("approval") else "❌", help="Source: QuickVal + Risk Scoring + Security analysis. Whether the run passed the approval checks.")
+
+    st.divider()
+    st.subheader("Assessment Details")
+    detail_cols = st.columns(2)
+    with detail_cols[0]:
+        render_report_field(
+            "Risk Level",
+            report.get("risk_level"),
+            "Human-readable classification of the current risk.",
+            "Risk Scoring",
+        )
+        render_report_field(
+            "Risk Action",
+            report.get("risk_action"),
+            "Recommended next step based on the calculated risk.",
+            "Risk Scoring",
+        )
+        render_report_field(
+            "Quality Score",
+            report.get("quality_score", report.get("score")),
+            "Mirror of the final score used by downstream checks.",
+            "QuickVal + Security analysis",
+        )
+        render_report_field(
+            "Lines of Code",
+            report.get("line_count"),
+            "Number of lines in the generated file.",
+            "Evaluator",
+        )
+    with detail_cols[1]:
+        render_report_field(
+            "Function Count",
+            report.get("function_count"),
+            "How many Python function definitions were detected.",
+            "Evaluator",
+        )
+        render_report_field(
+            "Main Guard Present",
+            report.get("has_main_guard"),
+            "Whether the file includes an if __name__ == '__main__' guard.",
+            "Evaluator",
+        )
+        render_report_field(
+            "Try/Except Present",
+            report.get("has_try_except"),
+            "Whether the code includes exception handling.",
+            "Evaluator",
+        )
+        render_report_field(
+            "Boto3 Import Detected",
+            report.get("imports_boto3"),
+            "Whether the code imports boto3 or from boto3.",
+            "Evaluator",
+        )
+
+    st.divider()
+    st.subheader("Security Analysis")
+    security_cols = st.columns(3)
+    with security_cols[0]:
+        render_report_field(
+            "Issues",
+            security_report.get("issues", []),
+            "Blocking security findings reported by the scanners.",
+            "Security analysis",
+        )
+    with security_cols[1]:
+        render_report_field(
+            "Warnings",
+            security_report.get("warnings", []),
+            "Non-blocking security warnings reported by the scanners.",
+            "Security analysis",
+        )
+    with security_cols[2]:
+        render_report_field(
+            "Findings",
+            security_report.get("findings", []),
+            "Structured security findings used for risk scoring.",
+            "Security analysis",
+        )
+
+    tool_status = security_report.get("tool_status", {})
+    if isinstance(tool_status, dict) and tool_status:
+        status_cols = st.columns(max(1, len(tool_status)))
+        for idx, (tool_name, tool_value) in enumerate(tool_status.items()):
+            with status_cols[idx % len(status_cols)]:
+                st.metric(tool_name.title(), format_report_value(tool_value), help="Source: Security analysis. Scanner execution state for this tool.")
+
+    st.info(
+        f"Risk Level: {report.get('risk_level', 'N/A')} | "
+        f"Recommended Action: {report.get('risk_action', 'N/A')}"
+    )
+
+    if report.get("issues"):
+        st.subheader("📝 Issues/Notes")
+        for issue in report.get("issues", []):
+            st.warning(f"• {issue}")
+
+    with st.expander("📄 Full Report"):
+        st.json(report)
+
+
 # Initialize session state
 if "run_results" not in st.session_state:
     st.session_state.run_results = None
@@ -283,33 +439,7 @@ with tab1:
             
             with report_tab:
                 if results.get("json_output"):
-                    report = results["json_output"]
-                    
-                    col1, col2, col3, col4 = st.columns(4)
-                    with col1:
-                        score = report.get("score", 0)
-                        st.metric("Score", f"{score}/100", delta=f"{score - 50}")
-                    with col2:
-                        st.metric("Syntax OK", "✅" if report.get("syntax_ok") else "❌")
-                    with col3:
-                        st.metric("Risk Score", f"{report.get('risk_score', 0):.2f}")
-                    with col4:
-                        st.metric("Approval", "✅" if report.get("approval") else "❌")
-
-                    st.info(
-                        f"Risk Level: {report.get('risk_level', 'N/A')} | "
-                        f"Recommended Action: {report.get('risk_action', 'N/A')}"
-                    )
-                    
-                    # Issues/Notes
-                    if report.get("issues"):
-                        st.subheader("📝 Issues/Notes")
-                        for issue in report.get("issues", []):
-                            st.warning(f"• {issue}")
-                    
-                    # Full report
-                    with st.expander("📄 Full Report"):
-                        st.json(report)
+                    render_evaluation_report(results["json_output"])
                 else:
                     st.info("No evaluation report available")
         
@@ -343,10 +473,11 @@ with tab2:
         selected_run = st.selectbox(
             "Select a run to view details",
             options=run_dirs,
-            format_func=lambda x: f"{x.name}",
+            format_func=format_run_label,
         )
         
         if selected_run:
+            st.caption(f"Selected run: {format_run_label(selected_run)}")
             col1, col2 = st.columns(2)
             
             with col1:
@@ -378,7 +509,7 @@ with tab2:
                                         st.warning("Code file not found")
                                 
                                 with report_tab:
-                                    st.json(report)
+                                    render_evaluation_report(report)
                     else:
                         st.info("No passed code")
                 else:
@@ -413,7 +544,7 @@ with tab2:
                                         st.warning("Code file not found")
                                 
                                 with report_tab:
-                                    st.json(report)
+                                    render_evaluation_report(report)
                     else:
                         st.info("No failed code")
                 else:

@@ -182,3 +182,5 @@ cython_debug/
 # Runtime log
 logs/
 ExecCode/*
+
+CreateExampleEnv/*
