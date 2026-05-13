@@ -52,6 +52,13 @@ def build_runtime_passed_dir(runtime_root_dir: Path) -> Path:
     return runtime_root_dir / "passed"
 
 
+def save_run_prompt(runtime_root_dir: Path, prompt: str) -> Path:
+    runtime_root_dir.mkdir(parents=True, exist_ok=True)
+    prompt_path = runtime_root_dir / "prompt.txt"
+    prompt_path.write_text(prompt, encoding="utf-8")
+    return prompt_path
+
+
 def configure_logger(log_path: Path, verbose: bool) -> logging.Logger:
     log_path.parent.mkdir(parents=True, exist_ok=True)
     logger = logging.getLogger("generation_and_eval")
@@ -204,6 +211,9 @@ def main() -> int:
     if not base_prompt:
         logger.error("Prompt cannot be empty.")
         return 1
+
+    prompt_path = save_run_prompt(runtime_root_dir, base_prompt)
+    logger.info("Saved user prompt to %s", prompt_path)
 
     if args.max_regen < 0:
         logger.error("--max-regen must be >= 0")

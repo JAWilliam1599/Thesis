@@ -243,6 +243,14 @@ if "exec_code_path" not in st.session_state:
     st.session_state.exec_code_path = ""
 if "exec_auto_follow" not in st.session_state:
     st.session_state.exec_auto_follow = True
+if "exec_return_code" not in st.session_state:
+    st.session_state.exec_return_code = None
+if "exec_regen_running" not in st.session_state:
+    st.session_state.exec_regen_running = False
+if "exec_regen_error" not in st.session_state:
+    st.session_state.exec_regen_error = ""
+if "exec_logged" not in st.session_state:
+    st.session_state.exec_logged = False
 
 
 def run_generated_code(code_path: Path) -> dict:
@@ -310,12 +318,16 @@ def start_exec_from_state() -> None:
         st.session_state.exec_process = None
         st.session_state.exec_running = False
         st.session_state.exec_error = "Code file not found for this attempt."
+        st.session_state.exec_return_code = None
+        st.session_state.exec_logged = False
         return
 
     st.session_state.exec_terminal_output = ""
     st.session_state.exec_process = start_exec_process(code_path)
     st.session_state.exec_running = True
     st.session_state.exec_error = ""
+    st.session_state.exec_return_code = None
+    st.session_state.exec_logged = False
 
     if st.session_state.exec_process:
         new_output = drain_process_output(st.session_state.exec_process)
@@ -336,8 +348,19 @@ def refresh_exec_output_from_state() -> None:
         if new_output:
             st.session_state.exec_terminal_output += new_output
         if st.session_state.exec_process.poll() is not None:
+            st.session_state.exec_return_code = st.session_state.exec_process.returncode
             st.session_state.exec_running = False
             st.session_state.exec_process = None
+            if not st.session_state.exec_logged and st.session_state.exec_code_path:
+                code_path = Path(st.session_state.exec_code_path)
+                run_dir = code_path.parent.parent
+                log_exec_session(
+                    run_dir=run_dir,
+                    code_path=code_path,
+                    return_code=st.session_state.exec_return_code,
+                    output=st.session_state.exec_terminal_output,
+                )
+                st.session_state.exec_logged = True
 
 
 def sync_exec_process_state() -> None:
@@ -345,6 +368,126 @@ def sync_exec_process_state() -> None:
         refresh_exec_output_from_state()
     elif st.session_state.exec_running:
         st.session_state.exec_running = False
+
+
+def load_saved_prompt(run_dir: Path) -> str:
+    prompt_path = run_dir / "prompt.txt"
+    if prompt_path.exists():
+        return prompt_path.read_text(encoding="utf-8")
+    return ""
+
+
+def log_exec_session(run_dir: Path, code_path: Path, return_code: int | None, output: str) -> Path:
+    run_dir.mkdir(parents=True, exist_ok=True)
+    timestamp = datetime.now().strftime("%Y%m%dT%H%M%S")
+    log_path = run_dir / f"exec_{timestamp}.log"
+    command = f"{sys.executable} -u {code_path}"
+    log_content = (
+        f"Command: {command}\n"
+        f"Return code: {return_code}\n"
+        "\n"
+        "Output:\n"
+        f"{output}\n"
+    )
+    log_path.write_text(log_content, encoding="utf-8")
+    return log_path
+
+
+def build_exec_regen_prompt(base_prompt: str, error_output: str) -> str:
+    trimmed_output = error_output[-4000:] if len(error_output) > 4000 else error_output
+    return (
+        f"{base_prompt}\n\n"
+        "The previous generated code failed during execution. Regenerate and fix the issues.\n\n"
+        "Execution error output:\n"
+        f"{trimmed_output}\n"
+    )
+
+
+def run_pipeline_with_prompt(
+    prompt_text: str,
+    provider: str,
+    model_id: str,
+    region: str | None,
+    api_key: str | None,
+    fail_below: int,
+    max_regen: int,
+    verbose: bool,
+) -> dict:
+    root_dir = Path(__file__).resolve().parent
+    cmd = [
+        sys.executable,
+        "-u",
+        str(root_dir / "AIgen" / "run_generation_and_eval.py"),
+        "--provider",
+        provider,
+        "--prompt",
+        prompt_text,
+        "--fail-below",
+        str(fail_below),
+        "--max-regen",
+        str(max_regen),
+    ]
+    env = os.environ.copy()
+
+    if provider == "bedrock":
+        if region:
+            cmd.extend(["--region", region])
+        if model_id:
+            cmd.extend(["--model-id", model_id])
+    else:
+        if model_id:
+            cmd.extend(["--model-id", model_id])
+        api_key_input = (api_key or "").strip()
+        env_api_key = os.getenv("OPENROUTER_API_KEY", "").strip()
+        if api_key_input:
+            env["OPENROUTER_API_KEY"] = api_key_input
+        elif not env_api_key:
+            st.warning("API Key field is empty and OPENROUTER_API_KEY is not set.")
+
+    if verbose:
+        cmd.append("--verbose")
+
+    env["PYTHONUNBUFFERED"] = "1"
+
+    live_status = st.empty()
+    live_log = st.empty()
+    live_status.info("Streaming pipeline output in real time...")
+
+    process = subprocess.Popen(
+        cmd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        cwd=str(root_dir / "AIgen"),
+        env=env,
+        bufsize=1,
+    )
+
+    stdout_lines = []
+    if process.stdout is not None:
+        for line in iter(process.stdout.readline, ""):
+            stdout_lines.append(line)
+            live_log.code("".join(stdout_lines[-400:]), language="text")
+        process.stdout.close()
+
+    return_code = process.wait()
+    combined_output = "".join(stdout_lines)
+
+    json_output = extract_json_report(combined_output)
+
+    generated_code = None
+    generated_code_path = root_dir / "ExecCode" / "generated_code.py"
+    if generated_code_path.exists():
+        generated_code = generated_code_path.read_text(encoding="utf-8")
+
+    return {
+        "return_code": return_code,
+        "stdout": combined_output,
+        "stderr": "",
+        "json_output": json_output,
+        "generated_code": generated_code,
+        "timestamp": datetime.now().isoformat(),
+    }
 
 
 
@@ -446,80 +589,16 @@ with tab1:
         
         try:
             with st.spinner("🔄 Running pipeline..."):
-                # Build command
-                root_dir = Path(__file__).resolve().parent
-                cmd = [
-                    sys.executable,
-                    "-u",
-                    str(root_dir / "AIgen" / "run_generation_and_eval.py"),
-                    "--provider", provider,
-                    "--prompt", prompt,
-                    "--fail-below", str(fail_below),
-                    "--max-regen", str(max_regen),
-                ]
-                env = os.environ.copy()
-                
-                if provider == "bedrock":
-                    if region:
-                        cmd.extend(["--region", region])
-                    if model_id:
-                        cmd.extend(["--model-id", model_id])
-                else:
-                    if model_id:
-                        cmd.extend(["--model-id", model_id])
-                    api_key_input = (api_key or "").strip()
-                    env_api_key = os.getenv("OPENROUTER_API_KEY", "").strip()
-                    if api_key_input:
-                        env["OPENROUTER_API_KEY"] = api_key_input
-                    elif not env_api_key:
-                        st.warning("API Key field is empty and OPENROUTER_API_KEY is not set.")
-                
-                if verbose:
-                    cmd.append("--verbose")
-
-                env["PYTHONUNBUFFERED"] = "1"
-
-                live_status = st.empty()
-                live_log = st.empty()
-                live_status.info("Streaming pipeline output in real time...")
-
-                process = subprocess.Popen(
-                    cmd,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.STDOUT,
-                    text=True,
-                    cwd=str(root_dir / "AIgen"),
-                    env=env,
-                    bufsize=1,
+                st.session_state.run_results = run_pipeline_with_prompt(
+                    prompt_text=prompt,
+                    provider=provider,
+                    model_id=model_id,
+                    region=region,
+                    api_key=api_key if provider == "openrouter" else None,
+                    fail_below=fail_below,
+                    max_regen=max_regen,
+                    verbose=verbose,
                 )
-
-                stdout_lines = []
-                if process.stdout is not None:
-                    for line in iter(process.stdout.readline, ""):
-                        stdout_lines.append(line)
-                        live_log.code("".join(stdout_lines[-400:]), language="text")
-                    process.stdout.close()
-
-                return_code = process.wait()
-                combined_output = "".join(stdout_lines)
-                
-                # Parse results
-                json_output = extract_json_report(combined_output)
-                
-                # Try to find the generated code file
-                generated_code = None
-                generated_code_path = root_dir / "ExecCode" / "generated_code.py"
-                if generated_code_path.exists():
-                    generated_code = generated_code_path.read_text(encoding="utf-8")
-                
-                st.session_state.run_results = {
-                    "return_code": return_code,
-                    "stdout": combined_output,
-                    "stderr": "",
-                    "json_output": json_output,
-                    "generated_code": generated_code,
-                    "timestamp": datetime.now().isoformat(),
-                }
         
         except Exception as e:
             st.error(f"❌ Error running pipeline: {str(e)}")
@@ -756,7 +835,13 @@ with tab3:
             code_path = attempt_map.get(selected_attempt)
 
             if code_path is not None:
-                st.session_state.exec_code_path = str(code_path)
+                code_path_str = str(code_path)
+                if st.session_state.exec_code_path != code_path_str:
+                    st.session_state.exec_code_path = code_path_str
+                    st.session_state.exec_terminal_output = ""
+                    st.session_state.exec_error = ""
+                    st.session_state.exec_return_code = None
+                    st.session_state.exec_logged = False
 
             sync_exec_process_state()
 
@@ -814,6 +899,55 @@ with tab3:
                 output_placeholder.code(st.session_state.exec_terminal_output, language="text")
             else:
                 output_placeholder.info("No output captured yet.")
+
+            if st.session_state.exec_return_code is not None:
+                if st.session_state.exec_return_code == 0:
+                    st.success("Execution completed successfully.")
+                else:
+                    st.error(f"Execution failed with exit code {st.session_state.exec_return_code}.")
+
+                    regen_prompt = ""
+                    if code_path is not None:
+                        run_dir = code_path.parent.parent
+                        saved_prompt = load_saved_prompt(run_dir)
+                        if saved_prompt:
+                            regen_prompt = build_exec_regen_prompt(
+                                saved_prompt,
+                                st.session_state.exec_terminal_output,
+                            )
+                        else:
+                            st.warning("Saved prompt not found for this run.")
+
+                    regen_clicked = st.button(
+                        "🔁 Regenerate With Error Output",
+                        use_container_width=True,
+                        disabled=st.session_state.exec_regen_running or not regen_prompt,
+                    )
+
+                    if regen_clicked:
+                        st.session_state.exec_regen_running = True
+                        st.session_state.exec_regen_error = ""
+                        try:
+                            with st.spinner("Regenerating with error output..."):
+                                st.session_state.run_results = run_pipeline_with_prompt(
+                                    prompt_text=regen_prompt,
+                                    provider=provider,
+                                    model_id=model_id,
+                                    region=region,
+                                    api_key=api_key if provider == "openrouter" else None,
+                                    fail_below=fail_below,
+                                    max_regen=max_regen,
+                                    verbose=verbose,
+                                )
+                                st.success("Regeneration completed. Check the Run Pipeline tab for results.")
+                        except Exception as exc:  # noqa: BLE001
+                            st.session_state.exec_regen_error = str(exc)
+                            st.error(f"Regeneration failed: {exc}")
+                        finally:
+                            st.session_state.exec_regen_running = False
+
+            if st.session_state.exec_regen_error:
+                st.error(st.session_state.exec_regen_error)
 
             input_text = st.text_input(
                 "Send input to running process",

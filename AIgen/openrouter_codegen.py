@@ -37,7 +37,14 @@ def extract_code(raw_text: str) -> str:
     fenced = re.findall(r"```(?:python)?\n([\s\S]*?)```", raw_text, flags=re.IGNORECASE)
     if fenced:
         return fenced[0].strip() + "\n"
-    return raw_text.strip() + "\n"
+
+    text = raw_text.strip()
+    lines = text.splitlines()
+    while lines and re.match(r"^```(?:python)?\s*$", lines[0], flags=re.IGNORECASE):
+        lines = lines[1:]
+    while lines and re.match(r"^```\s*$", lines[-1], flags=re.IGNORECASE):
+        lines = lines[:-1]
+    return "\n".join(lines).strip() + "\n"
 
 
 def _normalize_content(content: object) -> str:
@@ -64,7 +71,7 @@ def call_openrouter(
     model_id: str,
     api_key: str,
     api_url: str = DEFAULT_API_URL,
-    max_tokens: int = 1400,
+    max_tokens: int = 2400,
     temperature: float = 0.2,
     app_name: str | None = None,
     app_url: str | None = None,
