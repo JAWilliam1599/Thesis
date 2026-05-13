@@ -171,13 +171,6 @@ def render_evaluation_report(report: dict) -> None:
             "Whether the code includes exception handling.",
             "Evaluator",
         )
-        render_report_field(
-            "Boto3 Import Detected",
-            report.get("imports_boto3"),
-            "Whether the code imports boto3 or from boto3.",
-            "Evaluator",
-        )
-
     st.divider()
     st.subheader("Security Analysis")
     security_cols = st.columns(3)

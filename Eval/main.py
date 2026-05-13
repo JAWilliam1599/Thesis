@@ -1,8 +1,18 @@
 import argparse
+import ast
 import importlib.util
 import json
 import sys
 from pathlib import Path
+
+
+DANGEROUS_PATTERNS = [
+    "os.system",
+    "subprocess.Popen",
+    "subprocess.call",
+    "eval(",
+    "exec(",
+]
 
 
 def _load_quickval_module():
@@ -45,6 +55,18 @@ def _load_risk_scoring_module():
 riskScoring = _load_risk_scoring_module()
 
 
+def _quickval_penalty(findings: list[dict]) -> int:
+    severity_weights = {
+        "critical": 5,
+        "high": 3,
+        "medium": 2,
+        "low": 1,
+        "warning": 1,
+        "info": 1,
+    }
+    return sum(severity_weights.get(str(finding.get("severity", "low")).lower(), 1) for finding in findings)
+
+
 def evaluate_code_text(code: str, model=None, source_path: Path | None = None, deployment_context: str = "internal") -> dict:
     validator = quickVal.QuickVal(model=model, code=code)
     quick_report = validator.validate()
@@ -54,15 +76,25 @@ def evaluate_code_text(code: str, model=None, source_path: Path | None = None, d
         security_report = {
             "issues": [],
             "warnings": ["Security tool scan skipped because no source file path was provided."],
+            "findings": [],
         }
 
     quick_approval = quick_report.get("approval", False)
     quick_issues = list(quick_report.get("issues", []))
-    heuristic_risk_score = quick_report.get("risk_score", 0)
+    quick_findings = list(quick_report.get("findings", []))
+    heuristic_risk_score = _quickval_penalty(quick_findings)
+
+    function_count = 0
+    notes = []
+    try:
+        tree = ast.parse(code)
+        function_count = sum(isinstance(node, ast.FunctionDef) for node in ast.walk(tree))
+    except SyntaxError:
+        function_count = 0
 
     risk_scorer = riskScoring.RiskScorer(deployment_context=deployment_context)
     security_findings = list(security_report.get("findings", []))
-    risk_report = risk_scorer.score(code=code, findings=security_findings)
+    risk_report = risk_scorer.score(code=code, findings=security_findings + quick_findings)
 
     security_issues = [f"Security issue: {item}" for item in security_report.get("issues", [])]
     security_warnings = [f"Security warning: {item}" for item in security_report.get("warnings", [])]
@@ -73,11 +105,40 @@ def evaluate_code_text(code: str, model=None, source_path: Path | None = None, d
     issues = quick_issues + security_issues + security_warnings
     approval = quick_approval and risk_report.get("risk_level") in {"Low", "Medium"} and security_issue_count == 0
 
-    # Adapter mapping for AIgen/run_generation_and_eval.py expectations.
-    score = max(0, min(100, 100 - (heuristic_risk_score * 20) - security_penalty))
+    has_try_except = "try:" in code and "except" in code
+    has_main_guard = "if __name__ == \"__main__\":" in code
+    dangerous_patterns = [p for p in DANGEROUS_PATTERNS if p in code]
+
+    score = 40
+    if has_try_except:
+        score += 15
+    else:
+        notes.append("No try/except block detected.")
+
+    if has_main_guard:
+        score += 15
+    else:
+        notes.append("No main guard detected.")
+
+    if function_count > 0:
+        score += 15
+    else:
+        notes.append("No function definitions detected.")
+
+    if dangerous_patterns:
+        score -= 15
+        notes.append("Potentially dangerous execution patterns detected.")
+    else:
+        score += 15
+
+    score = max(0, min(100, score))
     return {
         "syntax_ok": not any(str(issue).lower().startswith("syntax error:") for issue in quick_issues),
         "line_count": len(code.splitlines()),
+        "function_count": function_count,
+        "has_main_guard": has_main_guard,
+        "has_try_except": has_try_except,
+        "dangerous_patterns": dangerous_patterns,
         "quality_score": score,
         "heuristic_risk_score": heuristic_risk_score,
         "risk_score": risk_report.get("risk_score", 0),
@@ -91,7 +152,7 @@ def evaluate_code_text(code: str, model=None, source_path: Path | None = None, d
         "approval": approval,
         "issues": issues,
         "score": score,
-        "notes": issues,
+        "notes": notes,
     }
 
 

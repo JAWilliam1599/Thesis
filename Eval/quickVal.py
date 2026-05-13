@@ -31,7 +31,7 @@ class QuickVal:
     def __init__(self, model, code):
         self.model = model
         self.code = code
-        self.risk_score = 0
+        self.findings = []
         self.issues = []
 
     def validate(self):
@@ -52,10 +52,22 @@ class QuickVal:
         self._check_complexity()
 
         return {
-            "risk_score": self.risk_score,
+            "findings": self.findings,
             "issues": self.issues,
-            "approval": self.risk_score < 5,  # Approve if risk score is less than 5
+            "approval": not any(
+                finding.get("severity") in {"high", "critical"} for finding in self.findings
+            ),
         }
+
+    def _add_finding(self, severity, message):
+        self.findings.append(
+            {
+                "source": "quickval",
+                "severity": severity,
+                "message": message,
+            }
+        )
+        self.issues.append(message)
 
     def _self_review(self):
         if self.model is None or not hasattr(self.model, "review"):
@@ -65,21 +77,18 @@ class QuickVal:
         review = self.model.review(self.code)
 
         if review.get("risk_score", 0) > 5:
-            self.risk_score += 2
-            self.issues.append("Model self-review points out high risk.")
+            self._add_finding("medium", "Model self-review points out high risk.")
 
     def _syntax_check(self):
         try:
             compile(self.code, "<string>", "exec")
         except SyntaxError as e:
-            self.risk_score += 5
-            self.issues.append(f"Syntax error: {e}")
+            self._add_finding("high", f"Syntax error: {e}")
 
     def _check_forbiden_imports(self):
         for imp in self.FORBIDENT_IMPORTS:
             if f"import {imp}" in self.code or f"from {imp}" in self.code:
-                self.risk_score += 3
-                self.issues.append(f"Forbiden import detected: {imp}")
+                self._add_finding("high", f"Forbiden import detected: {imp}")
 
     def _check_forbiden_functions(self):
         try:
@@ -97,8 +106,7 @@ class QuickVal:
 
         for func in self.FORBIDENT_FUNCTIONS:
             if func in called_functions:
-                self.risk_score += 3
-                self.issues.append(f"Forbiden function detected: {func}")
+                self._add_finding("high", f"Forbiden function detected: {func}")
 
     def _get_called_function_name(self, node):
         if isinstance(node, ast.Name):
@@ -125,8 +133,8 @@ class QuickVal:
 
         max_loop_depth = self._get_max_loop_depth(tree)
         if max_loop_depth > 2:
-            self.risk_score += 3
-            self.issues.append(
+            self._add_finding(
+                "low",
                 f"Complexity risk detected: nested loop depth is {max_loop_depth}. "
                 "Expected complexity should not exceed O(n^2)."
             )

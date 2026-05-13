@@ -51,6 +51,18 @@ securityAnalysis = _load_security_module()
 riskScoring = _load_risk_scoring_module()
 
 
+def _quickval_penalty(findings: list[dict]) -> int:
+    severity_weights = {
+        "critical": 5,
+        "high": 3,
+        "medium": 2,
+        "low": 1,
+        "warning": 1,
+        "info": 1,
+    }
+    return sum(severity_weights.get(str(finding.get("severity", "low")).lower(), 1) for finding in findings)
+
+
 def evaluate_code_text(code: str, model=None, source_path: Path | None = None, deployment_context: str = "internal") -> dict:
     validator = quickVal.QuickVal(model=model, code=code)
     quick_report = validator.validate()
@@ -64,13 +76,15 @@ def evaluate_code_text(code: str, model=None, source_path: Path | None = None, d
         }
 
     risk_scorer = riskScoring.RiskScorer(deployment_context=deployment_context)
-    risk_report = risk_scorer.score(code=code, findings=security_report.get("findings", []))
+    quick_findings = list(quick_report.get("findings", []))
+    combined_findings = list(security_report.get("findings", [])) + quick_findings
+    risk_report = risk_scorer.score(code=code, findings=combined_findings)
 
     report = {
         "syntax_ok": False,
         "line_count": len(code.splitlines()),
         "quality_score": 0,
-        "heuristic_risk_score": quick_report.get("risk_score", 0),
+        "heuristic_risk_score": _quickval_penalty(quick_findings),
         "risk_score": risk_report.get("risk_score", 0),
         "risk_level": risk_report.get("risk_level", "Low"),
         "risk_action": risk_report.get("recommended_action", "Log for monitoring"),
@@ -78,7 +92,6 @@ def evaluate_code_text(code: str, model=None, source_path: Path | None = None, d
         "risk_findings": risk_report.get("risk_findings", []),
         "security_analysis": security_report,
         "function_count": 0,
-        "imports_boto3": "import boto3" in code or "from boto3" in code,
         "has_try_except": "try:" in code and "except" in code,
         "has_main_guard": "if __name__ == \"__main__\":" in code,
         "dangerous_patterns": [p for p in DANGEROUS_PATTERNS if p in code],
@@ -100,23 +113,18 @@ def evaluate_code_text(code: str, model=None, source_path: Path | None = None, d
     score = 0
     score += 40
 
-    if report["imports_boto3"]:
-        score += 20
-    else:
-        report["notes"].append("No boto3 import detected.")
-
     if report["has_try_except"]:
         score += 15
     else:
         report["notes"].append("No try/except block detected.")
 
     if report["has_main_guard"]:
-        score += 10
+        score += 15
     else:
         report["notes"].append("No main guard detected.")
 
     if report["function_count"] > 0:
-        score += 10
+        score += 15
     else:
         report["notes"].append("No function definitions detected.")
 
@@ -124,7 +132,7 @@ def evaluate_code_text(code: str, model=None, source_path: Path | None = None, d
         score -= 15
         report["notes"].append("Potentially dangerous execution patterns detected.")
     else:
-        score += 5
+        score += 15
 
     report["score"] = max(0, min(100, score))
     report["quality_score"] = report["score"]

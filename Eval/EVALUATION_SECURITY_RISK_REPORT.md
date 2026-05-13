@@ -25,7 +25,7 @@ High-level sequence:
 
 1. Quick heuristic validation (`QuickVal.validate`) is executed on the code string.
 2. Security tool analysis (`Security.analyze`) is executed, usually using the real file path.
-3. Findings from security analysis are passed to `RiskScorer.score`.
+3. Findings from security analysis and QuickVal are passed to `RiskScorer.score`.
 4. A unified report is assembled, including:
    - quality/heuristic metrics,
    - security analysis outputs,
@@ -34,8 +34,8 @@ High-level sequence:
 
 Important separation:
 
-- Quick validation contributes to `heuristic_risk_score` and can affect approval logic.
-- Multi-factor risk scoring uses `security_report["findings"]` (not QuickVal issues directly).
+- Quick validation contributes structured findings for risk scoring and still influences approval logic.
+- Multi-factor risk scoring uses both `security_report["findings"]` and `quick_report["findings"]`.
 
 ---
 
