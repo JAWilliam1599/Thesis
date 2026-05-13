@@ -5,12 +5,16 @@ import importlib.util
 import json
 import logging
 import os
+import select
 import subprocess
 import sys
+import time
 from datetime import datetime
 from pathlib import Path
 
 import streamlit as st
+
+from ExecComponent.exec_code import exec_code
 
 # Configure Streamlit page
 st.set_page_config(
@@ -225,6 +229,124 @@ if "run_results" not in st.session_state:
     st.session_state.run_results = None
 if "is_running" not in st.session_state:
     st.session_state.is_running = False
+if "exec_results" not in st.session_state:
+    st.session_state.exec_results = None
+if "is_executing" not in st.session_state:
+    st.session_state.is_executing = False
+if "exec_process" not in st.session_state:
+    st.session_state.exec_process = None
+if "exec_terminal_output" not in st.session_state:
+    st.session_state.exec_terminal_output = ""
+if "exec_running" not in st.session_state:
+    st.session_state.exec_running = False
+if "exec_code_path" not in st.session_state:
+    st.session_state.exec_code_path = ""
+if "exec_auto_follow" not in st.session_state:
+    st.session_state.exec_auto_follow = True
+
+
+def run_generated_code(code_path: Path) -> dict:
+    live_log = st.empty()
+
+    def handle_line(_line, lines):
+        live_log.code("".join(lines[-400:]), language="text")
+
+    return exec_code.run_file(
+        str(code_path),
+        cwd=str(code_path.parent),
+        line_handler=handle_line,
+    )
+
+
+def start_exec_process(code_path: Path) -> subprocess.Popen:
+    return subprocess.Popen(
+        [sys.executable, "-u", str(code_path)],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        cwd=str(code_path.parent),
+        bufsize=1,
+    )
+
+
+def drain_process_output(process: subprocess.Popen, max_lines: int = 2000) -> str:
+    if process.stdout is None:
+        return ""
+
+    lines = []
+    while True:
+        ready, _, _ = select.select([process.stdout], [], [], 0)
+        if not ready:
+            break
+        line = process.stdout.readline()
+        if not line:
+            break
+        lines.append(line)
+        if len(lines) >= max_lines:
+            break
+
+    return "".join(lines)
+
+
+def get_attempt_files(run_dir: Path, attempt_type: str) -> dict[str, Path]:
+    target_dir = run_dir / attempt_type
+    if not target_dir.exists():
+        return {}
+
+    json_files = sorted(target_dir.glob("*.json"), reverse=True)
+    attempt_map = {}
+    for json_file in json_files:
+        py_file = json_file.with_suffix(".py")
+        if py_file.exists():
+            attempt_map[json_file.stem] = py_file
+    return attempt_map
+
+
+def start_exec_from_state() -> None:
+    code_path = Path(st.session_state.exec_code_path) if st.session_state.exec_code_path else None
+    if code_path is None or not code_path.exists():
+        st.session_state.exec_terminal_output = ""
+        st.session_state.exec_process = None
+        st.session_state.exec_running = False
+        st.session_state.exec_error = "Code file not found for this attempt."
+        return
+
+    st.session_state.exec_terminal_output = ""
+    st.session_state.exec_process = start_exec_process(code_path)
+    st.session_state.exec_running = True
+    st.session_state.exec_error = ""
+
+    if st.session_state.exec_process:
+        new_output = drain_process_output(st.session_state.exec_process)
+        if new_output:
+            st.session_state.exec_terminal_output += new_output
+
+
+def stop_exec_from_state() -> None:
+    if st.session_state.exec_process:
+        st.session_state.exec_process.terminate()
+    st.session_state.exec_running = False
+    st.session_state.exec_process = None
+
+
+def refresh_exec_output_from_state() -> None:
+    if st.session_state.exec_process and st.session_state.exec_running:
+        new_output = drain_process_output(st.session_state.exec_process)
+        if new_output:
+            st.session_state.exec_terminal_output += new_output
+        if st.session_state.exec_process.poll() is not None:
+            st.session_state.exec_running = False
+            st.session_state.exec_process = None
+
+
+def sync_exec_process_state() -> None:
+    if st.session_state.exec_process:
+        refresh_exec_output_from_state()
+    elif st.session_state.exec_running:
+        st.session_state.exec_running = False
+
+
 
 
 # Sidebar configuration
@@ -283,7 +405,7 @@ with st.sidebar:
 
 
 # Main content area
-tab1, tab2 = st.tabs(["🚀 Run Pipeline", "📊 View Results"])
+tab1, tab2, tab3 = st.tabs(["🚀 Run Pipeline", "📊 View Results", "🖥️ Exec Code"])
 
 with tab1:
     st.subheader("Generate and Evaluate Python Code")
@@ -320,6 +442,7 @@ with tab1:
     if run_button:
         st.session_state.is_running = True
         st.session_state.run_results = None
+        st.session_state.exec_results = None
         
         try:
             with st.spinner("🔄 Running pipeline..."):
@@ -406,6 +529,7 @@ with tab1:
     
     if clear_button:
         st.session_state.run_results = None
+        st.session_state.exec_results = None
         st.rerun()
     
     # Display results
@@ -434,6 +558,47 @@ with tab1:
                         file_name=f"generated_code_{results['timestamp'].replace(':', '')}.py",
                         mime="text/plain"
                     )
+
+                    root_dir = Path(__file__).resolve().parent
+                    generated_code_path = root_dir / "ExecCode" / "generated_code.py"
+                    execute_button = st.button(
+                        "▶️ Execute Generated Code",
+                        use_container_width=True,
+                        disabled=st.session_state.is_executing,
+                        key="execute_generated_code",
+                    )
+
+                    if execute_button:
+                        st.session_state.is_executing = True
+                        st.session_state.exec_results = None
+
+                        if not generated_code_path.exists():
+                            st.error("Generated code file not found on disk.")
+                        else:
+                            with st.spinner("Running generated code..."):
+                                exec_result = run_generated_code(generated_code_path)
+                                st.session_state.exec_results = {
+                                    "return_code": exec_result.get("return_code", -1),
+                                    "output": exec_result.get("output", ""),
+                                    "timestamp": datetime.now().isoformat(),
+                                }
+
+                        st.session_state.is_executing = False
+
+                    if st.session_state.exec_results:
+                        exec_results = st.session_state.exec_results
+                        exec_return_code = exec_results.get("return_code", -1)
+                        if exec_return_code == 0:
+                            st.success("✅ Execution completed successfully!")
+                        else:
+                            st.error(f"❌ Execution failed with exit code {exec_return_code}")
+
+                        exec_output = exec_results.get("output", "")
+                        st.subheader("📋 Execution Output")
+                        if exec_output:
+                            st.code(exec_output, language="text")
+                        else:
+                            st.info("No output captured from execution.")
                 else:
                     st.info("Generated code file not found")
             
@@ -549,6 +714,124 @@ with tab2:
                         st.info("No failed code")
                 else:
                     st.info("Failed directory not found")
+
+
+with tab3:
+    st.subheader("Execute Generated Code")
+
+
+    exec_code_dir = Path(__file__).resolve().parent / "ExecCode"
+    run_dirs = sorted(
+        [d for d in exec_code_dir.iterdir() if d.is_dir() and d.name.startswith("run_")],
+        reverse=True,
+    )
+
+    if not run_dirs:
+        st.info("No runs found yet. Generate some code to see results here!")
+    else:
+        selected_run = st.selectbox(
+            "Select a run",
+            options=run_dirs,
+            format_func=format_run_label,
+            key="exec_run_select",
+        )
+
+        attempt_type = st.selectbox(
+            "Attempt type",
+            options=["passed", "failed"],
+            key="exec_attempt_type",
+        )
+
+        attempt_map = get_attempt_files(selected_run, attempt_type) if selected_run else {}
+        attempt_names = list(attempt_map.keys())
+
+        if not attempt_names:
+            st.info(f"No {attempt_type} attempts found for this run.")
+        else:
+            selected_attempt = st.selectbox(
+                "Attempt",
+                options=attempt_names,
+                key="exec_attempt_select",
+            )
+            code_path = attempt_map.get(selected_attempt)
+
+            if code_path is not None:
+                st.session_state.exec_code_path = str(code_path)
+
+            sync_exec_process_state()
+
+            st.session_state.exec_auto_follow = st.checkbox(
+                "Auto-follow output (5s)",
+                value=st.session_state.exec_auto_follow,
+            )
+
+            button_container = st.container()
+            output_placeholder = st.empty()
+            if st.session_state.exec_running and st.session_state.exec_auto_follow:
+                for _ in range(10):
+                    refresh_exec_output_from_state()
+                    if st.session_state.exec_terminal_output:
+                        output_placeholder.code(st.session_state.exec_terminal_output, language="text")
+                    else:
+                        output_placeholder.info("No output captured yet.")
+                    time.sleep(0.5)
+
+            exec_running = st.session_state.exec_running
+
+            with button_container:
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    st.button(
+                        "▶️ Start Execution",
+                        use_container_width=True,
+                        disabled=exec_running,
+                        on_click=start_exec_from_state,
+                    )
+
+                with col2:
+                    st.button(
+                        "🔄 Refresh Output",
+                        use_container_width=True,
+                        disabled=not exec_running,
+                        on_click=refresh_exec_output_from_state,
+                    )
+                with col3:
+                    st.button(
+                        "⏹ Stop Execution",
+                        use_container_width=True,
+                        disabled=not exec_running,
+                        on_click=stop_exec_from_state,
+                    )
+
+            if exec_running:
+                st.success("Execution started.")
+
+            if st.session_state.get("exec_error"):
+                st.error(st.session_state.exec_error)
+
+            st.subheader("Terminal Output")
+            if st.session_state.exec_terminal_output:
+                output_placeholder.code(st.session_state.exec_terminal_output, language="text")
+            else:
+                output_placeholder.info("No output captured yet.")
+
+            input_text = st.text_input(
+                "Send input to running process",
+                key="exec_input_text",
+                disabled=not st.session_state.exec_running,
+            )
+            send_input = st.button(
+                "➡️ Send Input",
+                use_container_width=True,
+                disabled=not st.session_state.exec_running,
+            )
+
+            if send_input and st.session_state.exec_process and input_text:
+                process = st.session_state.exec_process
+                if process.stdin is not None:
+                    process.stdin.write(input_text + "\n")
+                    process.stdin.flush()
+                st.session_state.exec_input_text = ""
 
 
 # Footer

@@ -1,4 +1,6 @@
 import os
+import subprocess
+import sys
 
 class exec_code:
     """
@@ -57,3 +59,29 @@ class exec_code:
             code = f.read()
 
         exec(code)
+
+    @staticmethod
+    def run_file(file_path, cwd=None, line_handler=None):
+        cmd = [sys.executable, "-u", file_path]
+        process = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            cwd=cwd,
+            bufsize=1,
+        )
+
+        output_lines = []
+        if process.stdout is not None:
+            for line in iter(process.stdout.readline, ""):
+                output_lines.append(line)
+                if line_handler:
+                    line_handler(line, output_lines)
+            process.stdout.close()
+
+        return_code = process.wait()
+        return {
+            "return_code": return_code,
+            "output": "".join(output_lines),
+        }
