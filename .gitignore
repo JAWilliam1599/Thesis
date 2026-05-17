@@ -184,3 +184,4 @@ logs/
 ExecCode/*
 
 CreateExampleEnv/*
+*.docx.md
