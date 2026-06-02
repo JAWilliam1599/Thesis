@@ -107,6 +107,45 @@ def save_passed_code_snapshot(source_path: Path, passed_dir: Path, attempt_numbe
     return passed_code_path, passed_report_path
 
 
+def extract_instructions(code_text: str) -> str:
+    lines = code_text.splitlines()
+    if not lines or lines[0].strip() != "# INSTRUCTIONS:":
+        return ""
+
+    instructions = []
+    for line in lines[1:]:
+        if line.strip() == "# END INSTRUCTIONS":
+            break
+        if line.lstrip().startswith("#"):
+            content = line.lstrip()[1:]
+            if content.startswith(" "):
+                content = content[1:]
+            instructions.append(content)
+        else:
+            instructions.append(line)
+
+    return "\n".join(instructions).strip()
+
+
+def save_instruction_snapshot(
+    source_path: Path,
+    report_path: Path,
+    code_text: str,
+) -> Path | None:
+    instructions_path = source_path.with_suffix(".instructions.txt")
+    if instructions_path.exists():
+        instructions_text = instructions_path.read_text(encoding="utf-8")
+    else:
+        instructions_text = extract_instructions(code_text)
+
+    if not instructions_text:
+        return None
+
+    snapshot_path = report_path.with_suffix(".instructions.txt")
+    snapshot_path.write_text(instructions_text, encoding="utf-8")
+    return snapshot_path
+
+
 def load_evaluator_module():
     eval_file = EVAL_DIR / "main.py"
     spec = importlib.util.spec_from_file_location("evaluate_generated_code", eval_file)
@@ -172,7 +211,9 @@ def build_regen_prompt(original_prompt: str, report: dict, attempt_number: int) 
         "1) Fix all issues mentioned in the report.\n"
         "2) Return complete executable Python code only (no markdown).\n"
         "3) Keep the main functionality required by the original request.\n"
-        "4) Use boto3 for AWS interactions and include basic error handling."
+        "4) Prompt the user at runtime (input()) for any required resource details instead of assuming defaults.\n"
+        "5) If AWS infrastructure is requested, prefer AWS CDK constructs; if AWS SDK usage is requested, use boto3.\n"
+        "6) Include basic error handling."
     )
 
 
@@ -257,11 +298,13 @@ def main() -> int:
 
         logger.info("Generated file: %s", generated_path)
 
+        code_text = generated_path.read_text(encoding="utf-8")
+
         report = evaluator.evaluate_code_file(generated_path, deployment_context=args.deployment_context)
         last_report = report
         logger.info("Evaluation report: %s", json.dumps(report, ensure_ascii=False))
-        if not args.verbose:
-            print(json.dumps(report, indent=2))
+        # if not args.verbose:
+        #     print(json.dumps(report, indent=2))
 
         passed = report.get("syntax_ok") and report.get("approval") and report.get("score", 0) >= args.fail_below
         if passed:
@@ -270,6 +313,11 @@ def main() -> int:
                 passed_dir=runtime_passed_dir,
                 attempt_number=attempt_number,
                 report=report,
+            )
+            save_instruction_snapshot(
+                source_path=generated_path,
+                report_path=passed_report_path,
+                code_text=code_text,
             )
             logger.info(
                 "Evaluation passed with score=%s saved_passed_code=%s saved_report=%s",
@@ -284,6 +332,11 @@ def main() -> int:
             failed_dir=runtime_failed_dir,
             attempt_number=attempt_number,
             report=report,
+        )
+        save_instruction_snapshot(
+            source_path=generated_path,
+            report_path=failed_report_path,
+            code_text=code_text,
         )
         logger.warning(
             "Evaluation failed score=%s syntax_ok=%s saved_failed_code=%s saved_report=%s",

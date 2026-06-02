@@ -20,7 +20,6 @@ class QuickVal:
         "eval",
         "exec",
         "open",
-        "input",
         "compile",
         "__import__",
         "os.system",

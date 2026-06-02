@@ -14,6 +14,7 @@ Both UIs provide:
 - ✅ Real-time pipeline execution feedback
 - ✅ Results display and evaluation reports
 - ✅ Generated code view with save/download options
+- ✅ Instruction blocks extracted from generated code
 - ✅ History of recent runs
 - ✅ Detailed logging
 
@@ -47,6 +48,7 @@ This will open your browser at `http://localhost:8501`
   - Configure model ID, API keys, and parameters
   - View real-time results with metrics
   - View generated Python code in the UI
+  - View extracted instructions alongside the generated code
   - Download generated code from the UI
   - See detailed evaluation reports
 
@@ -94,7 +96,7 @@ A window will open with the pipeline interface.
   - Code prompt entry area
 
 - **Right Panel**: Results and logs
-  - 📋 Results tab: Summary, evaluation report, and generated code
+  - 📋 Results tab: Summary, evaluation report, instructions, and generated code
   - 📊 Logs tab: Detailed execution logs
   - 📁 Recent Runs tab: Select run/type/attempt and open code + report
 

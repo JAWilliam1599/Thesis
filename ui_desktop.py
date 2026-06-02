@@ -16,6 +16,38 @@ from tkinter import (
 from tkinter import ttk
 
 
+def extract_instructions(code_text: str) -> str:
+    lines = code_text.splitlines()
+    if not lines or lines[0].strip() != "# INSTRUCTIONS:":
+        return ""
+
+    instructions = []
+    for line in lines[1:]:
+        if line.strip() == "# END INSTRUCTIONS":
+            break
+        if line.lstrip().startswith("#"):
+            content = line.lstrip()[1:]
+            if content.startswith(" "):
+                content = content[1:]
+            instructions.append(content)
+        else:
+            instructions.append(line)
+
+    return "\n".join(instructions).strip()
+
+
+def load_instructions(code_path: Path, code_text: str | None = None) -> str:
+    instructions_path = code_path.with_suffix(".instructions.txt")
+    if instructions_path.exists():
+        return instructions_path.read_text(encoding="utf-8")
+
+    if code_text is None and code_path.exists():
+        code_text = code_path.read_text(encoding="utf-8")
+    if code_text is None:
+        return ""
+    return extract_instructions(code_text)
+
+
 class PipelineUI:
     def __init__(self, root):
         self.root = root
@@ -188,6 +220,17 @@ class PipelineUI:
         )
         self.report_text.pack(fill="both", expand=True)
 
+        instructions_frame = ttk.Frame(self.result_notebook)
+        self.result_notebook.add(instructions_frame, text="📘 Instructions")
+        self.instructions_text = scrolledtext.ScrolledText(
+            instructions_frame,
+            height=12,
+            width=80,
+            wrap="word",
+            font=("Courier", 9)
+        )
+        self.instructions_text.pack(fill="both", expand=True)
+
         code_frame = ttk.Frame(self.result_notebook)
         self.result_notebook.add(code_frame, text="💻 Generated Code")
         code_button_frame = ttk.Frame(code_frame)
@@ -278,6 +321,17 @@ class PipelineUI:
             font=("Courier", 9)
         )
         self.history_code_text.pack(fill="both", expand=True)
+
+        history_instructions_frame = ttk.Frame(self.history_notebook)
+        self.history_notebook.add(history_instructions_frame, text="📘 Instructions")
+        self.history_instructions_text = scrolledtext.ScrolledText(
+            history_instructions_frame,
+            height=16,
+            width=80,
+            wrap="word",
+            font=("Courier", 9)
+        )
+        self.history_instructions_text.pack(fill="both", expand=True)
     
     def _run_pipeline(self):
         """Run the pipeline in a separate thread"""
@@ -386,12 +440,16 @@ class PipelineUI:
         """Parse and display pipeline results"""
         report_data = None
         generated_code = ""
+        instructions_text = ""
 
         latest_run_dir = self._get_latest_run_dir()
         latest_context = self._get_latest_attempt_context(latest_run_dir) if latest_run_dir else None
         if latest_context is not None:
             report_data = latest_context.get("report")
             generated_code = latest_context.get("code", "")
+            py_path = latest_context.get("py_path")
+            if py_path:
+                instructions_text = load_instructions(py_path, generated_code)
 
         if report_data is None:
             report_data = self._extract_json_from_output(result.stdout)
@@ -431,6 +489,14 @@ class PipelineUI:
             self.report_text.insert(END, result.stdout)
         self.report_text.config(state=DISABLED)
 
+        self.instructions_text.config(state=NORMAL)
+        self.instructions_text.delete("1.0", END)
+        if instructions_text:
+            self.instructions_text.insert(END, instructions_text)
+        else:
+            self.instructions_text.insert(END, "No instructions found for this run.")
+        self.instructions_text.config(state=DISABLED)
+
         self.code_text.config(state=NORMAL)
         self.code_text.delete("1.0", END)
         if generated_code:
@@ -451,6 +517,10 @@ class PipelineUI:
         self.report_text.config(state=NORMAL)
         self.report_text.delete("1.0", END)
         self.report_text.config(state=DISABLED)
+
+        self.instructions_text.config(state=NORMAL)
+        self.instructions_text.delete("1.0", END)
+        self.instructions_text.config(state=DISABLED)
 
         self.code_text.config(state=NORMAL)
         self.code_text.delete("1.0", END)
@@ -494,6 +564,7 @@ class PipelineUI:
             self.history_attempt_combo.set("")
             self._set_history_report_text("Select a run to view results.")
             self._set_history_code_text("")
+            self._set_history_instructions_text("")
             return
 
         target_dir = run_dir / selected_type
@@ -502,6 +573,7 @@ class PipelineUI:
             self.history_attempt_combo.set("")
             self._set_history_report_text(f"No {selected_type} attempts in this run.")
             self._set_history_code_text("")
+            self._set_history_instructions_text("")
             return
 
         json_files = sorted(target_dir.glob("*.json"), reverse=True)
@@ -520,6 +592,7 @@ class PipelineUI:
             self.history_attempt_combo.set("")
             self._set_history_report_text(f"No {selected_type} attempts in this run.")
             self._set_history_code_text("")
+            self._set_history_instructions_text("")
 
     def _open_selected_attempt(self):
         attempt_key = self.history_attempt_var.get()
@@ -527,6 +600,7 @@ class PipelineUI:
         if attempt is None:
             self._set_history_report_text("Select an attempt to view report and code.")
             self._set_history_code_text("")
+            self._set_history_instructions_text("")
             return
 
         json_file = attempt["json"]
@@ -540,11 +614,15 @@ class PipelineUI:
 
         if py_file.exists():
             try:
-                self._set_history_code_text(py_file.read_text(encoding="utf-8"))
+                code_text = py_file.read_text(encoding="utf-8")
+                self._set_history_code_text(code_text)
+                self._set_history_instructions_text(load_instructions(py_file, code_text))
             except Exception as exc:  # noqa: BLE001
                 self._set_history_code_text(f"Failed to load code {py_file.name}: {exc}")
+                self._set_history_instructions_text("")
         else:
             self._set_history_code_text("Code file not found for this attempt.")
+            self._set_history_instructions_text("")
 
     def _set_history_report_text(self, value):
         self.history_report_text.config(state=NORMAL)
@@ -557,6 +635,12 @@ class PipelineUI:
         self.history_code_text.delete("1.0", END)
         self.history_code_text.insert(END, value)
         self.history_code_text.config(state=DISABLED)
+
+    def _set_history_instructions_text(self, value):
+        self.history_instructions_text.config(state=NORMAL)
+        self.history_instructions_text.delete("1.0", END)
+        self.history_instructions_text.insert(END, value)
+        self.history_instructions_text.config(state=DISABLED)
 
     def _get_run_dirs(self):
         if not self.exec_code_dir.exists():

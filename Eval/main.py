@@ -178,7 +178,7 @@ def main() -> int:
         return 2
 
     report = evaluate_code_file(target)
-    print(json.dumps(report, indent=2))
+    # print(json.dumps(report, indent=2))
 
     if not report.get("syntax_ok"):
         return 3

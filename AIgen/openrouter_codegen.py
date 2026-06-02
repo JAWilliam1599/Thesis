@@ -12,8 +12,16 @@ DEFAULT_OUTPUT_PATH = ROOT_DIR / "ExecCode" / "generated_code.py"
 
 SYSTEM_INSTRUCTION = (
     "You are a code generator. Return only executable Python code and no markdown. "
-    "The code should solve the user request and should primarily use boto3 for AWS SDK interactions "
-    "when AWS operations are requested. Include minimal but useful error handling."
+    "At the very top of the file, include a short instructions block using comments in this exact format: "
+    "'# INSTRUCTIONS:' then one instruction per line prefixed with '# ', then '# END INSTRUCTIONS'. "
+    "The instructions must be detailed and action-oriented: include how to run the code, how to deploy if applicable, "
+    "and how to provide required inputs (where to find IDs, names, or values in AWS console/CLI). "
+    "When the user requests creating or modifying cloud resources (EC2, S3, RDS, VPC, Lambda, etc.), do not assume defaults. "
+    "Require explicit resource details by prompting the user at runtime (input()) for logical names, identifiers (AMI or image), sizes/types, regions, tags, security groups, key names, and any other parameters necessary to provision the resource. "
+    "If the environment running the generated code is non-interactive, include clear TODO comments or placeholders showing which values must be supplied. "
+    "Always use AWS CDK to define infrastructure and produce CloudFormation-compatible constructs (do not use boto3 for infrastructure definition). "
+    "If dependencies are required (Python packages, CDK version, or other libraries), ask the user for them explicitly before assuming defaults. "
+    "Include minimal but useful error handling."
 )
 
 
@@ -27,10 +35,33 @@ def build_user_prompt(user_request: str) -> str:
         f"{user_request}\n\n"
         "Requirements:\n"
         "1) Output only Python code.\n"
-        "2) Use boto3 when interacting with AWS.\n"
-        "3) Include a small main() entry point if appropriate.\n"
-        "4) Keep the code clear and practical."
+        "2) Start the file with a detailed instructions comment block as described in the system instruction.\n"
+        "3) Use AWS CDK to define infrastructure and target CloudFormation (do not use boto3 for infra).\n"
+        "4) When required resource details are missing, prompt the user at runtime (input()).\n"
+        "5) If AWS infrastructure or packages are needed, ask the user which CDK version and any dependencies.\n"
+        "6) Include a small main() entry point if appropriate.\n"
+        "7) Keep the code clear and practical."
     )
+
+
+def extract_instructions(code_text: str) -> str:
+    lines = code_text.splitlines()
+    if not lines or lines[0].strip() != "# INSTRUCTIONS:":
+        return ""
+
+    instructions = []
+    for line in lines[1:]:
+        if line.strip() == "# END INSTRUCTIONS":
+            break
+        if line.lstrip().startswith("#"):
+            content = line.lstrip()[1:]
+            if content.startswith(" "):
+                content = content[1:]
+            instructions.append(content)
+        else:
+            instructions.append(line)
+
+    return "\n".join(instructions).strip()
 
 
 def extract_code(raw_text: str) -> str:
@@ -139,6 +170,11 @@ def format_openrouter_http_error(status: int, details: str) -> str:
 def save_code(code: str, output_path: Path) -> Path:
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(code, encoding="utf-8")
+
+    instructions = extract_instructions(code)
+    if instructions:
+        instructions_path = output_path.with_suffix(".instructions.txt")
+        instructions_path.write_text(instructions, encoding="utf-8")
     return output_path
 
 

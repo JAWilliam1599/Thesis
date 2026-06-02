@@ -109,6 +109,36 @@ def format_run_label(run_dir: Path) -> str:
         return run_name
 
 
+def extract_instructions(code_text: str) -> str:
+    lines = code_text.splitlines()
+    if not lines or lines[0].strip() != "# INSTRUCTIONS:":
+        return ""
+
+    instructions = []
+    for line in lines[1:]:
+        if line.strip() == "# END INSTRUCTIONS":
+            break
+        if line.lstrip().startswith("#"):
+            content = line.lstrip()[1:]
+            if content.startswith(" "):
+                content = content[1:]
+            instructions.append(content)
+        else:
+            instructions.append(line)
+
+    return "\n".join(instructions).strip()
+
+
+def load_instructions(code_path: Path, code_text: str | None = None) -> str:
+    instructions_path = code_path.with_suffix(".instructions.txt")
+    if instructions_path.exists():
+        return instructions_path.read_text(encoding="utf-8")
+
+    if code_text is None:
+        code_text = code_path.read_text(encoding="utf-8")
+    return extract_instructions(code_text)
+
+
 def render_evaluation_report(report: dict) -> None:
     security_report = report.get("security_analysis", {}) if isinstance(report.get("security_analysis"), dict) else {}
 
@@ -405,6 +435,7 @@ def run_pipeline_with_prompt(
     fail_below: int,
     max_regen: int,
     verbose: bool,
+    show_run_output: bool,
 ) -> dict:
     root_dir = Path(__file__).resolve().parent
     cmd = [
@@ -442,9 +473,10 @@ def run_pipeline_with_prompt(
 
     env["PYTHONUNBUFFERED"] = "1"
 
-    live_status = st.empty()
-    live_log = st.empty()
-    live_status.info("Streaming pipeline output in real time...")
+    live_status = st.empty() if show_run_output else None
+    live_log = st.empty() if show_run_output else None
+    if live_status is not None:
+        live_status.info("Streaming pipeline output in real time...")
 
     process = subprocess.Popen(
         cmd,
@@ -457,14 +489,26 @@ def run_pipeline_with_prompt(
     )
 
     stdout_lines = []
+    in_json_report = False
     if process.stdout is not None:
         for line in iter(process.stdout.readline, ""):
             stdout_lines.append(line)
-            live_log.code("".join(stdout_lines[-400:]), language="text")
+            if live_log is not None:
+                stripped = line.lstrip()
+                if "Evaluation report:" in line or stripped.startswith("{"):
+                    in_json_report = True
+                if in_json_report:
+                    if stripped.strip() == "}":
+                        in_json_report = False
+                    continue
+                live_log.code("".join(stdout_lines[-400:]), language="text")
         process.stdout.close()
 
     return_code = process.wait()
     combined_output = "".join(stdout_lines)
+
+    if live_status is not None:
+        live_status.empty()
 
     json_output = extract_json_report(combined_output)
 
@@ -473,12 +517,17 @@ def run_pipeline_with_prompt(
     if generated_code_path.exists():
         generated_code = generated_code_path.read_text(encoding="utf-8")
 
+    generated_instructions = None
+    if generated_code_path.exists():
+        generated_instructions = load_instructions(generated_code_path, generated_code)
+
     return {
         "return_code": return_code,
         "stdout": combined_output,
         "stderr": "",
         "json_output": json_output,
         "generated_code": generated_code,
+        "generated_instructions": generated_instructions,
         "timestamp": datetime.now().isoformat(),
     }
 
@@ -572,7 +621,7 @@ with tab1:
         )
     
     with col3:
-        view_logs = st.checkbox("Show Logs", value=False)
+        view_run_output = st.checkbox("Show Run Output", value=False)
     
     # Progress area
     if run_button:
@@ -591,6 +640,7 @@ with tab1:
                     fail_below=fail_below,
                     max_regen=max_regen,
                     verbose=verbose,
+                    show_run_output=view_run_output,
                 )
         
         except Exception as e:
@@ -616,9 +666,13 @@ with tab1:
             st.error(f"❌ Pipeline failed with exit code {return_code}")
         
         # Display generated code and report
-        if results.get("generated_code") or results.get("json_output"):
-            # Create tabs for code and report
-            code_tab, report_tab = st.tabs(["💻 Generated Code", "📋 Evaluation Report"])
+        if return_code != 2 and (results.get("generated_code") or results.get("json_output")):
+            tab_labels = ["💻 Generated Code", "📘 Instructions", "📋 Evaluation Report"]
+
+            tabs = st.tabs(tab_labels)
+            code_tab = tabs[0]
+            instructions_tab = tabs[1]
+            report_tab = tabs[2]
             
             with code_tab:
                 if results.get("generated_code"):
@@ -630,67 +684,21 @@ with tab1:
                         file_name=f"generated_code_{results['timestamp'].replace(':', '')}.py",
                         mime="text/plain"
                     )
-
-                    root_dir = Path(__file__).resolve().parent
-                    generated_code_path = root_dir / "ExecCode" / "generated_code.py"
-                    execute_button = st.button(
-                        "▶️ Execute Generated Code",
-                        use_container_width=True,
-                        disabled=st.session_state.is_executing,
-                        key="execute_generated_code",
-                    )
-
-                    if execute_button:
-                        st.session_state.is_executing = True
-                        st.session_state.exec_results = None
-
-                        if not generated_code_path.exists():
-                            st.error("Generated code file not found on disk.")
-                        else:
-                            with st.spinner("Running generated code..."):
-                                exec_result = run_generated_code(generated_code_path)
-                                st.session_state.exec_results = {
-                                    "return_code": exec_result.get("return_code", -1),
-                                    "output": exec_result.get("output", ""),
-                                    "timestamp": datetime.now().isoformat(),
-                                }
-
-                        st.session_state.is_executing = False
-
-                    if st.session_state.exec_results:
-                        exec_results = st.session_state.exec_results
-                        exec_return_code = exec_results.get("return_code", -1)
-                        if exec_return_code == 0:
-                            st.success("✅ Execution completed successfully!")
-                        else:
-                            st.error(f"❌ Execution failed with exit code {exec_return_code}")
-
-                        exec_output = exec_results.get("output", "")
-                        st.subheader("📋 Execution Output")
-                        if exec_output:
-                            st.code(exec_output, language="text")
-                        else:
-                            st.info("No output captured from execution.")
                 else:
                     st.info("Generated code file not found")
+
+            with instructions_tab:
+                instructions_text = results.get("generated_instructions") or ""
+                if instructions_text.strip():
+                    st.code(instructions_text, language="text")
+                else:
+                    st.info("No instructions found for this run.")
             
             with report_tab:
                 if results.get("json_output"):
                     render_evaluation_report(results["json_output"])
                 else:
                     st.info("No evaluation report available")
-        
-        # Display logs if requested
-        if view_logs:
-            st.subheader("📋 Output Logs")
-            
-            if results.get("stdout"):
-                st.write("**STDOUT:**")
-                st.code(results["stdout"], language="text")
-            
-            if results.get("stderr"):
-                st.write("**STDERR:**")
-                st.code(results["stderr"], language="text")
 
 
 with tab2:
@@ -728,8 +736,8 @@ with tab2:
                             report = json.loads(json_file.read_text())
                             
                             with st.expander(f"📋 {json_file.stem}"):
-                                # Tabs for code and report
-                                code_tab, report_tab = st.tabs(["💻 Code", "📊 Report"])
+                                # Tabs for code, instructions, and report
+                                code_tab, instructions_tab, report_tab = st.tabs(["💻 Code", "📘 Instructions", "📊 Report"])
                                 
                                 with code_tab:
                                     if py_file.exists():
@@ -744,6 +752,15 @@ with tab2:
                                         )
                                     else:
                                         st.warning("Code file not found")
+
+                                with instructions_tab:
+                                    instructions_path = py_file.with_suffix(".instructions.txt")
+                                    if instructions_path.exists():
+                                        st.code(instructions_path.read_text(encoding="utf-8"), language="text")
+                                    elif py_file.exists():
+                                        st.code(extract_instructions(code), language="text")
+                                    else:
+                                        st.info("No instructions found for this attempt.")
                                 
                                 with report_tab:
                                     render_evaluation_report(report)
@@ -763,8 +780,8 @@ with tab2:
                             report = json.loads(json_file.read_text())
                             
                             with st.expander(f"📋 {json_file.stem}"):
-                                # Tabs for code and report
-                                code_tab, report_tab = st.tabs(["💻 Code", "📊 Report"])
+                                # Tabs for code, instructions, and report
+                                code_tab, instructions_tab, report_tab = st.tabs(["💻 Code", "📘 Instructions", "📊 Report"])
                                 
                                 with code_tab:
                                     if py_file.exists():
@@ -779,6 +796,15 @@ with tab2:
                                         )
                                     else:
                                         st.warning("Code file not found")
+
+                                with instructions_tab:
+                                    instructions_path = py_file.with_suffix(".instructions.txt")
+                                    if instructions_path.exists():
+                                        st.code(instructions_path.read_text(encoding="utf-8"), language="text")
+                                    elif py_file.exists():
+                                        st.code(extract_instructions(code), language="text")
+                                    else:
+                                        st.info("No instructions found for this attempt.")
                                 
                                 with report_tab:
                                     render_evaluation_report(report)
