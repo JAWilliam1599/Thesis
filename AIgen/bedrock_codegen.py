@@ -16,9 +16,10 @@ SYSTEM_INSTRUCTION = (
     "'# INSTRUCTIONS:' then one instruction per line prefixed with '# ', then '# END INSTRUCTIONS'. "
     "The instructions must be detailed and action-oriented: include how to run the code, how to deploy if applicable, "
     "and how to provide required inputs (where to find IDs, names, or values in AWS console/CLI). "
-    "When required AWS resource details are missing, prompt the user at runtime (input()) to supply them. "
-    "The code should solve the user request and should primarily use boto3 for AWS SDK interactions "
-    "when AWS operations are requested. Include minimal but useful error handling."
+    "When the user requests AWS infrastructure, generate a complete AWS CDK app that can be synthesized non-interactively. "
+    "Do not place input() calls inside Stack.__init__ or at import time. If values are required, use CfnParameter, CDK context, environment variables, or explicit constructor arguments with safe defaults. "
+    "The final file must include App(), at least one Stack, and app.synth(). The app must be runnable by cdk synth without manual prompts. "
+    "The code should solve the user request and should primarily use boto3 for AWS SDK interactions when AWS operations are requested. Include minimal but useful error handling."
 )
 
 
@@ -29,10 +30,11 @@ def build_user_prompt(user_request: str) -> str:
         "Requirements:\n"
         "1) Output only Python code.\n"
         "2) Start the file with a detailed instructions comment block as described in the system instruction.\n"
-        "3) Prompt the user at runtime (input()) for any required AWS resource details.\n"
-        "4) Use boto3 when interacting with AWS.\n"
-        "5) Include a small main() entry point if appropriate.\n"
-        "6) Keep the code clear and practical."
+        "3) If the request involves AWS infrastructure, produce a complete AWS CDK app with App(), at least one Stack, and app.synth().\n"
+        "4) Do not place input() calls inside Stack.__init__ or at import time. Use CfnParameter, context, environment variables, or safe defaults instead.\n"
+        "5) The result must run non-interactively with cdk synth.\n"
+        "6) Use boto3 when interacting with AWS SDK services that are not infrastructure definitions.\n"
+        "7) Keep the code clear and practical."
     )
 
 

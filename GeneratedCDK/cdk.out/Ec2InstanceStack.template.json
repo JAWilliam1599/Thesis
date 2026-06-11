@@ -1,0 +1,932 @@
+{
+ "Parameters": {
+  "InstanceType": {
+   "Type": "String",
+   "Default": "t3.micro",
+   "AllowedValues": [
+    "t3.micro",
+    "t3.small",
+    "t3.medium",
+    "m5.large",
+    "m5.xlarge"
+   ],
+   "Description": "EC2 instance type"
+  },
+  "KeyPairName": {
+   "Type": "String",
+   "Default": "",
+   "Description": "Name of existing EC2 key pair for SSH access (optional)"
+  },
+  "InstanceName": {
+   "Type": "String",
+   "Default": "MyEC2Instance",
+   "Description": "Name tag for the EC2 instance"
+  },
+  "SsmParameterValueawsserviceamiamazonlinuxlatestamzn2amihvmx8664gp2C96584B6F00A464EAD1953AFF4B05118Parameter": {
+   "Type": "AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>",
+   "Default": "/aws/service/ami-amazon-linux-latest/amzn2-ami-hvm-x86_64-gp2"
+  },
+  "BootstrapVersion": {
+   "Type": "AWS::SSM::Parameter::Value<String>",
+   "Default": "/cdk-bootstrap/hnb659fds/version",
+   "Description": "Version of the CDK Bootstrap resources in this environment, automatically retrieved from SSM Parameter Store. [cdk:skip]"
+  }
+ },
+ "Resources": {
+  "MyVPCAFB07A31": {
+   "Type": "AWS::EC2::VPC",
+   "Properties": {
+    "CidrBlock": "10.0.0.0/16",
+    "EnableDnsHostnames": true,
+    "EnableDnsSupport": true,
+    "InstanceTenancy": "default",
+    "Tags": [
+     {
+      "Key": "Name",
+      "Value": "Ec2InstanceStack/MyVPC"
+     }
+    ]
+   },
+   "Metadata": {
+    "aws:cdk:path": "Ec2InstanceStack/MyVPC/Resource"
+   }
+  },
+  "MyVPCpublicSubnet1Subnet0B09E184": {
+   "Type": "AWS::EC2::Subnet",
+   "Properties": {
+    "AvailabilityZone": {
+     "Fn::Select": [
+      0,
+      {
+       "Fn::GetAZs": ""
+      }
+     ]
+    },
+    "CidrBlock": "10.0.0.0/24",
+    "MapPublicIpOnLaunch": true,
+    "Tags": [
+     {
+      "Key": "aws-cdk:subnet-name",
+      "Value": "public"
+     },
+     {
+      "Key": "aws-cdk:subnet-type",
+      "Value": "Public"
+     },
+     {
+      "Key": "Name",
+      "Value": "Ec2InstanceStack/MyVPC/publicSubnet1"
+     }
+    ],
+    "VpcId": {
+     "Ref": "MyVPCAFB07A31"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "Ec2InstanceStack/MyVPC/publicSubnet1/Subnet"
+   }
+  },
+  "MyVPCpublicSubnet1RouteTableF452D270": {
+   "Type": "AWS::EC2::RouteTable",
+   "Properties": {
+    "Tags": [
+     {
+      "Key": "Name",
+      "Value": "Ec2InstanceStack/MyVPC/publicSubnet1"
+     }
+    ],
+    "VpcId": {
+     "Ref": "MyVPCAFB07A31"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "Ec2InstanceStack/MyVPC/publicSubnet1/RouteTable"
+   }
+  },
+  "MyVPCpublicSubnet1RouteTableAssociation61BB7007": {
+   "Type": "AWS::EC2::SubnetRouteTableAssociation",
+   "Properties": {
+    "RouteTableId": {
+     "Ref": "MyVPCpublicSubnet1RouteTableF452D270"
+    },
+    "SubnetId": {
+     "Ref": "MyVPCpublicSubnet1Subnet0B09E184"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "Ec2InstanceStack/MyVPC/publicSubnet1/RouteTableAssociation"
+   }
+  },
+  "MyVPCpublicSubnet1DefaultRoute064E2CB1": {
+   "Type": "AWS::EC2::Route",
+   "Properties": {
+    "DestinationCidrBlock": "0.0.0.0/0",
+    "GatewayId": {
+     "Ref": "MyVPCIGW30AB6DD6"
+    },
+    "RouteTableId": {
+     "Ref": "MyVPCpublicSubnet1RouteTableF452D270"
+    }
+   },
+   "DependsOn": [
+    "MyVPCVPCGWE6F260E1"
+   ],
+   "Metadata": {
+    "aws:cdk:path": "Ec2InstanceStack/MyVPC/publicSubnet1/DefaultRoute"
+   }
+  },
+  "MyVPCpublicSubnet1EIP8423C62F": {
+   "Type": "AWS::EC2::EIP",
+   "Properties": {
+    "Domain": "vpc",
+    "Tags": [
+     {
+      "Key": "Name",
+      "Value": "Ec2InstanceStack/MyVPC/publicSubnet1"
+     }
+    ]
+   },
+   "Metadata": {
+    "aws:cdk:path": "Ec2InstanceStack/MyVPC/publicSubnet1/EIP"
+   }
+  },
+  "MyVPCpublicSubnet1NATGateway6442FF1E": {
+   "Type": "AWS::EC2::NatGateway",
+   "Properties": {
+    "AllocationId": {
+     "Fn::GetAtt": [
+      "MyVPCpublicSubnet1EIP8423C62F",
+      "AllocationId"
+     ]
+    },
+    "SubnetId": {
+     "Ref": "MyVPCpublicSubnet1Subnet0B09E184"
+    },
+    "Tags": [
+     {
+      "Key": "Name",
+      "Value": "Ec2InstanceStack/MyVPC/publicSubnet1"
+     }
+    ]
+   },
+   "DependsOn": [
+    "MyVPCpublicSubnet1DefaultRoute064E2CB1",
+    "MyVPCpublicSubnet1RouteTableAssociation61BB7007"
+   ],
+   "Metadata": {
+    "aws:cdk:path": "Ec2InstanceStack/MyVPC/publicSubnet1/NATGateway"
+   }
+  },
+  "MyVPCpublicSubnet2SubnetF1A4E852": {
+   "Type": "AWS::EC2::Subnet",
+   "Properties": {
+    "AvailabilityZone": {
+     "Fn::Select": [
+      1,
+      {
+       "Fn::GetAZs": ""
+      }
+     ]
+    },
+    "CidrBlock": "10.0.1.0/24",
+    "MapPublicIpOnLaunch": true,
+    "Tags": [
+     {
+      "Key": "aws-cdk:subnet-name",
+      "Value": "public"
+     },
+     {
+      "Key": "aws-cdk:subnet-type",
+      "Value": "Public"
+     },
+     {
+      "Key": "Name",
+      "Value": "Ec2InstanceStack/MyVPC/publicSubnet2"
+     }
+    ],
+    "VpcId": {
+     "Ref": "MyVPCAFB07A31"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "Ec2InstanceStack/MyVPC/publicSubnet2/Subnet"
+   }
+  },
+  "MyVPCpublicSubnet2RouteTableD03A1158": {
+   "Type": "AWS::EC2::RouteTable",
+   "Properties": {
+    "Tags": [
+     {
+      "Key": "Name",
+      "Value": "Ec2InstanceStack/MyVPC/publicSubnet2"
+     }
+    ],
+    "VpcId": {
+     "Ref": "MyVPCAFB07A31"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "Ec2InstanceStack/MyVPC/publicSubnet2/RouteTable"
+   }
+  },
+  "MyVPCpublicSubnet2RouteTableAssociationE1106DF5": {
+   "Type": "AWS::EC2::SubnetRouteTableAssociation",
+   "Properties": {
+    "RouteTableId": {
+     "Ref": "MyVPCpublicSubnet2RouteTableD03A1158"
+    },
+    "SubnetId": {
+     "Ref": "MyVPCpublicSubnet2SubnetF1A4E852"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "Ec2InstanceStack/MyVPC/publicSubnet2/RouteTableAssociation"
+   }
+  },
+  "MyVPCpublicSubnet2DefaultRoute0CED5BC7": {
+   "Type": "AWS::EC2::Route",
+   "Properties": {
+    "DestinationCidrBlock": "0.0.0.0/0",
+    "GatewayId": {
+     "Ref": "MyVPCIGW30AB6DD6"
+    },
+    "RouteTableId": {
+     "Ref": "MyVPCpublicSubnet2RouteTableD03A1158"
+    }
+   },
+   "DependsOn": [
+    "MyVPCVPCGWE6F260E1"
+   ],
+   "Metadata": {
+    "aws:cdk:path": "Ec2InstanceStack/MyVPC/publicSubnet2/DefaultRoute"
+   }
+  },
+  "MyVPCprivateSubnet1Subnet82EBE960": {
+   "Type": "AWS::EC2::Subnet",
+   "Properties": {
+    "AvailabilityZone": {
+     "Fn::Select": [
+      0,
+      {
+       "Fn::GetAZs": ""
+      }
+     ]
+    },
+    "CidrBlock": "10.0.2.0/24",
+    "MapPublicIpOnLaunch": false,
+    "Tags": [
+     {
+      "Key": "aws-cdk:subnet-name",
+      "Value": "private"
+     },
+     {
+      "Key": "aws-cdk:subnet-type",
+      "Value": "Private"
+     },
+     {
+      "Key": "Name",
+      "Value": "Ec2InstanceStack/MyVPC/privateSubnet1"
+     }
+    ],
+    "VpcId": {
+     "Ref": "MyVPCAFB07A31"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "Ec2InstanceStack/MyVPC/privateSubnet1/Subnet"
+   }
+  },
+  "MyVPCprivateSubnet1RouteTable8B428730": {
+   "Type": "AWS::EC2::RouteTable",
+   "Properties": {
+    "Tags": [
+     {
+      "Key": "Name",
+      "Value": "Ec2InstanceStack/MyVPC/privateSubnet1"
+     }
+    ],
+    "VpcId": {
+     "Ref": "MyVPCAFB07A31"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "Ec2InstanceStack/MyVPC/privateSubnet1/RouteTable"
+   }
+  },
+  "MyVPCprivateSubnet1RouteTableAssociation658E7A8F": {
+   "Type": "AWS::EC2::SubnetRouteTableAssociation",
+   "Properties": {
+    "RouteTableId": {
+     "Ref": "MyVPCprivateSubnet1RouteTable8B428730"
+    },
+    "SubnetId": {
+     "Ref": "MyVPCprivateSubnet1Subnet82EBE960"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "Ec2InstanceStack/MyVPC/privateSubnet1/RouteTableAssociation"
+   }
+  },
+  "MyVPCprivateSubnet1DefaultRouteA8EB05CA": {
+   "Type": "AWS::EC2::Route",
+   "Properties": {
+    "DestinationCidrBlock": "0.0.0.0/0",
+    "NatGatewayId": {
+     "Ref": "MyVPCpublicSubnet1NATGateway6442FF1E"
+    },
+    "RouteTableId": {
+     "Ref": "MyVPCprivateSubnet1RouteTable8B428730"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "Ec2InstanceStack/MyVPC/privateSubnet1/DefaultRoute"
+   }
+  },
+  "MyVPCprivateSubnet2Subnet26AA8F5F": {
+   "Type": "AWS::EC2::Subnet",
+   "Properties": {
+    "AvailabilityZone": {
+     "Fn::Select": [
+      1,
+      {
+       "Fn::GetAZs": ""
+      }
+     ]
+    },
+    "CidrBlock": "10.0.3.0/24",
+    "MapPublicIpOnLaunch": false,
+    "Tags": [
+     {
+      "Key": "aws-cdk:subnet-name",
+      "Value": "private"
+     },
+     {
+      "Key": "aws-cdk:subnet-type",
+      "Value": "Private"
+     },
+     {
+      "Key": "Name",
+      "Value": "Ec2InstanceStack/MyVPC/privateSubnet2"
+     }
+    ],
+    "VpcId": {
+     "Ref": "MyVPCAFB07A31"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "Ec2InstanceStack/MyVPC/privateSubnet2/Subnet"
+   }
+  },
+  "MyVPCprivateSubnet2RouteTable1E4354E1": {
+   "Type": "AWS::EC2::RouteTable",
+   "Properties": {
+    "Tags": [
+     {
+      "Key": "Name",
+      "Value": "Ec2InstanceStack/MyVPC/privateSubnet2"
+     }
+    ],
+    "VpcId": {
+     "Ref": "MyVPCAFB07A31"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "Ec2InstanceStack/MyVPC/privateSubnet2/RouteTable"
+   }
+  },
+  "MyVPCprivateSubnet2RouteTableAssociationF91020C7": {
+   "Type": "AWS::EC2::SubnetRouteTableAssociation",
+   "Properties": {
+    "RouteTableId": {
+     "Ref": "MyVPCprivateSubnet2RouteTable1E4354E1"
+    },
+    "SubnetId": {
+     "Ref": "MyVPCprivateSubnet2Subnet26AA8F5F"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "Ec2InstanceStack/MyVPC/privateSubnet2/RouteTableAssociation"
+   }
+  },
+  "MyVPCprivateSubnet2DefaultRouteB091A742": {
+   "Type": "AWS::EC2::Route",
+   "Properties": {
+    "DestinationCidrBlock": "0.0.0.0/0",
+    "NatGatewayId": {
+     "Ref": "MyVPCpublicSubnet1NATGateway6442FF1E"
+    },
+    "RouteTableId": {
+     "Ref": "MyVPCprivateSubnet2RouteTable1E4354E1"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "Ec2InstanceStack/MyVPC/privateSubnet2/DefaultRoute"
+   }
+  },
+  "MyVPCIGW30AB6DD6": {
+   "Type": "AWS::EC2::InternetGateway",
+   "Properties": {
+    "Tags": [
+     {
+      "Key": "Name",
+      "Value": "Ec2InstanceStack/MyVPC"
+     }
+    ]
+   },
+   "Metadata": {
+    "aws:cdk:path": "Ec2InstanceStack/MyVPC/IGW"
+   }
+  },
+  "MyVPCVPCGWE6F260E1": {
+   "Type": "AWS::EC2::VPCGatewayAttachment",
+   "Properties": {
+    "InternetGatewayId": {
+     "Ref": "MyVPCIGW30AB6DD6"
+    },
+    "VpcId": {
+     "Ref": "MyVPCAFB07A31"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "Ec2InstanceStack/MyVPC/VPCGW"
+   }
+  },
+  "EC2SecurityGroup05DEE054": {
+   "Type": "AWS::EC2::SecurityGroup",
+   "Properties": {
+    "GroupDescription": "Security group for EC2 instance",
+    "GroupName": "ec2-security-group",
+    "SecurityGroupEgress": [
+     {
+      "CidrIp": "0.0.0.0/0",
+      "Description": "Allow all outbound traffic by default",
+      "IpProtocol": "-1"
+     }
+    ],
+    "SecurityGroupIngress": [
+     {
+      "CidrIp": "0.0.0.0/0",
+      "Description": "Allow SSH access",
+      "FromPort": 22,
+      "IpProtocol": "tcp",
+      "ToPort": 22
+     }
+    ],
+    "VpcId": {
+     "Ref": "MyVPCAFB07A31"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "Ec2InstanceStack/EC2SecurityGroup/Resource"
+   }
+  },
+  "EC2InstanceRole0BAA8CDD": {
+   "Type": "AWS::IAM::Role",
+   "Properties": {
+    "AssumeRolePolicyDocument": {
+     "Statement": [
+      {
+       "Action": "sts:AssumeRole",
+       "Effect": "Allow",
+       "Principal": {
+        "Service": "ec2.amazonaws.com"
+       }
+      }
+     ],
+     "Version": "2012-10-17"
+    },
+    "ManagedPolicyArns": [
+     {
+      "Fn::Join": [
+       "",
+       [
+        "arn:",
+        {
+         "Ref": "AWS::Partition"
+        },
+        ":iam::aws:policy/AmazonS3ReadOnlyAccess"
+       ]
+      ]
+     },
+     {
+      "Fn::Join": [
+       "",
+       [
+        "arn:",
+        {
+         "Ref": "AWS::Partition"
+        },
+        ":iam::aws:policy/CloudWatchAgentServerPolicy"
+       ]
+      ]
+     }
+    ],
+    "RoleName": "EC2InstanceRole"
+   },
+   "Metadata": {
+    "aws:cdk:path": "Ec2InstanceStack/EC2InstanceRole/Resource"
+   }
+  },
+  "EC2InstanceInstanceProfile4A6C6689": {
+   "Type": "AWS::IAM::InstanceProfile",
+   "Properties": {
+    "Roles": [
+     {
+      "Ref": "EC2InstanceRole0BAA8CDD"
+     }
+    ]
+   },
+   "Metadata": {
+    "aws:cdk:path": "Ec2InstanceStack/EC2Instance/InstanceProfile"
+   }
+  },
+  "EC2Instance770AAE32": {
+   "Type": "AWS::EC2::Instance",
+   "Properties": {
+    "AvailabilityZone": {
+     "Fn::Select": [
+      0,
+      {
+       "Fn::GetAZs": ""
+      }
+     ]
+    },
+    "IamInstanceProfile": {
+     "Ref": "EC2InstanceInstanceProfile4A6C6689"
+    },
+    "ImageId": {
+     "Ref": "SsmParameterValueawsserviceamiamazonlinuxlatestamzn2amihvmx8664gp2C96584B6F00A464EAD1953AFF4B05118Parameter"
+    },
+    "InstanceType": {
+     "Ref": "InstanceType"
+    },
+    "KeyName": {
+     "Ref": "KeyPairName"
+    },
+    "SecurityGroupIds": [
+     {
+      "Fn::GetAtt": [
+       "EC2SecurityGroup05DEE054",
+       "GroupId"
+      ]
+     }
+    ],
+    "SubnetId": {
+     "Ref": "MyVPCprivateSubnet1Subnet82EBE960"
+    },
+    "Tags": [
+     {
+      "Key": "Name",
+      "Value": {
+       "Ref": "InstanceName"
+      }
+     }
+    ],
+    "UserData": {
+     "Fn::Base64": "#!/bin/bash"
+    }
+   },
+   "DependsOn": [
+    "EC2InstanceRole0BAA8CDD"
+   ],
+   "Metadata": {
+    "aws:cdk:path": "Ec2InstanceStack/EC2Instance/Resource"
+   }
+  },
+  "CDKMetadata": {
+   "Type": "AWS::CDK::Metadata",
+   "Properties": {
+    "Analytics": "v2:deflate64:H4sIAAAAAAAA/1VO0W6DMAz8lr6HbKOt9lxVU8XLFsHU18lkruoWHJQ4Qwjx7xNlgPZ057uzfalO96/6eQNtSOz3Pamo1H0hYO/qeGEDHmoU9Ara8NWjTXV/buxonc1RmVhWZItYMsqorSx3UfATygpXPV+0QwjOEgg5XsIjecvMCO8gJxBsoVPG0w8IroczFvSMS2Bq8jcdRMBea2RRBdroSbqTd7F5dPgnZBwE2D6+znxQBLXuczeVnnG2jXcXqnAYVI7BRT8tf0RpogzKdHJ1/LTVLzu939wCUeIjC9Wo8wl/Ab0M4sBqAQAA"
+   },
+   "Metadata": {
+    "aws:cdk:path": "Ec2InstanceStack/CDKMetadata/Default"
+   },
+   "Condition": "CDKMetadataAvailable"
+  }
+ },
+ "Outputs": {
+  "InstanceId": {
+   "Description": "EC2 Instance ID",
+   "Value": {
+    "Ref": "EC2Instance770AAE32"
+   }
+  },
+  "InstancePublicIp": {
+   "Description": "Public IP address of the instance",
+   "Value": {
+    "Fn::GetAtt": [
+     "EC2Instance770AAE32",
+     "PublicIp"
+    ]
+   }
+  },
+  "InstancePrivateIp": {
+   "Description": "Private IP address of the instance",
+   "Value": {
+    "Fn::GetAtt": [
+     "EC2Instance770AAE32",
+     "PrivateIp"
+    ]
+   }
+  },
+  "VpcId": {
+   "Description": "VPC ID",
+   "Value": {
+    "Ref": "MyVPCAFB07A31"
+   }
+  }
+ },
+ "Conditions": {
+  "CDKMetadataAvailable": {
+   "Fn::Or": [
+    {
+     "Fn::Or": [
+      {
+       "Fn::Equals": [
+        {
+         "Ref": "AWS::Region"
+        },
+        "af-south-1"
+       ]
+      },
+      {
+       "Fn::Equals": [
+        {
+         "Ref": "AWS::Region"
+        },
+        "ap-east-1"
+       ]
+      },
+      {
+       "Fn::Equals": [
+        {
+         "Ref": "AWS::Region"
+        },
+        "ap-northeast-1"
+       ]
+      },
+      {
+       "Fn::Equals": [
+        {
+         "Ref": "AWS::Region"
+        },
+        "ap-northeast-2"
+       ]
+      },
+      {
+       "Fn::Equals": [
+        {
+         "Ref": "AWS::Region"
+        },
+        "ap-northeast-3"
+       ]
+      },
+      {
+       "Fn::Equals": [
+        {
+         "Ref": "AWS::Region"
+        },
+        "ap-south-1"
+       ]
+      },
+      {
+       "Fn::Equals": [
+        {
+         "Ref": "AWS::Region"
+        },
+        "ap-south-2"
+       ]
+      },
+      {
+       "Fn::Equals": [
+        {
+         "Ref": "AWS::Region"
+        },
+        "ap-southeast-1"
+       ]
+      },
+      {
+       "Fn::Equals": [
+        {
+         "Ref": "AWS::Region"
+        },
+        "ap-southeast-2"
+       ]
+      },
+      {
+       "Fn::Equals": [
+        {
+         "Ref": "AWS::Region"
+        },
+        "ap-southeast-3"
+       ]
+      }
+     ]
+    },
+    {
+     "Fn::Or": [
+      {
+       "Fn::Equals": [
+        {
+         "Ref": "AWS::Region"
+        },
+        "ap-southeast-4"
+       ]
+      },
+      {
+       "Fn::Equals": [
+        {
+         "Ref": "AWS::Region"
+        },
+        "ca-central-1"
+       ]
+      },
+      {
+       "Fn::Equals": [
+        {
+         "Ref": "AWS::Region"
+        },
+        "ca-west-1"
+       ]
+      },
+      {
+       "Fn::Equals": [
+        {
+         "Ref": "AWS::Region"
+        },
+        "cn-north-1"
+       ]
+      },
+      {
+       "Fn::Equals": [
+        {
+         "Ref": "AWS::Region"
+        },
+        "cn-northwest-1"
+       ]
+      },
+      {
+       "Fn::Equals": [
+        {
+         "Ref": "AWS::Region"
+        },
+        "eu-central-1"
+       ]
+      },
+      {
+       "Fn::Equals": [
+        {
+         "Ref": "AWS::Region"
+        },
+        "eu-central-2"
+       ]
+      },
+      {
+       "Fn::Equals": [
+        {
+         "Ref": "AWS::Region"
+        },
+        "eu-north-1"
+       ]
+      },
+      {
+       "Fn::Equals": [
+        {
+         "Ref": "AWS::Region"
+        },
+        "eu-south-1"
+       ]
+      },
+      {
+       "Fn::Equals": [
+        {
+         "Ref": "AWS::Region"
+        },
+        "eu-south-2"
+       ]
+      }
+     ]
+    },
+    {
+     "Fn::Or": [
+      {
+       "Fn::Equals": [
+        {
+         "Ref": "AWS::Region"
+        },
+        "eu-west-1"
+       ]
+      },
+      {
+       "Fn::Equals": [
+        {
+         "Ref": "AWS::Region"
+        },
+        "eu-west-2"
+       ]
+      },
+      {
+       "Fn::Equals": [
+        {
+         "Ref": "AWS::Region"
+        },
+        "eu-west-3"
+       ]
+      },
+      {
+       "Fn::Equals": [
+        {
+         "Ref": "AWS::Region"
+        },
+        "il-central-1"
+       ]
+      },
+      {
+       "Fn::Equals": [
+        {
+         "Ref": "AWS::Region"
+        },
+        "me-central-1"
+       ]
+      },
+      {
+       "Fn::Equals": [
+        {
+         "Ref": "AWS::Region"
+        },
+        "me-south-1"
+       ]
+      },
+      {
+       "Fn::Equals": [
+        {
+         "Ref": "AWS::Region"
+        },
+        "sa-east-1"
+       ]
+      },
+      {
+       "Fn::Equals": [
+        {
+         "Ref": "AWS::Region"
+        },
+        "us-east-1"
+       ]
+      },
+      {
+       "Fn::Equals": [
+        {
+         "Ref": "AWS::Region"
+        },
+        "us-east-2"
+       ]
+      },
+      {
+       "Fn::Equals": [
+        {
+         "Ref": "AWS::Region"
+        },
+        "us-west-1"
+       ]
+      }
+     ]
+    },
+    {
+     "Fn::Equals": [
+      {
+       "Ref": "AWS::Region"
+      },
+      "us-west-2"
+     ]
+    }
+   ]
+  }
+ },
+ "Rules": {
+  "CheckBootstrapVersion": {
+   "Assertions": [
+    {
+     "Assert": {
+      "Fn::Not": [
+       {
+        "Fn::Contains": [
+         [
+          "1",
+          "2",
+          "3",
+          "4",
+          "5"
+         ],
+         {
+          "Ref": "BootstrapVersion"
+         }
+        ]
+       }
+      ]
+     },
+     "AssertDescription": "CDK bootstrap stack version 6 required. Please run 'cdk bootstrap' with a recent version of the CDK CLI."
+    }
+   ]
+  }
+ }
+}

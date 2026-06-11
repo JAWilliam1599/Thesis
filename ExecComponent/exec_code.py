@@ -1,4 +1,5 @@
 import os
+import shlex
 import subprocess
 import sys
 
@@ -59,6 +60,41 @@ class exec_code:
             code = f.read()
 
         exec(code)
+
+    @staticmethod
+    def start_command(command, cwd=None, env=None):
+        if isinstance(command, str):
+            cmd = shlex.split(command)
+        else:
+            cmd = list(command)
+
+        return subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            cwd=cwd,
+            env=env,
+            bufsize=1,
+        )
+
+    @staticmethod
+    def run_command(command, cwd=None, env=None, line_handler=None):
+        process = exec_code.start_command(command, cwd=cwd, env=env)
+
+        output_lines = []
+        if process.stdout is not None:
+            for line in iter(process.stdout.readline, ""):
+                output_lines.append(line)
+                if line_handler:
+                    line_handler(line, output_lines)
+            process.stdout.close()
+
+        return_code = process.wait()
+        return {
+            "return_code": return_code,
+            "output": "".join(output_lines),
+        }
 
     @staticmethod
     def run_file(file_path, cwd=None, line_handler=None):

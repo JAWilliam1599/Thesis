@@ -30,6 +30,7 @@
 # END INSTRUCTIONS
 
 from aws_cdk import (
+    App,
     Stack,
     CfnParameter,
     aws_ec2 as ec2,
@@ -126,6 +127,6 @@ class Ec2InstanceStack(Stack):
             description="EC2 Instance Private IP"
         )
 
-app = Stack.App()
+app = App()
 Ec2InstanceStack(app, "Ec2InstanceStack")
 app.synth()

@@ -211,9 +211,11 @@ def build_regen_prompt(original_prompt: str, report: dict, attempt_number: int) 
         "1) Fix all issues mentioned in the report.\n"
         "2) Return complete executable Python code only (no markdown).\n"
         "3) Keep the main functionality required by the original request.\n"
-        "4) Prompt the user at runtime (input()) for any required resource details instead of assuming defaults.\n"
-        "5) If AWS infrastructure is requested, prefer AWS CDK constructs; if AWS SDK usage is requested, use boto3.\n"
-        "6) Include basic error handling."
+        "4) If the request involves AWS infrastructure, regenerate a complete AWS CDK app with App(), at least one Stack, and app.synth().\n"
+        "5) Do not place input() calls inside Stack.__init__ or at import time. Use CfnParameter, context, environment variables, or safe defaults instead.\n"
+        "6) The result must run non-interactively with cdk synth.\n"
+        "7) If AWS SDK usage is requested for non-infrastructure actions, use boto3.\n"
+        "8) Include basic error handling."
     )
 
 

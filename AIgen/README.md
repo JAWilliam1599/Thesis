@@ -1,126 +1,91 @@
-# AIgen — Code Generation Module
+# AIgen - Zone 1 Generation Module
 
 ## Purpose
 
-Generate Python AWS SDK code from natural language prompts using Bedrock or OpenRouter LLM APIs.
+`AIgen/` is the Zone 1 entry point in the SysSecOps model: generate IaC-oriented Python code from prompts, then hand off to evaluation and CDK deployment gate.
 
 ## Files
 
-| File | Purpose |
-|------|---------|
-| `bedrock_codegen.py` | Core Bedrock code generation with prompt handling and model validation |
-| `openrouter_codegen.py` | Alternative provider using OpenRouter API |
-| `run_generation_and_eval.py` | Pipeline coordinator: generates, evaluates, and auto-regenerates on failure |
+| File | Role |
+|---|---|
+| `bedrock_codegen.py` | Bedrock-based generation |
+| `openrouter_codegen.py` | OpenRouter-based generation |
+| `run_generation_and_eval.py` | Main orchestration: generate -> evaluate -> regenerate on failure |
 
-## Usage
+## Typical Flow
 
-### Basic Generation (Bedrock)
+1. User prompt requests infrastructure code
+2. Provider generates Python output
+3. Output is stored in `ExecCode/`
+4. `Eval/` returns structured report (`score`, `approval`, `issues`, risk fields)
+5. On failure, regeneration includes report feedback
+6. On pass, output can be prepared for CDK stage (`GeneratedCDK/`)
 
-```bash
-python bedrock_codegen.py --prompt "Write Python code to read messages from SQS"
-```
+## CLI Usage
 
-### With Model Validation
-
-```bash
-python bedrock_codegen.py --prompt "..." --validate-model
-```
-
-### Full Pipeline (Generate + Evaluate)
+Generate only:
 
 ```bash
-python run_generation_and_eval.py --prompt "Create Python code that creates a DynamoDB table"
+python AIgen/bedrock_codegen.py --prompt "Create secure AWS CDK Python stack"
 ```
 
-### With Auto-Regeneration on Failures
+Generate + evaluate + optional regeneration:
 
 ```bash
-python run_generation_and_eval.py --prompt "..." --max-regen 3
+python AIgen/run_generation_and_eval.py --prompt "Create secure AWS CDK Python stack" --max-regen 2
 ```
 
-## Command-Line Options
-
-### bedrock_codegen.py
-
-| Option | Description | Default |
-|--------|-------------|---------|
-| `--prompt` | Code generation request | Required |
-| `--output` | Output file path | `ExecCode/generated_code.py` |
-| `--model-id` | Bedrock model ID | `qwen.qwen3-coder-30b-a3b-v1:0` |
-| `--region` | AWS region | `ap-southeast-2` |
-| `--validate-model` | Verify model availability before generation | false |
-
-### run_generation_and_eval.py
-
-| Option | Description | Default |
-|--------|-------------|---------|
-| `--provider` | Generation provider: `bedrock` or `openrouter` | `bedrock` |
-| `--prompt` | Code generation request | Interactive input if missing |
-| `--model-id` | Model ID for provider | Provider-specific default |
-| `--region` | AWS region (Bedrock only) | `ap-southeast-2` |
-| `--api-key` | OpenRouter API key | Reads from `OPENROUTER_API_KEY` env |
-| `--fail-below` | Regenerate if eval score below threshold | 60 |
-| `--max-regen` | Maximum regeneration attempts | 2 |
-| `--deployment-context` | Risk scoring context: `public`/`internal`/`onprem`/`sandbox` | `internal` |
-| `--verbose` | Show logs in console | false |
-
-## Error Handling
-
-### Bedrock Quota Errors
-
-If you see "Too many tokens per day":
-1. Check AWS Console > Bedrock > Service Quotas
-2. View your model's token limits
-3. Request quota increases if needed
-4. Quota resets daily
-
-### Model Not Found
-
-Use `--validate-model` flag to catch configuration issues early:
+Use OpenRouter provider:
 
 ```bash
-python bedrock_codegen.py --prompt "..." --model-id invalid_model --validate-model
+python AIgen/run_generation_and_eval.py --provider openrouter --prompt "Create secure AWS CDK Python stack"
 ```
 
-This will fail immediately with a clear error instead of during generation.
+## Key Options (`run_generation_and_eval.py`)
 
-## Conventions
+| Option | Description |
+|---|---|
+| `--provider` | `bedrock` or `openrouter` |
+| `--prompt` | Generation prompt |
+| `--model-id` | Provider model ID |
+| `--region` | AWS region for Bedrock |
+| `--api-key` | OpenRouter API key override |
+| `--fail-below` | Evaluation threshold for regeneration |
+| `--max-regen` | Max regeneration attempts |
+| `--deployment-context` | `public`, `internal`, `onprem`, `sandbox` |
+| `--verbose` | Detailed logs |
 
-- **Provider Abstraction:** Keep Bedrock and OpenRouter logic behind provider flags, not one-off branches
-- **Model Defaults:** Centralized and overrideable via CLI
-- **Credentials:** Use environment variables (`AWS_*`, `OPENROUTER_API_KEY`), never hardcode
-- **Run Artifacts:** Preserve timestamped folder structure under `ExecCode/run_<timestamp>/`
-- **Regeneration Prompts:** Include evaluation feedback as JSON when available
+## Provider Configuration
 
-## Output
+- Bedrock uses `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_REGION`.
+- OpenRouter uses `OPENROUTER_API_KEY` (or `--api-key`).
+- Avoid hardcoded credentials.
 
-By default, generated code is saved to:
-```
-ExecCode/generated_code.py
-```
+## Handoff Contract to Eval
 
-In pipeline mode with run tracking:
-```
-ExecCode/run_<timestamp>/
-  ├── prompt.txt
-  ├── passed/
-  │   ├── passed_attempt_1_<timestamp>.py
-  │   └── passed_attempt_1_<timestamp>.json
-  └── failed/
-      ├── failed_attempt_1_<timestamp>.py
-      └── failed_attempt_1_<timestamp>.json
-```
+This module relies on stable report keys from `Eval/`:
+- `score`
+- `approval`
+- `risk_level`
+- `risk_score`
+- `issues`
+- `security_analysis`
 
-## Related Modules
+These fields feed both regeneration prompts and UI decisions.
 
-- **Eval/** — Evaluates generated code for security and quality
-- **ExecCode/** — Storage for generated artifacts
-- **ExecComponent/** — Runtime execution utilities
-- **run_generation_and_eval.py** — Integration point between generation and evaluation
+## Outputs
 
-## Dependencies
+- Current artifact: `ExecCode/generated_code.py`
+- Run artifacts: `ExecCode/run_<timestamp>/` with `passed/` and `failed/` attempts
 
-- `boto3` — AWS SDK for Bedrock API
-- `botocore` — AWS service interactions
-- `requests` — HTTP client for OpenRouter
-- See [requirements.txt](../requirements.txt) for full list
+## SysSecOps Alignment
+
+Aligned:
+- Zone 1 generation and feedback loop
+- Structured failure feedback for regeneration
+
+Not yet fully implemented in this module:
+- strict prompt templates dedicated to CDK-only output format
+- deterministic generation contract for multi-file CDK apps
+
+Use `CDK-ONLY-NEXT-STEPS.md` in the repo root for implementation priorities.
