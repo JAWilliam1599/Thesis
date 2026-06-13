@@ -44,6 +44,32 @@ def build_cdk_command(command_name: str) -> list[str]:
     return command
 
 
+def run_bootstrap(project_dir: Path, env: dict[str, str] | None = None) -> dict[str, Any]:
+    """Run `cdk bootstrap` against the resolved AWS account/region.
+
+    Returns the same result contract as run_cdk_command so callers and the GUI
+    can treat it uniformly: {command, command_name, return_code, output}.
+    """
+    effective_env = resolve_cdk_env()
+    if env:
+        effective_env.update(env)
+
+    account = effective_env.get("CDK_DEFAULT_ACCOUNT", "")
+    region = effective_env.get("CDK_DEFAULT_REGION", "us-east-1")
+
+    command = ["cdk", "bootstrap"]
+    if account and region:
+        command.append(f"aws://{account}/{region}")
+
+    result = exec_code.run_command(command, cwd=str(project_dir), env=effective_env)
+    return {
+        "command": command,
+        "command_name": "bootstrap",
+        "return_code": int(result.get("return_code", 1)),
+        "output": result.get("output", ""),
+    }
+
+
 def run_cdk_command(project_dir: Path, command_name: str, env: dict[str, str] | None = None) -> dict[str, Any]:
     command = build_cdk_command(command_name)
     effective_env = resolve_cdk_env()
@@ -63,6 +89,8 @@ def run_iac_gate(
     *,
     cost_delta_usd: float = 0.0,
     aws_config_violations: int = 0,
+    use_checkov: bool = True,
+    use_cfn_lint: bool = True,
 ) -> dict[str, Any]:
     gate = IaCSecurityGate()
     cdk_out_dir = project_dir / "cdk.out"
@@ -70,6 +98,8 @@ def run_iac_gate(
         cdk_out_dir,
         cost_delta_usd=cost_delta_usd,
         aws_config_violations=aws_config_violations,
+        use_checkov=use_checkov,
+        use_cfn_lint=use_cfn_lint,
     )
 
 

@@ -1,28 +1,28 @@
 {
   "version": "53.0.0",
   "artifacts": {
-    "Ec2InstanceStack.assets": {
+    "S3BucketStack.assets": {
       "type": "cdk:asset-manifest",
       "properties": {
-        "file": "Ec2InstanceStack.assets.json",
+        "file": "S3BucketStack.assets.json",
         "requiresBootstrapStackVersion": 6,
         "bootstrapStackVersionSsmParameter": "/cdk-bootstrap/hnb659fds/version"
       }
     },
-    "Ec2InstanceStack": {
+    "S3BucketStack": {
       "type": "aws:cloudformation:stack",
       "environment": "aws://unknown-account/unknown-region",
       "properties": {
-        "templateFile": "Ec2InstanceStack.template.json",
+        "templateFile": "S3BucketStack.template.json",
         "terminationProtection": false,
         "validateOnSynth": false,
         "assumeRoleArn": "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/cdk-hnb659fds-deploy-role-${AWS::AccountId}-${AWS::Region}",
         "cloudFormationExecutionRoleArn": "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/cdk-hnb659fds-cfn-exec-role-${AWS::AccountId}-${AWS::Region}",
-        "stackTemplateAssetObjectUrl": "s3://cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}/edce4dffb91b742ae0297c890d5f3291c99f4adc938192d3e0724e0f455c27e8.json",
+        "stackTemplateAssetObjectUrl": "s3://cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}/a72673fe9c2d0eda7ab336f2cfc61275d8accd53c7b0158dde3916703fc0b1b6.json",
         "requiresBootstrapStackVersion": 6,
         "bootstrapStackVersionSsmParameter": "/cdk-bootstrap/hnb659fds/version",
         "additionalDependencies": [
-          "Ec2InstanceStack.assets"
+          "S3BucketStack.assets"
         ],
         "lookupRole": {
           "arn": "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/cdk-hnb659fds-lookup-role-${AWS::AccountId}-${AWS::Region}",
@@ -31,10 +31,10 @@
         }
       },
       "dependencies": [
-        "Ec2InstanceStack.assets"
+        "S3BucketStack.assets"
       ],
-      "additionalMetadataFile": "Ec2InstanceStack.metadata.json",
-      "displayName": "Ec2InstanceStack"
+      "additionalMetadataFile": "S3BucketStack.metadata.json",
+      "displayName": "S3BucketStack"
     },
     "Tree": {
       "type": "cdk:tree",

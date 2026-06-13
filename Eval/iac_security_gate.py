@@ -4,6 +4,9 @@ import json
 from pathlib import Path
 from typing import Any
 
+from Eval.scanners.checkov_adapter import run_checkov
+from Eval.scanners.cfn_lint_adapter import run_cfn_lint
+
 SEVERITY_POINTS = {
     "critical": 30,
     "high": 10,
@@ -207,6 +210,8 @@ class IaCSecurityGate:
         *,
         cost_delta_usd: float = 0.0,
         aws_config_violations: int = 0,
+        use_checkov: bool = True,
+        use_cfn_lint: bool = True,
     ) -> dict[str, Any]:
         templates = self.collect_templates(cdk_out_dir)
         findings: list[dict[str, Any]] = []
@@ -218,7 +223,43 @@ class IaCSecurityGate:
                 finding["template"] = template_path.name
             findings.extend(file_findings)
 
-        severity_score = sum(_severity_points(item.get("severity", "low")) for item in findings)
+        # --- External scanners ---
+        checkov_findings, checkov_status = run_checkov(cdk_out_dir, enabled=use_checkov)
+        cfn_lint_findings, cfn_lint_status = run_cfn_lint(templates, enabled=use_cfn_lint)
+
+        # Merge all findings then deduplicate within the same source.
+        # Cross-source duplicates are intentionally preserved so each tool's
+        # signal contributes independently to the score.
+        all_findings = findings + checkov_findings + cfn_lint_findings
+        seen: set[tuple[str, str, str]] = set()
+        deduped: list[dict[str, Any]] = []
+        for f in all_findings:
+            key = (
+                str(f.get("source", "")),
+                str(f.get("resource_id", "")),
+                str(f.get("message", "")),
+            )
+            if key not in seen:
+                seen.add(key)
+                deduped.append(f)
+
+        # Build scanner warnings for any tool that could not run.
+        scanner_warnings: list[str] = []
+        if checkov_status == "not_installed":
+            scanner_warnings.append("checkov not installed — scan skipped.")
+        elif checkov_status == "error":
+            scanner_warnings.append("checkov encountered an error — scan skipped.")
+        elif checkov_status == "skipped":
+            scanner_warnings.append("checkov disabled by caller.")
+
+        if cfn_lint_status == "not_installed":
+            scanner_warnings.append("cfn-lint not installed — scan skipped.")
+        elif cfn_lint_status == "error":
+            scanner_warnings.append("cfn-lint encountered an error — scan skipped.")
+        elif cfn_lint_status == "skipped":
+            scanner_warnings.append("cfn-lint disabled by caller.")
+
+        severity_score = sum(_severity_points(item.get("severity", "low")) for item in deduped)
 
         cost_score = 0
         if cost_delta_usd > 50:
@@ -249,5 +290,10 @@ class IaCSecurityGate:
                 "aws_config_violations": aws_config_violations,
                 "templates": [path.name for path in templates],
             },
-            "findings": findings,
+            "scanner_status": {
+                "checkov": checkov_status,
+                "cfn_lint": cfn_lint_status,
+            },
+            "scanner_warnings": scanner_warnings,
+            "findings": deduped,
         }

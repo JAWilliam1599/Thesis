@@ -1,0 +1,120 @@
+{
+  "/S3BucketStack": [
+    {
+      "type": "aws:cdk:creationStack",
+      "data": [
+        "Kernel._Kernel_create (/tmp/tmpkf51ruom/lib/program.js:1:61224)",
+        "Kernel.create (/tmp/tmpkf51ruom/lib/program.js:1:51955)",
+        "KernelHost.processRequest (/tmp/tmpkf51ruom/lib/program.js:1:212065)",
+        "KernelHost.run (/tmp/tmpkf51ruom/lib/program.js:1:211120)",
+        "Immediate._onImmediate (/tmp/tmpkf51ruom/lib/program.js:1:211164)",
+        "...node internals..."
+      ]
+    }
+  ],
+  "/S3BucketStack/BucketName": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "BucketName"
+    },
+    {
+      "type": "aws:cdk:creationStack",
+      "data": [
+        "Kernel._Kernel_create (/tmp/tmpkf51ruom/lib/program.js:1:61224)",
+        "Kernel.create (/tmp/tmpkf51ruom/lib/program.js:1:51955)",
+        "KernelHost.processRequest (/tmp/tmpkf51ruom/lib/program.js:1:212065)",
+        "KernelHost.run (/tmp/tmpkf51ruom/lib/program.js:1:211120)",
+        "Immediate._onImmediate (/tmp/tmpkf51ruom/lib/program.js:1:211164)",
+        "...node internals..."
+      ]
+    }
+  ],
+  "/S3BucketStack/BootstrapVersion": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "BootstrapVersion"
+    },
+    {
+      "type": "aws:cdk:creationStack",
+      "data": [
+        "...App.synth in aws-cdk-lib...",
+        "/tmp/tmpkf51ruom/lib/program.js:1:542 (/tmp/tmpkf51ruom/lib/program.js:1:5429)"
+      ]
+    }
+  ],
+  "/S3BucketStack/CheckBootstrapVersion": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "CheckBootstrapVersion"
+    },
+    {
+      "type": "aws:cdk:creationStack",
+      "data": [
+        "...App.synth in aws-cdk-lib...",
+        "/tmp/tmpkf51ruom/lib/program.js:1:542 (/tmp/tmpkf51ruom/lib/program.js:1:5429)"
+      ]
+    }
+  ],
+  "/S3BucketStack/SecureBucket/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "SecureBucket1ED1C5CE"
+    },
+    {
+      "type": "aws:cdk:creationStack",
+      "data": [
+        "...new Bucket2 in aws-cdk-lib...",
+        "Kernel._Kernel_create (/tmp/tmpkf51ruom/lib/program.js:1:61224)",
+        "Kernel.create (/tmp/tmpkf51ruom/lib/program.js:1:51955)",
+        "KernelHost.processRequest (/tmp/tmpkf51ruom/lib/program.js:1:212065)",
+        "KernelHost.run (/tmp/tmpkf51ruom/lib/program.js:1:211120)",
+        "Immediate._onImmediate (/tmp/tmpkf51ruom/lib/program.js:1:211164)",
+        "...node internals..."
+      ]
+    }
+  ],
+  "/S3BucketStack/CDKMetadata/Default": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "CDKMetadata"
+    },
+    {
+      "type": "aws:cdk:creationStack",
+      "data": [
+        "...App.synth in aws-cdk-lib...",
+        "/tmp/tmpkf51ruom/lib/program.js:1:542 (/tmp/tmpkf51ruom/lib/program.js:1:5429)",
+        "Kernel._Kernel_ensureSync (/tmp/tmpkf51ruom/lib/program.js:1:69840)",
+        "Kernel.invoke (/tmp/tmpkf51ruom/lib/program.js:1:54245)"
+      ]
+    }
+  ],
+  "/S3BucketStack/CDKMetadata/Condition": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "CDKMetadataAvailable"
+    },
+    {
+      "type": "aws:cdk:creationStack",
+      "data": [
+        "...App.synth in aws-cdk-lib...",
+        "/tmp/tmpkf51ruom/lib/program.js:1:542 (/tmp/tmpkf51ruom/lib/program.js:1:5429)",
+        "Kernel._Kernel_ensureSync (/tmp/tmpkf51ruom/lib/program.js:1:69840)",
+        "Kernel.invoke (/tmp/tmpkf51ruom/lib/program.js:1:54245)"
+      ]
+    }
+  ],
+  "/S3BucketStack/SecureBucket/Policy/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "SecureBucketPolicy18EDC062"
+    },
+    {
+      "type": "aws:cdk:creationStack",
+      "data": [
+        "...new Bucket2 in aws-cdk-lib...",
+        "Kernel._Kernel_create (/tmp/tmpkf51ruom/lib/program.js:1:61224)",
+        "Kernel.create (/tmp/tmpkf51ruom/lib/program.js:1:51955)"
+      ]
+    }
+  ]
+}

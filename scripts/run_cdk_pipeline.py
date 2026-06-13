@@ -10,7 +10,7 @@ ROOT_DIR = Path(__file__).resolve().parents[1]
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
-from pipeline.cdk_pipeline import can_deploy, run_cdk_command, run_iac_gate
+from pipeline.cdk_pipeline import can_deploy, run_bootstrap, run_cdk_command, run_iac_gate
 
 
 def parse_args() -> argparse.Namespace:
@@ -20,6 +20,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--aws-config-violations", type=int, default=0, help="Optional AWS Config violations count.")
     parser.add_argument("--manual-approve", action="store_true", help="Approve review decision (21-60) for deploy.")
     parser.add_argument("--deploy", action="store_true", help="Run deploy if gate allows.")
+    parser.add_argument("--bootstrap", action="store_true", help="Run cdk bootstrap before synth (required for first deploy).")
+    parser.add_argument("--no-checkov", action="store_true", help="Skip checkov scan (useful for fast-path testing).")
+    parser.add_argument("--no-cfn-lint", action="store_true", help="Skip cfn-lint scan (useful for fast-path testing).")
     return parser.parse_args()
 
 
@@ -34,6 +37,12 @@ def main() -> int:
     env = os.environ.copy()
     env["PYTHONUNBUFFERED"] = "1"
 
+    if args.bootstrap:
+        bootstrap = run_bootstrap(project_dir, env=env)
+        print(json.dumps({"stage": "bootstrap", **bootstrap}, indent=2))
+        if bootstrap["return_code"] != 0:
+            return 9
+
     synth = run_cdk_command(project_dir, "synth", env=env)
     print(json.dumps({"stage": "synth", **synth}, indent=2))
     if synth["return_code"] != 0:
@@ -43,6 +52,8 @@ def main() -> int:
         project_dir,
         cost_delta_usd=args.cost_delta_usd,
         aws_config_violations=args.aws_config_violations,
+        use_checkov=not args.no_checkov,
+        use_cfn_lint=not args.no_cfn_lint,
     )
     print(json.dumps({"stage": "gate", "gate": gate_report}, indent=2))
 
