@@ -10,13 +10,22 @@ ROOT_DIR = Path(__file__).resolve().parents[1]
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
-from pipeline.cdk_pipeline import can_deploy, run_bootstrap, run_cdk_command, run_iac_gate
+from pipeline.cdk_pipeline import (
+    can_deploy,
+    load_gate_report,
+    run_bootstrap,
+    run_cdk_command,
+    run_iac_gate,
+    write_approval,
+)
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run CDK pipeline with IaC risk gate.")
     parser.add_argument("--project-dir", default="GeneratedCDK", help="CDK project directory.")
     parser.add_argument("--run-id", default=None, help="Override auto-generated run ID (used for gate report filename).")
+    parser.add_argument("--approve-run-id", default=None, metavar="RUN_ID",
+                        help="Skip synth+gate and approve an existing review-band report by run_id. Use with --deploy.")
     parser.add_argument("--cost-delta-usd", type=float, default=None, help="Override Infracost cost delta in USD (default: auto-detect via infracost).")
     parser.add_argument("--aws-config-violations", type=int, default=None, help="Override AWS Config violations count (default: auto-fetch via boto3).")
     parser.add_argument("--no-infracost", action="store_true", help="Skip infracost cost analysis.")
@@ -29,6 +38,55 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def approve_and_deploy_main(args: argparse.Namespace, project_dir: Path, env: dict) -> int:
+    """Approve an existing review-band gate report and optionally deploy.
+
+    Skips synth and gate entirely. Loads the saved report, validates the
+    decision, writes an approval record, then runs diff + optional deploy.
+    """
+    run_id: str = args.approve_run_id
+
+    try:
+        gate_report = load_gate_report(run_id)
+    except FileNotFoundError as exc:
+        print(json.dumps({"stage": "approve", "error": str(exc)}, indent=2))
+        return 3
+
+    decision = str(gate_report.get("decision", "reject")).lower()
+    score = gate_report.get("score", 0)
+
+    if decision == "reject":
+        print(json.dumps({
+            "stage": "approve",
+            "error": f"Cannot approve a rejected gate report (score={score}). Remediate findings and re-run the pipeline.",
+            "run_id": run_id,
+        }, indent=2))
+        return 22
+
+    approval_path = write_approval(run_id, gate_report, approver="cli")
+    print(json.dumps({
+        "stage": "approve",
+        "run_id": run_id,
+        "gate_decision": decision,
+        "gate_score": score,
+        "approval_path": approval_path,
+    }, indent=2))
+
+    diff = run_cdk_command(project_dir, "diff", env=env)
+    print(json.dumps({"stage": "diff", **diff}, indent=2))
+    if diff["return_code"] != 0:
+        return 11
+
+    print(json.dumps({"stage": "decision", "allowed": True, "reason": "Approved via --approve-run-id."}, indent=2))
+
+    if not args.deploy:
+        return 0
+
+    deploy = run_cdk_command(project_dir, "deploy", env=env)
+    print(json.dumps({"stage": "deploy", **deploy}, indent=2))
+    return 0 if deploy["return_code"] == 0 else 12
+
+
 def main() -> int:
     args = parse_args()
     project_dir = Path(args.project_dir).resolve()
@@ -39,6 +97,10 @@ def main() -> int:
 
     env = os.environ.copy()
     env["PYTHONUNBUFFERED"] = "1"
+
+    # --- Approve-only path: skip synth+gate, load existing report ---
+    if args.approve_run_id:
+        return approve_and_deploy_main(args, project_dir, env)
 
     if args.bootstrap:
         bootstrap = run_bootstrap(project_dir, env=env)

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 from datetime import datetime, timezone
@@ -130,3 +131,47 @@ def can_deploy(
             return True, "Manual review approved."
         return False, "Risk gate requires manual review approval."
     return False, "Risk gate rejected this deployment (score > 60)."
+
+
+_DEFAULT_GATE_REPORTS_DIR = Path(__file__).resolve().parents[1] / "logs" / "gate_reports"
+_DEFAULT_APPROVALS_DIR = Path(__file__).resolve().parents[1] / "logs" / "approvals"
+
+
+def load_gate_report(run_id: str, log_dir: Path | None = None) -> dict[str, Any]:
+    """Load a persisted gate report by run_id.
+
+    Raises FileNotFoundError if the report file does not exist.
+    """
+    report_dir = Path(log_dir) if log_dir else _DEFAULT_GATE_REPORTS_DIR
+    report_path = report_dir / f"gate_{run_id}.json"
+    if not report_path.exists():
+        raise FileNotFoundError(
+            f"Gate report not found for run_id '{run_id}': {report_path}\n"
+            "Run the full pipeline first to generate a report."
+        )
+    return json.loads(report_path.read_text(encoding="utf-8"))
+
+
+def write_approval(
+    run_id: str,
+    gate_report: dict[str, Any],
+    approver: str = "cli",
+    log_dir: Path | None = None,
+) -> str:
+    """Persist an approval record for a review-band gate report.
+
+    Returns the path of the written approval JSON file.
+    """
+    approvals_dir = Path(log_dir) if log_dir else _DEFAULT_APPROVALS_DIR
+    approvals_dir.mkdir(parents=True, exist_ok=True)
+    approval_path = approvals_dir / f"approval_{run_id}.json"
+    record = {
+        "run_id": run_id,
+        "approved_at": datetime.now(tz=timezone.utc).isoformat(),
+        "approver": approver,
+        "gate_decision": gate_report.get("decision"),
+        "gate_score": gate_report.get("score"),
+        "gate_report_path": gate_report.get("report_path"),
+    }
+    approval_path.write_text(json.dumps(record, indent=2), encoding="utf-8")
+    return str(approval_path)
