@@ -14,6 +14,7 @@ from ui.cdk_control import (
     refresh_cdk_output_from_state,
     stop_cdk_command_from_state,
     sync_cdk_process_state,
+    _on_review_approved_callback,
 )
 from ui.exec_control import (
     get_attempt_files,
@@ -459,7 +460,13 @@ def render_tab4_cdk():
             st.session_state.cdk_manual_review_approved = st.checkbox(
                 "Manual review approved for this run",
                 value=st.session_state.cdk_manual_review_approved,
+                on_change=_on_review_approved_callback,
+                key="_cdk_review_checkbox",
             )
+            if st.session_state.get("cdk_approval_record_path"):
+                st.caption(f"Approval record: `{st.session_state.cdk_approval_record_path}`")
+        if st.session_state.get("cdk_rejection_record_path"):
+            st.caption(f"Rejection record: `{st.session_state.cdk_rejection_record_path}`")
 
         with st.expander("IaC Gate Details"):
             st.json(gate_report)

@@ -67,6 +67,10 @@ def initialize_session_state():
         st.session_state.cdk_gate_report = None
     if "cdk_manual_review_approved" not in st.session_state:
         st.session_state.cdk_manual_review_approved = False
+    if "cdk_approval_record_path" not in st.session_state:
+        st.session_state.cdk_approval_record_path = None
+    if "cdk_rejection_record_path" not in st.session_state:
+        st.session_state.cdk_rejection_record_path = None
 
 
 def main():

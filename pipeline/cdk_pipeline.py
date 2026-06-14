@@ -135,6 +135,7 @@ def can_deploy(
 
 _DEFAULT_GATE_REPORTS_DIR = Path(__file__).resolve().parents[1] / "logs" / "gate_reports"
 _DEFAULT_APPROVALS_DIR = Path(__file__).resolve().parents[1] / "logs" / "approvals"
+_DEFAULT_REJECTIONS_DIR = Path(__file__).resolve().parents[1] / "logs" / "rejections"
 
 
 def load_gate_report(run_id: str, log_dir: Path | None = None) -> dict[str, Any]:
@@ -152,6 +153,32 @@ def load_gate_report(run_id: str, log_dir: Path | None = None) -> dict[str, Any]
     return json.loads(report_path.read_text(encoding="utf-8"))
 
 
+def _get_caller_identity() -> dict[str, str | None]:
+    """Return AWS caller ARN and account via the AWS CLI subprocess.
+
+    Uses the CLI rather than boto3 directly so that it honours the same
+    credential chain as the rest of the CDK tooling (profiles, SSO, etc.)
+    Falls back to null values if the CLI call fails or is unavailable.
+    """
+    try:
+        result = subprocess.run(
+            ["aws", "sts", "get-caller-identity", "--output", "json"],
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+        if result.returncode == 0:
+            import json as _json
+            identity = _json.loads(result.stdout)
+            return {
+                "arn": identity.get("Arn"),
+                "account": identity.get("Account"),
+            }
+    except Exception:
+        pass
+    return {"arn": None, "account": None}
+
+
 def write_approval(
     run_id: str,
     gate_report: dict[str, Any],
@@ -165,13 +192,44 @@ def write_approval(
     approvals_dir = Path(log_dir) if log_dir else _DEFAULT_APPROVALS_DIR
     approvals_dir.mkdir(parents=True, exist_ok=True)
     approval_path = approvals_dir / f"approval_{run_id}.json"
+    identity = _get_caller_identity()
     record = {
         "run_id": run_id,
         "approved_at": datetime.now(tz=timezone.utc).isoformat(),
         "approver": approver,
+        "approver_arn": identity["arn"],
+        "approver_account": identity["account"],
         "gate_decision": gate_report.get("decision"),
         "gate_score": gate_report.get("score"),
         "gate_report_path": gate_report.get("report_path"),
     }
     approval_path.write_text(json.dumps(record, indent=2), encoding="utf-8")
     return str(approval_path)
+
+
+def write_rejection_record(
+    run_id: str,
+    gate_report: dict[str, Any],
+    log_dir: Path | None = None,
+) -> str:
+    """Persist a rejection record for an auto-rejected or blocked gate report.
+
+    Returns the path of the written rejection JSON file.
+    """
+    rejections_dir = Path(log_dir) if log_dir else _DEFAULT_REJECTIONS_DIR
+    rejections_dir.mkdir(parents=True, exist_ok=True)
+    rejection_path = rejections_dir / f"rejection_{run_id}.json"
+    identity = _get_caller_identity()
+    top_findings = (gate_report.get("findings") or [])[:5]
+    record = {
+        "run_id": run_id,
+        "rejected_at": datetime.now(tz=timezone.utc).isoformat(),
+        "gate_decision": gate_report.get("decision"),
+        "gate_score": gate_report.get("score"),
+        "gate_report_path": gate_report.get("report_path"),
+        "top_findings": top_findings,
+        "rejector_arn": identity["arn"],
+        "rejector_account": identity["account"],
+    }
+    rejection_path.write_text(json.dumps(record, indent=2), encoding="utf-8")
+    return str(rejection_path)

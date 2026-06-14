@@ -7,7 +7,8 @@ from pathlib import Path
 import streamlit as st
 
 from ExecComponent.exec_code import exec_code
-from pipeline.cdk_pipeline import can_deploy, run_iac_gate
+from pipeline.cdk_pipeline import can_deploy, run_iac_gate, write_approval, write_rejection_record
+from pipeline.notifier import get_notifier
 from ui.config import GENERATED_CDK_DIR, CDK_JSON_CONTENT, CDK_REQUIREMENTS_CONTENT
 from ui.exec_control import drain_process_output
 
@@ -192,8 +193,42 @@ def refresh_cdk_output_from_state() -> None:
                         st.session_state.cdk_gate_report.get("report_path")
                     )
                     st.session_state.cdk_manual_review_approved = False
+
+                    # Notify and record on review/reject decisions
+                    _gate_decision = str(st.session_state.cdk_gate_report.get("decision", "")).lower()
+                    notifier = get_notifier()
+                    if _gate_decision == "reject":
+                        if run_id and st.session_state.cdk_gate_report:
+                            try:
+                                _rej_path = write_rejection_record(run_id, st.session_state.cdk_gate_report)
+                                st.session_state.cdk_rejection_record_path = _rej_path
+                            except Exception:
+                                pass
+                        if notifier:
+                            try:
+                                notifier.send("reject", st.session_state.cdk_gate_report)
+                            except Exception:
+                                pass
+                    elif _gate_decision == "review":
+                        if notifier:
+                            try:
+                                notifier.send("review_required", st.session_state.cdk_gate_report)
+                            except Exception:
+                                pass
             elif command_name == "diff":
                 st.session_state.cdk_diff_ok = st.session_state.cdk_return_code == 0
+            elif command_name == "deploy":
+                _gate = st.session_state.get("cdk_gate_report") or {}
+                notifier = get_notifier()
+                if notifier:
+                    try:
+                        notifier.send(
+                            "deploy_success" if st.session_state.cdk_return_code == 0 else "deploy_failure",
+                            _gate,
+                            extra={"deploy_return_code": st.session_state.cdk_return_code},
+                        )
+                    except Exception:
+                        pass
             project_dir = Path(st.session_state.cdk_project_dir) if st.session_state.cdk_project_dir else GENERATED_CDK_DIR
             if project_dir.exists() and command_name:
                 log_cdk_session(
@@ -202,6 +237,28 @@ def refresh_cdk_output_from_state() -> None:
                     return_code=st.session_state.cdk_return_code,
                     output=st.session_state.cdk_terminal_output,
                 )
+
+
+def _on_review_approved_callback() -> None:
+    """Streamlit on_change callback for the manual review approval checkbox.
+
+    Called when the checkbox value changes. Writes an approval record when
+    the user checks the box (approved=True) and clears it when unchecked.
+    """
+    checked = bool(st.session_state.get("_cdk_review_checkbox"))
+    st.session_state.cdk_manual_review_approved = checked
+    if not checked:
+        st.session_state.cdk_approval_record_path = None
+        return
+
+    gate_report = st.session_state.get("cdk_gate_report") or {}
+    run_id = gate_report.get("run_id") or ""
+    if run_id:
+        try:
+            path = write_approval(run_id, gate_report, approver="ui")
+            st.session_state.cdk_approval_record_path = path
+        except Exception:
+            pass
 
 
 def stop_cdk_command_from_state() -> None:

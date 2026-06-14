@@ -12,6 +12,9 @@ This repository implements a practical subset of your SysSecOps model, with a wo
 6. Persist gate report to `logs/gate_reports/`
 7. Run `cdk diff`
 8. Allow `cdk deploy` only when gate decision allows it
+9. Send SNS notification on review / reject / deploy outcome
+10. Write approval or rejection record to `logs/approvals/` or `logs/rejections/`
+11. On reject, optionally auto-regen CDK code and retry (`AIgen/run_cdk_regen.py`)
 
 This aligns with Zone 1 and Zone 2 in `SysSecOps-hybrid-with-RiskScringEngine-integrated-to-IaCSecurityGate.md`.
 
@@ -20,14 +23,19 @@ This aligns with Zone 1 and Zone 2 in `SysSecOps-hybrid-with-RiskScringEngine-in
 | Path | Role in pipeline |
 |---|---|
 | `AIgen/` | LLM generation (Bedrock/OpenRouter) + generation/eval orchestration |
+| `AIgen/run_cdk_regen.py` | CDK-specific regen loop: generate → synth → gate → retry on reject |
 | `Eval/` | Validation, security analysis, risk scoring, IaC gate |
 | `Eval/scanners/` | Pluggable scanner adapters (Checkov, cfn-lint, Infracost, AWS Config) |
 | `pipeline/` | CDK command runner + deploy decision logic |
+| `pipeline/notifier.py` | AWS SNS notifier for gate and deploy events |
 | `scripts/run_cdk_pipeline.py` | CLI pipeline: synth → gate → diff → optional deploy |
 | `ui/` | Streamlit UI modules including `CDK Deploy` control tab |
 | `ui_app.py` | Backward-compatible launcher that calls `ui/main.py` |
 | `GeneratedCDK/` | Generated CDK app and command logs |
 | `logs/gate_reports/` | Persisted gate report JSON files (one per run) |
+| `logs/approvals/` | Persisted approval records with AWS ARN of approver |
+| `logs/rejections/` | Persisted rejection records with top findings |
+| `logs/cdk_regen/` | Per-run artifacts from CDK regen loop (prompts, code, gate reports) |
 | `ExecComponent/` | Safe subprocess execution helpers |
 | `ExecCode/` | Generated code outputs and per-run artifacts |
 
@@ -93,9 +101,13 @@ python scripts/run_cdk_pipeline.py --project-dir GeneratedCDK --manual-approve -
 | `--no-aws-config` | off | Skip AWS Config fetch |
 | `--no-checkov` | off | Skip Checkov scan |
 | `--no-cfn-lint` | off | Skip cfn-lint scan |
-| `--manual-approve` | off | Approve review-band score (21-60) |
+| `--manual-approve` | off | Approve review-band score (21–60) |
 | `--deploy` | off | Run `cdk deploy` if gate allows |
 | `--bootstrap` | off | Run `cdk bootstrap` first |
+| `--prompt` | — | Original CDK request (used with `--regen-on-reject`) |
+| `--regen-on-reject` | off | On gate reject, invoke CDK regen loop |
+| `--max-regen-attempts` | `2` | Max regen loop attempts (used with `--regen-on-reject`) |
+| `--approve-run-id` | — | Approve an existing review-band report by run ID |
 
 ## Streamlit UI
 
@@ -112,6 +124,9 @@ The `CDK Deploy` tab supports:
 - persisting gate report automatically
 - running `cdk diff`
 - enforcing deploy gating with optional manual review approval for score 21–60
+- writing approval records (with AWS ARN) when the review toggle is checked
+- writing rejection records automatically on gate reject
+- sending SNS notifications on gate and deploy events (when `SNS_TOPIC_ARN` is set)
 
 ## IaC Risk Gate Model (Implemented)
 
@@ -139,12 +154,66 @@ Implemented in `Eval/iac_security_gate.py`.
 
 **Gate reports** are persisted to `logs/gate_reports/gate_<run_id>.json` on every run.
 
+## Deployment Governance (Phase 3)
+
+### SNS Notifications (`pipeline/notifier.py`)
+
+Set `SNS_TOPIC_ARN` to enable. Never blocks the pipeline on failure.
+
+```bash
+export SNS_TOPIC_ARN=arn:aws:sns:us-east-1:123456789012:my-topic
+```
+
+Events published: `review_required`, `reject`, `deploy_success`, `deploy_failure`.
+
+Message payload includes: `run_id`, `decision`, `score`, `top_findings` (first 5), `timestamp`, `event_type`.
+
+### Audit Trail (`logs/approvals/`, `logs/rejections/`)
+
+Every approval writes `logs/approvals/approval_<run_id>.json`:
+```json
+{
+  "run_id": "cdk_20260614T124939Z",
+  "approved_at": "2026-06-14T12:50:12Z",
+  "approver": "cli",
+  "approver_arn": "arn:aws:iam::926208928139:user/NguyenThong",
+  "approver_account": "926208928139",
+  "gate_decision": "review",
+  "gate_score": 35
+}
+```
+
+Every gate reject writes `logs/rejections/rejection_<run_id>.json` with the same identity fields plus `top_findings`.
+
+ARN is resolved via `aws sts get-caller-identity` (CLI), falls back to `null` if unavailable.
+
+### CDK Regen Loop (`AIgen/run_cdk_regen.py`)
+
+Generates, synths, and gates in a loop — retrying on synth failure or gate reject.
+Findings from the gate report are injected back into the regeneration prompt.
+
+```bash
+# Standalone regen loop
+python AIgen/run_cdk_regen.py \
+  --prompt "Create an S3 bucket with versioning and encryption" \
+  --project-dir GeneratedCDK \
+  --max-attempts 5 \
+  --provider openrouter
+
+# Regen triggered from main pipeline on reject
+python scripts/run_cdk_pipeline.py \
+  --project-dir GeneratedCDK \
+  --regen-on-reject \
+  --max-regen-attempts 3 \
+  --prompt "Create an S3 bucket with versioning and encryption"
+```
+
+Artifacts: `logs/cdk_regen/<run_id>/attempt_<N>/` (prompt, code, gate report, synth output).
+
 ## Documentation Index
 
-- `AIgen/README.md`
-- `Eval/README.md`
-- `ExecComponent/README.md`
-- `CDK-ONLY-NEXT-STEPS.md` — implementation roadmap
-- `ExecComponent/README.md`
-- `UI_README.md`
-- `CDK-ONLY-NEXT-STEPS.md`
+- `AIgen/README.md` — generation providers and regen loop
+- `Eval/README.md` — gate scoring, scanner adapters, report structure
+- `ExecComponent/README.md` — subprocess execution helpers
+- `UI_README.md` — Streamlit UI guide
+- `CDK-ONLY-NEXT-STEPS.md` — implementation roadmap (Phases 1–4)

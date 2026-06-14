@@ -17,7 +17,9 @@ from pipeline.cdk_pipeline import (
     run_cdk_command,
     run_iac_gate,
     write_approval,
+    write_rejection_record,
 )
+from pipeline.notifier import get_notifier
 
 
 def parse_args() -> argparse.Namespace:
@@ -35,6 +37,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--bootstrap", action="store_true", help="Run cdk bootstrap before synth (required for first deploy).")
     parser.add_argument("--no-checkov", action="store_true", help="Skip checkov scan (useful for fast-path testing).")
     parser.add_argument("--no-cfn-lint", action="store_true", help="Skip cfn-lint scan (useful for fast-path testing).")
+    parser.add_argument("--prompt", default=None, help="Original CDK request (used with --regen-on-reject).")
+    parser.add_argument("--regen-on-reject", action="store_true", help="On gate reject, invoke CDK regen loop instead of exiting.")
+    parser.add_argument("--max-regen-attempts", type=int, default=2, help="Maximum regen loop attempts (default: 2, used with --regen-on-reject).")
     return parser.parse_args()
 
 
@@ -82,9 +87,20 @@ def approve_and_deploy_main(args: argparse.Namespace, project_dir: Path, env: di
     if not args.deploy:
         return 0
 
+    notifier = get_notifier()
     deploy = run_cdk_command(project_dir, "deploy", env=env)
     print(json.dumps({"stage": "deploy", **deploy}, indent=2))
-    return 0 if deploy["return_code"] == 0 else 12
+    deploy_ok = deploy["return_code"] == 0
+    if notifier:
+        try:
+            notifier.send(
+                "deploy_success" if deploy_ok else "deploy_failure",
+                gate_report,
+                extra={"deploy_return_code": deploy["return_code"]},
+            )
+        except Exception:
+            pass
+    return 0 if deploy_ok else 12
 
 
 def main() -> int:
@@ -136,9 +152,47 @@ def main() -> int:
     allowed, reason = can_deploy(gate_report, manual_review_approved=args.manual_approve)
     print(json.dumps({"stage": "decision", "allowed": allowed, "reason": reason}, indent=2))
 
+    # Write approval record when --manual-approve is used on a review-band decision
+    if args.manual_approve and allowed and str(gate_report.get("decision", "")).lower() == "review":
+        run_id_val = gate_report.get("run_id") or args.run_id or ""
+        if run_id_val:
+            approval_path = write_approval(run_id_val, gate_report, approver="cli")
+            print(json.dumps({"stage": "approval_record", "path": approval_path}, indent=2))
+
+    notifier = get_notifier()
+
     if not allowed:
-        if str(gate_report.get("decision", "")).lower() == "review":
+        decision_lower = str(gate_report.get("decision", "")).lower()
+        if decision_lower == "review":
+            if notifier:
+                try:
+                    notifier.send("review_required", gate_report)
+                except Exception:
+                    pass
             return 21
+
+        # Reject path
+        run_id_val = gate_report.get("run_id") or args.run_id or ""
+        if run_id_val:
+            rejection_path = write_rejection_record(run_id_val, gate_report)
+            print(json.dumps({"stage": "rejection_record", "path": rejection_path}, indent=2))
+        if notifier:
+            try:
+                notifier.send("reject", gate_report)
+            except Exception:
+                pass
+
+        if args.regen_on_reject and args.prompt:
+            from AIgen.run_cdk_regen import run_cdk_regen_loop
+            print(json.dumps({"stage": "regen", "status": "starting", "max_attempts": args.max_regen_attempts}, indent=2))
+            regen_result = run_cdk_regen_loop(
+                original_prompt=args.prompt,
+                project_dir=project_dir,
+                max_attempts=args.max_regen_attempts,
+            )
+            print(json.dumps({"stage": "regen", **regen_result}, indent=2))
+            return 0 if regen_result.get("success") else 22
+
         return 22
 
     if not args.deploy:
@@ -146,7 +200,17 @@ def main() -> int:
 
     deploy = run_cdk_command(project_dir, "deploy", env=env)
     print(json.dumps({"stage": "deploy", **deploy}, indent=2))
-    return 0 if deploy["return_code"] == 0 else 12
+    deploy_ok = deploy["return_code"] == 0
+    if notifier:
+        try:
+            notifier.send(
+                "deploy_success" if deploy_ok else "deploy_failure",
+                gate_report,
+                extra={"deploy_return_code": deploy["return_code"]},
+            )
+        except Exception:
+            pass
+    return 0 if deploy_ok else 12
 
 
 if __name__ == "__main__":

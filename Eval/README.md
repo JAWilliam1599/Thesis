@@ -156,17 +156,19 @@ Cost and AWS Config values follow this priority:
 
 ## SysSecOps Comparison
 
-Implemented (Phase 1 + Phase 2):
+Implemented (Phase 1 + Phase 2 + Phase 3):
 - risk gate between synth and deploy
 - score-based pass/review/reject behavior
 - Checkov and cfn-lint scanner ingestion
 - Infracost CLI auto-cost analysis
 - AWS Config auto-violations fetch via boto3
 - gate report persistence to `logs/gate_reports/`
+- approval records with AWS caller ARN in `logs/approvals/`
+- rejection records with top findings in `logs/rejections/`
 
-Planned next (Phase 3):
-- SNS/Telegram notifications on reject/review/deploy
-- decision audit trail with approver metadata
-- regeneration feedback loop on reject
+Planned next (Phase 4):
+- EventBridge + Lambda re-trigger on compliance drift
+- SSM Parameter Store risk score persistence
+- dashboard gate trend integration
 
 See `CDK-ONLY-NEXT-STEPS.md` for the full roadmap.
