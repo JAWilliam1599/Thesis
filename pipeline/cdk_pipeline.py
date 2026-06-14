@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import subprocess
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -87,11 +88,17 @@ def run_cdk_command(project_dir: Path, command_name: str, env: dict[str, str] | 
 def run_iac_gate(
     project_dir: Path,
     *,
-    cost_delta_usd: float = 0.0,
-    aws_config_violations: int = 0,
+    cost_delta_usd: float | None = None,
+    aws_config_violations: int | None = None,
     use_checkov: bool = True,
     use_cfn_lint: bool = True,
+    use_infracost: bool = True,
+    use_aws_config: bool = True,
+    run_id: str | None = None,
+    region: str | None = None,
 ) -> dict[str, Any]:
+    if run_id is None:
+        run_id = f"cdk_{datetime.now(tz=timezone.utc).strftime('%Y%m%dT%H%M%SZ')}"
     gate = IaCSecurityGate()
     cdk_out_dir = project_dir / "cdk.out"
     return gate.evaluate(
@@ -100,6 +107,10 @@ def run_iac_gate(
         aws_config_violations=aws_config_violations,
         use_checkov=use_checkov,
         use_cfn_lint=use_cfn_lint,
+        use_infracost=use_infracost,
+        use_aws_config=use_aws_config,
+        run_id=run_id,
+        region=region,
     )
 
 

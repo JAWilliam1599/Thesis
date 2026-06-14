@@ -180,7 +180,17 @@ def refresh_cdk_output_from_state() -> None:
                     st.session_state.cdk_manual_review_approved = False
                 else:
                     project_dir = Path(st.session_state.cdk_project_dir) if st.session_state.cdk_project_dir else GENERATED_CDK_DIR
-                    st.session_state.cdk_gate_report = run_iac_gate(project_dir)
+                    env = build_cdk_env()
+                    region = env.get("CDK_DEFAULT_REGION") or "us-east-1"
+                    run_id = f"cdk_{datetime.now().strftime('%Y%m%dT%H%M%SZ')}"
+                    st.session_state.cdk_gate_report = run_iac_gate(
+                        project_dir,
+                        run_id=run_id,
+                        region=region,
+                    )
+                    st.session_state.cdk_gate_report_path = (
+                        st.session_state.cdk_gate_report.get("report_path")
+                    )
                     st.session_state.cdk_manual_review_approved = False
             elif command_name == "diff":
                 st.session_state.cdk_diff_ok = st.session_state.cdk_return_code == 0

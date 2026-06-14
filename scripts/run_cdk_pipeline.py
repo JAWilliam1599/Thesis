@@ -16,8 +16,11 @@ from pipeline.cdk_pipeline import can_deploy, run_bootstrap, run_cdk_command, ru
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run CDK pipeline with IaC risk gate.")
     parser.add_argument("--project-dir", default="GeneratedCDK", help="CDK project directory.")
-    parser.add_argument("--cost-delta-usd", type=float, default=0.0, help="Optional Infracost delta in USD.")
-    parser.add_argument("--aws-config-violations", type=int, default=0, help="Optional AWS Config violations count.")
+    parser.add_argument("--run-id", default=None, help="Override auto-generated run ID (used for gate report filename).")
+    parser.add_argument("--cost-delta-usd", type=float, default=None, help="Override Infracost cost delta in USD (default: auto-detect via infracost).")
+    parser.add_argument("--aws-config-violations", type=int, default=None, help="Override AWS Config violations count (default: auto-fetch via boto3).")
+    parser.add_argument("--no-infracost", action="store_true", help="Skip infracost cost analysis.")
+    parser.add_argument("--no-aws-config", action="store_true", help="Skip AWS Config violations fetch.")
     parser.add_argument("--manual-approve", action="store_true", help="Approve review decision (21-60) for deploy.")
     parser.add_argument("--deploy", action="store_true", help="Run deploy if gate allows.")
     parser.add_argument("--bootstrap", action="store_true", help="Run cdk bootstrap before synth (required for first deploy).")
@@ -54,8 +57,14 @@ def main() -> int:
         aws_config_violations=args.aws_config_violations,
         use_checkov=not args.no_checkov,
         use_cfn_lint=not args.no_cfn_lint,
+        use_infracost=not args.no_infracost,
+        use_aws_config=not args.no_aws_config,
+        run_id=args.run_id,
     )
     print(json.dumps({"stage": "gate", "gate": gate_report}, indent=2))
+    report_path = gate_report.get("report_path")
+    if report_path:
+        print(json.dumps({"stage": "gate_report", "path": report_path}, indent=2))
 
     diff = run_cdk_command(project_dir, "diff", env=env)
     print(json.dumps({"stage": "diff", **diff}, indent=2))

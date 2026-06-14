@@ -1,3 +1,5 @@
+# Generate + Eval + Security Gate End-to-End Test
+
 Read [](file:///home/astia/Documents/Thesis/Thesis/AIgen/run_generation_and_eval.py#1-1), lines 1 to 80
 
 Read [](file:///home/astia/Documents/Thesis/Thesis/AIgen/openrouter_codegen.py#1-1), lines 1 to 60
@@ -189,3 +191,128 @@ python scripts/run_cdk_pipeline.py --project-dir GeneratedCDK --no-checkov --no-
 ```
 
 This runs synth → heuristic gate → diff and prints formatted JSON for every stage. No AWS deploy happens without `--deploy`.
+
+
+# Test 2: 
+
+Run in Terminal
+
+The terminal tool is disabled — I can only provide the commands for you to run. Here's the complete sequence:
+
+---
+
+### 1. Activate venv + check prerequisites
+
+```bash
+source .venv/bin/activate.fish   # fish shell
+aws sts get-caller-identity       # confirm AWS creds
+cdk --version                     # confirm CDK CLI
+```
+
+---
+
+### 2. Smoke test — fast (no external scanners)
+
+```bash
+python scripts/run_cdk_pipeline.py \
+  --project-dir GeneratedCDK \
+  --no-checkov --no-cfn-lint \
+  2>&1 | python3 -m json.tool
+```
+
+Expected: JSON blocks for stages `synth`, `gate`, `gate_report`, `diff`, `decision`. Gate report file appears at `logs/gate_reports/gate_cdk_<timestamp>.json`.
+
+---
+
+### 3. Full scanner run (checkov + cfn-lint + infracost + AWS Config)
+
+```bash
+python scripts/run_cdk_pipeline.py \
+  --project-dir GeneratedCDK \
+  2>&1 | python3 -m json.tool
+```
+
+- `python3 -m json.tool` pretty-prints the JSON output from each stage for easier reading.
+
+---
+
+### 4. Verify reject path — filter just gate + decision output
+
+```bash
+python scripts/run_cdk_pipeline.py \
+  --project-dir GeneratedCDK \
+  --no-checkov --no-cfn-lint \
+2>&1 | python3 -c "
+import sys, json
+for line in sys.stdin:
+    try:
+        d = json.loads(line.strip())
+        if d.get('stage') in ('gate', 'decision'):
+            print(json.dumps(d, indent=2))
+    except: pass
+"
+```
+
+The `gate` block should show:
+- `scanner_status.infracost` — `ok` or `not_installed`
+- `scanner_status.aws_config` — `ok`, `no_credentials`, or `not_configured`
+- `cost_analysis` and `config_analysis` objects
+- `report_path` pointing to `logs/gate_reports/gate_cdk_<timestamp>.json`
+
+---
+
+### 5. Test cost override (force review band)
+
+```bash
+python scripts/run_cdk_pipeline.py \
+  --project-dir GeneratedCDK \
+  --cost-delta-usd 15.0 \
+  --aws-config-violations 3 \
+  --no-checkov --no-cfn-lint
+# exit 21 = review required
+```
+
+```bash
+python scripts/run_cdk_pipeline.py \
+  --project-dir GeneratedCDK \
+  --cost-delta-usd 15.0 \
+  --aws-config-violations 3 \
+  --no-checkov --no-cfn-lint \
+  --manual-approve
+# exit 0 = approved and allowed (no --deploy = no actual deploy)
+```
+
+---
+
+### 6. Test reject path (score > 60)
+
+```bash
+python scripts/run_cdk_pipeline.py \
+  --project-dir GeneratedCDK \
+  --cost-delta-usd 55.0 \
+  --aws-config-violations 5 \
+  --no-checkov --no-cfn-lint
+echo "exit: $status"   # fish: should be 22
+```
+
+---
+
+### 7. Confirm report persisted
+
+```bash
+ls -lh logs/gate_reports/
+cat logs/gate_reports/$(ls -t logs/gate_reports/ | head -1) | python3 -m json.tool | head -40
+```
+
+Look for `decision`, `score`, `cost_analysis`, `config_analysis`, `scanner_warnings` in the JSON.
+
+---
+
+### Expected exit code reference
+
+| Exit | Meaning |
+|------|---------|
+| `0` | Gate passed (or review + `--manual-approve`) |
+| `10` | `cdk synth` failed |
+| `21` | Gate: review required (pass `--manual-approve`) |
+| `22` | Gate: rejected — score > 60 |

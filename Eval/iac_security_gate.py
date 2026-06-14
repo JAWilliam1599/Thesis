@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from Eval.scanners.aws_config_adapter import fetch_violations
 from Eval.scanners.checkov_adapter import run_checkov
 from Eval.scanners.cfn_lint_adapter import run_cfn_lint
+from Eval.scanners.infracost_adapter import run_infracost
 
 SEVERITY_POINTS = {
     "critical": 30,
@@ -62,6 +65,22 @@ def _new_finding(severity: str, source: str, message: str, resource_id: str) -> 
 
 class IaCSecurityGate:
     """IaC gate that inspects synthesized CloudFormation templates and scores risk."""
+
+    # --- Report persistence ---
+
+    def save_report(self, report: dict[str, Any], run_id: str, log_dir: Path | None = None) -> str:
+        """Persist *report* as JSON under *log_dir*/gate_<run_id>.json.
+
+        Creates *log_dir* (and parents) if it does not exist.
+        Returns the absolute path of the written file.
+        """
+        if log_dir is None:
+            log_dir = Path(__file__).resolve().parents[1] / "logs" / "gate_reports"
+        log_dir = Path(log_dir)
+        log_dir.mkdir(parents=True, exist_ok=True)
+        report_path = log_dir / f"gate_{run_id}.json"
+        report_path.write_text(json.dumps(report, indent=2), encoding="utf-8")
+        return str(report_path)
 
     def collect_templates(self, cdk_out_dir: Path) -> list[Path]:
         if not cdk_out_dir.exists() or not cdk_out_dir.is_dir():
@@ -208,11 +227,26 @@ class IaCSecurityGate:
         self,
         cdk_out_dir: Path,
         *,
-        cost_delta_usd: float = 0.0,
-        aws_config_violations: int = 0,
+        cost_delta_usd: float | None = None,
+        aws_config_violations: int | None = None,
         use_checkov: bool = True,
         use_cfn_lint: bool = True,
+        use_infracost: bool = True,
+        use_aws_config: bool = True,
+        run_id: str | None = None,
+        region: str | None = None,
+        stack_name: str | None = None,
     ) -> dict[str, Any]:
+        """Evaluate synthesized CDK templates and return a gate report dict.
+
+        cost_delta_usd / aws_config_violations:
+            Pass an explicit value to override automation.  Pass None (default)
+            to let the gate auto-run Infracost / AWS Config and use the result.
+        run_id:
+            When provided, the gate report is persisted to
+            logs/gate_reports/gate_<run_id>.json and report_path is included
+            in the returned dict.
+        """
         templates = self.collect_templates(cdk_out_dir)
         findings: list[dict[str, Any]] = []
 
@@ -243,7 +277,7 @@ class IaCSecurityGate:
                 seen.add(key)
                 deduped.append(f)
 
-        # Build scanner warnings for any tool that could not run.
+        # --- Scanner warnings for checkov / cfn-lint ---
         scanner_warnings: list[str] = []
         if checkov_status == "not_installed":
             scanner_warnings.append("checkov not installed — scan skipped.")
@@ -259,20 +293,61 @@ class IaCSecurityGate:
         elif cfn_lint_status == "skipped":
             scanner_warnings.append("cfn-lint disabled by caller.")
 
+        # --- Cost analysis (Infracost) ---
+        cost_analysis = run_infracost(cdk_out_dir, enabled=use_infracost)
+        if cost_delta_usd is not None:
+            # Explicit override from caller — use it directly.
+            effective_cost_delta = float(cost_delta_usd)
+        else:
+            effective_cost_delta = cost_analysis["cost_delta_usd"]
+            status = cost_analysis["status"]
+            if status == "not_installed":
+                scanner_warnings.append("infracost not installed — cost analysis skipped.")
+            elif status == "not_supported":
+                scanner_warnings.append(f"infracost could not price these templates — cost analysis skipped: {cost_analysis.get('message', '')}")
+            elif status == "error":
+                scanner_warnings.append(f"infracost error — cost analysis skipped: {cost_analysis.get('message', '')}")
+            elif status == "skipped":
+                scanner_warnings.append("infracost disabled by caller.")
+
+        # --- AWS Config violations ---
+        config_analysis = fetch_violations(region=region, stack_name=stack_name, enabled=use_aws_config)
+        if aws_config_violations is not None:
+            # Explicit override from caller — use it directly.
+            effective_config_violations = int(aws_config_violations)
+        else:
+            effective_config_violations = config_analysis["violation_count"]
+            status = config_analysis["status"]
+            if status == "not_installed":
+                scanner_warnings.append("boto3 not installed — AWS Config check skipped.")
+            elif status == "no_credentials":
+                scanner_warnings.append("AWS credentials not found — Config check skipped.")
+            elif status == "not_configured":
+                scanner_warnings.append("AWS Config not enabled in account/region — check skipped.")
+            elif status == "error":
+                scanner_warnings.append(f"AWS Config error — check skipped: {config_analysis.get('message', '')}")
+            elif status == "skipped":
+                scanner_warnings.append("AWS Config check disabled by caller.")
+
+        # --- Scoring ---
         severity_score = sum(_severity_points(item.get("severity", "low")) for item in deduped)
 
         cost_score = 0
-        if cost_delta_usd > 50:
+        if effective_cost_delta > 50:
             cost_score = 40
-        elif cost_delta_usd > 10:
+        elif effective_cost_delta > 10:
             cost_score = 15
 
-        config_score = max(0, int(aws_config_violations)) * 5
+        config_score = max(0, effective_config_violations) * 5
         total_score = int(severity_score + cost_score + config_score)
 
         decision = _decision(total_score)
 
-        return {
+        timestamp = datetime.now(tz=timezone.utc).isoformat()
+
+        result: dict[str, Any] = {
+            "run_id": run_id,
+            "timestamp": timestamp,
             "score": total_score,
             "decision": decision,
             "message": _decision_message(decision),
@@ -286,14 +361,26 @@ class IaCSecurityGate:
                 "aws_config": config_score,
             },
             "inputs": {
-                "cost_delta_usd": cost_delta_usd,
-                "aws_config_violations": aws_config_violations,
+                "cost_delta_usd": effective_cost_delta,
+                "cost_delta_override": cost_delta_usd is not None,
+                "aws_config_violations": effective_config_violations,
+                "aws_config_override": aws_config_violations is not None,
                 "templates": [path.name for path in templates],
             },
             "scanner_status": {
                 "checkov": checkov_status,
                 "cfn_lint": cfn_lint_status,
+                "infracost": cost_analysis["status"],
+                "aws_config": config_analysis["status"],
             },
             "scanner_warnings": scanner_warnings,
             "findings": deduped,
+            "cost_analysis": cost_analysis,
+            "config_analysis": config_analysis,
+            "report_path": None,
         }
+
+        if run_id:
+            result["report_path"] = self.save_report(result, run_id)
+
+        return result
