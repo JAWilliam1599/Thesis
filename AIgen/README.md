@@ -107,10 +107,13 @@ python AIgen/run_cdk_regen.py \
 
 **Loop behaviour:**
 1. Generate code → write to `GeneratedCDK/app.py`
-2. `cdk synth` — on failure, synth error is cleaned (jsii banner stripped) and injected into next prompt along with the failing code
-3. IaC gate — on `reject`, findings are injected into next regen prompt
-4. On `pass` or `review`, save to `logs/cdk_regen/<run_id>/passed/` and return success
-5. On exhaustion, save to `logs/cdk_regen/<run_id>/failed/` and return failure
+2. Clear `cdk.out/` to remove stale templates from prior runs
+3. `cdk synth` — on failure, synth error is cleaned (jsii banner stripped) and injected into next prompt along with the failing code
+4. IaC gate — on `reject`, findings are injected into next regen prompt
+5. On `pass` or `review`, save to `logs/cdk_regen/<run_id>/passed/` and return success
+6. On exhaustion, save to `logs/cdk_regen/<run_id>/failed/` and return failure
+
+**Prompt enforcement:** The generation prompt enforces `EXACTLY ONE Stack class` to prevent multi-stack outputs that inflate the template count in the gate scanner.
 
 The loop can also be triggered from the main CLI pipeline on gate reject:
 

@@ -112,12 +112,25 @@ path = gate.save_report(report, run_id="my_run")
 
 ### Current Rule Coverage in IaC Gate
 
+**Heuristic checks** (`iac_security_gate.py`):
 - Security Group public ingress (`0.0.0.0/0`, SSH critical)
 - S3 public access block enforcement
 - S3 public ACL detection
 - IAM policy wildcard action/resource detection
 - RDS encryption check
 - EBS volume encryption check
+
+**Checkov checks** (`checkov_adapter.py`):
+- Runs per-template (`--file <path>`) against the CloudFormation framework
+- Category map normalises check IDs (e.g. `CKV_AWS_24` → `sg_ssh_open`) for cross-source deduplication
+- Resource IDs have the type prefix stripped (`AWS::EC2::SecurityGroup.LogicalId` → `LogicalId`) to match heuristic findings
+
+**cfn-lint checks** (`cfn_lint_adapter.py`):
+- Rule IDs mapped to categories (`W3045` → `s3_public_acl`, etc.)
+
+### Cross-Source Finding Deduplication
+
+All findings carry a `category` field (e.g. `sg_ssh_open`, `s3_public_access_block`). The gate deduplicates across sources by `(resource_id, template, category)`, keeping the highest severity and merging source labels (e.g. `iac_security_gate+checkov`) when multiple scanners report the same issue. This prevents score inflation from the same vulnerability being counted multiple times.
 
 ### Scoring and Decisions
 
@@ -140,10 +153,11 @@ Decision thresholds:
 ## Integration with CDK Pipeline
 
 `pipeline/cdk_pipeline.py` uses this module to enforce deploy gating:
-1. `cdk synth`
-2. `run_iac_gate(project_dir, run_id=run_id, region=region)` — auto-runs all scanners
-3. `cdk diff`
-4. `can_deploy(gate_report, manual_review_approved=...)` — final decision
+1. `clear_cdk_out(project_dir)` — purge stale templates before synth
+2. `cdk synth`
+3. `run_iac_gate(project_dir, run_id=run_id, region=region)` — auto-runs all scanners; checkov runs per-template file, not directory
+4. `cdk diff`
+5. `can_deploy(gate_report, manual_review_approved=...)` — final decision
 
 Manual review approval is required for `review` decisions before deploy.
 
@@ -156,19 +170,21 @@ Cost and AWS Config values follow this priority:
 
 ## SysSecOps Comparison
 
-Implemented (Phase 1 + Phase 2 + Phase 3):
+Implemented (Phase 1 + Phase 2 + Phase 3 + Phase 4):
 - risk gate between synth and deploy
 - score-based pass/review/reject behavior
-- Checkov and cfn-lint scanner ingestion
+- Checkov per-template scan with category mapping and resource ID normalisation
+- cfn-lint scanner with category mapping
 - Infracost CLI auto-cost analysis
 - AWS Config auto-violations fetch via boto3
+- cross-source finding deduplication by `(resource_id, template, category)`
+- within-heuristic deduplication (one finding per resource per category)
 - gate report persistence to `logs/gate_reports/`
 - approval records with AWS caller ARN in `logs/approvals/`
 - rejection records with top findings in `logs/rejections/`
+- SSM Parameter Store gate result persistence (Phase 4)
+- EventBridge `GateDecision` event publishing (Phase 4)
+- CloudWatch metrics + structured logs after every gate (Phase 4)
+- 3-layer post-deploy security monitoring (Phase 4)
 
-Planned next (Phase 4):
-- EventBridge + Lambda re-trigger on compliance drift
-- SSM Parameter Store risk score persistence
-- dashboard gate trend integration
-
-See `CDK-ONLY-NEXT-STEPS.md` for the full roadmap.
+See `PHASE4_REPORT.md` for the full Phase 4 implementation details.

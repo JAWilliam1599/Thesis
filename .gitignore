@@ -190,6 +190,9 @@ CreateExampleEnv/*
 cdk.out/
 cdk.context.json
 
+# CDK synth outputs (can be large and are regenerated on each run)
+GeneratedCDK/cdk.out/
+
 # GeneratedCDK runtime outputs
 GeneratedCDK/command_logs/
 GeneratedCDK/gate_reports/

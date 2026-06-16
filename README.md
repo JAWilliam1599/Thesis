@@ -1,20 +1,23 @@
 # SysSecOps Hybrid IaC Pipeline
 
-This repository implements a practical subset of your SysSecOps model, with a working CDK-first deployment path and a risk gate between `cdk synth` and `cdk deploy`.
+This repository implements a practical subset of the SysSecOps model, with a CDK-first deployment path, a multi-scanner risk gate between `cdk synth` and `cdk deploy`, and a full Phase 4 ops loop providing real-time observability and security monitoring.
 
-## Current End-to-End Flow
+## End-to-End Flow
 
 1. Generate IaC-oriented Python code (`AIgen/`)
 2. Evaluate generated code for quality/security (`Eval/`)
 3. Prepare CDK project in `GeneratedCDK/`
-4. Run `cdk synth`
-5. Run IaC security gate — heuristics + Checkov + cfn-lint + Infracost + AWS Config (`Eval/iac_security_gate.py`)
-6. Persist gate report to `logs/gate_reports/`
-7. Run `cdk diff`
-8. Allow `cdk deploy` only when gate decision allows it
-9. Send SNS notification on review / reject / deploy outcome
-10. Write approval or rejection record to `logs/approvals/` or `logs/rejections/`
-11. On reject, optionally auto-regen CDK code and retry (`AIgen/run_cdk_regen.py`)
+4. Clear `cdk.out/` to prevent stale template accumulation
+5. Run `cdk synth`
+6. Run IaC security gate — heuristics + Checkov + cfn-lint + Infracost + AWS Config (`Eval/iac_security_gate.py`)
+7. Persist gate report to `logs/gate_reports/`
+8. **Phase 4:** Emit gate observability — SSM persist + EventBridge event + CloudWatch metrics + CloudWatch logs
+9. Run `cdk diff`
+10. Allow `cdk deploy` only when gate decision allows it
+11. Send SNS notification on review / reject / deploy outcome
+12. Write approval or rejection record to `logs/approvals/` or `logs/rejections/`
+13. **Phase 4:** Attach 3-layer security monitoring to deployed stack (Application Insights + metric alarms + CloudTrail/VPC flow alarms)
+14. On reject, optionally auto-regen CDK code and retry (`AIgen/run_cdk_regen.py`)
 
 This aligns with Zone 1 and Zone 2 in `SysSecOps-hybrid-with-RiskScringEngine-integrated-to-IaCSecurityGate.md`.
 
@@ -28,6 +31,14 @@ This aligns with Zone 1 and Zone 2 in `SysSecOps-hybrid-with-RiskScringEngine-in
 | `Eval/scanners/` | Pluggable scanner adapters (Checkov, cfn-lint, Infracost, AWS Config) |
 | `pipeline/` | CDK command runner + deploy decision logic |
 | `pipeline/notifier.py` | AWS SNS notifier for gate and deploy events |
+| `pipeline/ssm_store.py` | SSM Parameter Store persistence for gate results (Phase 4) |
+| `pipeline/eventbridge_trigger.py` | EventBridge custom event publisher (Phase 4) |
+| `pipeline/lambda_handler.py` | Standalone Lambda for drift detection + rollback alerts (Phase 4) |
+| `pipeline/aws_credentials.py` | Central AWS credential resolver with SSO auto-export (Phase 4) |
+| `Monitor/` | Phase 4 ops-loop infrastructure |
+| `Monitor/cloudwatch_publisher.py` | CloudWatch gate metrics + structured log publisher |
+| `Monitor/stack_monitor.py` | 3-layer post-deploy security monitoring setup |
+| `Monitor/ops_loop_stack.py` | CDK stack for Lambda, EventBridge rules, CW alarms, dashboard |
 | `scripts/run_cdk_pipeline.py` | CLI pipeline: synth → gate → diff → optional deploy |
 | `ui/` | Streamlit UI modules including `CDK Deploy` control tab |
 | `ui_app.py` | Backward-compatible launcher that calls `ui/main.py` |
@@ -55,10 +66,21 @@ External CLI tools (not pip-installable):
 
 ### 2. Set cloud credentials
 
+Credentials are resolved automatically if you have already run `aws sso login`. The pipeline uses `pipeline/aws_credentials.py` which tries the boto3 default chain first, then automatically exports SSO tokens via the AWS CLI as a fallback — no manual env var setup needed after `aws sso login`.
+
+For static credentials (CI/CD or IAM user):
+
 ```bash
 export AWS_ACCESS_KEY_ID=<your_key>
 export AWS_SECRET_ACCESS_KEY=<your_secret>
 export AWS_REGION=us-east-1
+```
+
+For SSO (recommended for local dev) — just run:
+
+```bash
+aws sso login
+# Pipeline auto-exports tokens from that point on
 ```
 
 Optional if using OpenRouter:
@@ -108,6 +130,80 @@ python scripts/run_cdk_pipeline.py --project-dir GeneratedCDK --manual-approve -
 | `--regen-on-reject` | off | On gate reject, invoke CDK regen loop |
 | `--max-regen-attempts` | `2` | Max regen loop attempts (used with `--regen-on-reject`) |
 | `--approve-run-id` | — | Approve an existing review-band report by run ID |
+| `--query-status` | off | Print last gate result per stack from SSM and exit |
+
+## Phase 4 — Ops Loop & Real-Time Monitoring
+
+All Phase 4 components activate automatically after every pipeline run. No extra flags needed.
+
+### SSM Parameter Store
+
+Gate results are persisted to SSM after every evaluation:
+
+```
+/syssecops/gate/{stack_name}/latest_score
+/syssecops/gate/{stack_name}/latest_decision
+/syssecops/gate/{stack_name}/latest_run_id
+/syssecops/gate/{stack_name}/latest_report_path
+```
+
+Query all tracked stacks:
+
+```bash
+python scripts/run_cdk_pipeline.py --query-status
+```
+
+Disable SSM: `export SSM_ENABLED=false`
+
+### EventBridge
+
+A `GateDecision` custom event is published to the default EventBridge bus after every gate evaluation (`source: syssecops.gate`). Disable: `export EVENTBRIDGE_ENABLED=false`
+
+### CloudWatch Metrics + Logs
+
+Metrics published to `SysSecOps/Gate` namespace (dimensions: `StackName` + `RunId`):
+- `GateScore`, `GateDecision`, `CriticalFindings`, `HighFindings`
+
+Full gate report written as a structured log event to `/syssecops/gate/{stack_name}/{run_id}`.
+
+### Drift Detection + Rollback Alerts
+
+Deploy the ops-loop Lambda stack once:
+
+```bash
+cd Monitor && cdk deploy SysSecOpsOpsLoopStack
+```
+
+This provisions EventBridge rules that fire the Lambda on AWS Config compliance drift or CloudFormation rollback, triggering SNS notifications (and optionally re-running the pipeline).
+
+Set `RETRIGGER_MODE=auto_retrigger` + `PIPELINE_LAMBDA_ARN=<arn>` for fully automated remediation.
+
+### Post-Deploy Stack Security Monitoring
+
+Called automatically after every successful `cdk deploy`. Three layers:
+
+**Layer 1 — Application Insights:** auto-discovery of EC2/Lambda/RDS/ECS resources.
+
+**Layer 2 — CloudWatch metric alarms per resource:**
+- Operational: CPU, memory, errors, throttles, storage
+- Security: network packet spikes (EC2), timeout exhaustion (Lambda), connection floods (RDS), S3 4xx/5xx access errors
+
+**Layer 3a — CloudTrail security alarms (7 CIS-aligned):**
+`UnauthorizedAPICalls`, `RootAccountUsage`, `IAMPolicyChanges`, `SecurityGroupChanges`, `S3BucketPolicyChanges`, `CloudTrailChanges`, `ConsoleAuthFailures`
+
+Requires CloudTrail → CloudWatch Logs integration on log group `/aws/cloudtrail/syssecops`.
+
+**Layer 3b — VPC flow log alarms:**
+`VPCFlowRejects` (port scan indicator) + `SSHRDPFromInternet`. Auto-detected; skips if no VPCs or no flow logs.
+
+### CloudWatch Dashboard
+
+Dashboard `SysSecOpsGate` is provisioned by `SysSecOpsOpsLoopStack`:
+```
+https://console.aws.amazon.com/cloudwatch/home?region=us-east-1#dashboards:name=SysSecOpsGate
+```
+
+Shows gate score trend, findings counts, and alarm status widgets.
 
 ## Streamlit UI
 
@@ -216,4 +312,5 @@ Artifacts: `logs/cdk_regen/<run_id>/attempt_<N>/` (prompt, code, gate report, sy
 - `Eval/README.md` — gate scoring, scanner adapters, report structure
 - `ExecComponent/README.md` — subprocess execution helpers
 - `UI_README.md` — Streamlit UI guide
+- `PHASE4_REPORT.md` — detailed Phase 4 implementation report
 - `CDK-ONLY-NEXT-STEPS.md` — implementation roadmap (Phases 1–4)

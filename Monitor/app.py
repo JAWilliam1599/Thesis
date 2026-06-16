@@ -8,11 +8,17 @@ if str(PROJECT_ROOT) not in sys.path:
 
 import aws_cdk as cdk
 from ops_loop_stack import SysSecOpsOpsLoopStack
+from cloudtrail_stack import SysSecOpsCloudTrailStack
 
 app = cdk.App()
 SysSecOpsOpsLoopStack(
     app,
     "SysSecOpsOpsLoopStack",
     description="SysSecOps Phase 4 ops-loop: drift detection, rollback notifications, CloudWatch alarms and dashboard",
+)
+SysSecOpsCloudTrailStack(
+    app,
+    "SysSecOpsCloudTrailStack",
+    description="SysSecOps CloudTrail → CloudWatch Logs for security audit and real-time security alarms",
 )
 app.synth()

@@ -17,9 +17,15 @@ dependency-check --project thesis --scan . --format JSON --out logs/dependency-c
 ## Intended Future Integration
 
 Planned path for CDK-only pipeline:
-- normalize Dependency-Check findings into the same finding schema used by `Eval/iac_security_gate.py`
-- map severities into existing score weights
-- include component score in final pass/review/reject decision
+- Normalize Dependency-Check findings into the gate finding schema used by `Eval/iac_security_gate.py`:
+  ```python
+  {"severity": "high", "source": "dependency_check", "message": "...",
+   "resource_id": "<package>", "template": "requirements.txt", "category": "vulnerable_dependency"}
+  ```
+- The `category` field is required for cross-source deduplication (Phase 4)
+- Map CVSS severities to gate severities: CVSS ≥ 9.0 → `critical`, ≥ 7.0 → `high`, ≥ 4.0 → `medium`, < 4.0 → `low`
+- Include a new `dependency_check` adapter in `Eval/scanners/` following the existing adapter pattern
+- Add component score contribution to the final pass/review/reject decision
 
 ## References
 

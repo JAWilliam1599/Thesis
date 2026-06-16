@@ -53,3 +53,5 @@ print(result["output"])
 ## SysSecOps Relevance
 
 This module is the execution backbone between Zone 1 outputs and Zone 2 decisions, especially for CDK command orchestration around the IaC security gate.
+
+In Phase 4, CDK commands are still executed through this module, but credential resolution is handled upstream by `pipeline/aws_credentials.py` which sets environment variables before subprocess invocation. The `run_command` return dict (`return_code` + `output`) feeds directly into gate decisions and Phase 4 observability calls.
