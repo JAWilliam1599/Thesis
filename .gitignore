@@ -185,3 +185,24 @@ ExecCode/*
 
 CreateExampleEnv/*
 *.docx.md
+
+# CDK build artifacts
+cdk.out/
+cdk.context.json
+
+# GeneratedCDK runtime outputs
+GeneratedCDK/command_logs/
+GeneratedCDK/gate_reports/
+GeneratedCDK/approvals/
+GeneratedCDK/rejections/
+GeneratedCDK/cdk_regen/
+
+# OWASP Dependency-Check binary tool (installed separately)
+Eval/dependency-check/bin/
+Eval/dependency-check/lib/
+Eval/dependency-check/data/
+Eval/dependency-check/plugins/
+
+# Downloaded archives
+dependency-check-*.zip
+*.zip

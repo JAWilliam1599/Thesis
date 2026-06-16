@@ -11,7 +11,7 @@ from Eval.scanners.cfn_lint_adapter import run_cfn_lint
 from Eval.scanners.infracost_adapter import run_infracost
 
 SEVERITY_POINTS = {
-    "critical": 30,
+    "critical": 20,
     "high": 10,
     "medium": 5,
     "low": 1,
@@ -19,7 +19,7 @@ SEVERITY_POINTS = {
 
 THRESHOLDS = {
     "pass_max": 20,
-    "review_max": 60,
+    "review_max": 80,
 }
 
 
@@ -54,12 +54,23 @@ def _resource_props(resource: dict[str, Any]) -> dict[str, Any]:
     return {}
 
 
-def _new_finding(severity: str, source: str, message: str, resource_id: str) -> dict[str, Any]:
+# Used during cross-source deduplication to resolve which severity wins.
+_SEVERITY_ORDER: dict[str, int] = {"critical": 4, "high": 3, "medium": 2, "low": 1}
+
+
+def _new_finding(
+    severity: str,
+    source: str,
+    message: str,
+    resource_id: str,
+    category: str = "",
+) -> dict[str, Any]:
     return {
         "severity": severity,
         "source": source,
         "message": message,
         "resource_id": resource_id,
+        "category": category,
     }
 
 
@@ -128,6 +139,7 @@ class IaCSecurityGate:
                                         "iac_security_gate",
                                         "Security group allows SSH from anywhere (0.0.0.0/0).",
                                         resource_id,
+                                        "sg_ssh_open",
                                     )
                                 )
                             else:
@@ -137,6 +149,7 @@ class IaCSecurityGate:
                                         "iac_security_gate",
                                         "Security group allows public ingress from 0.0.0.0/0.",
                                         resource_id,
+                                        "sg_public_ingress",
                                     )
                                 )
 
@@ -149,6 +162,7 @@ class IaCSecurityGate:
                             "iac_security_gate",
                             "S3 bucket is missing PublicAccessBlockConfiguration.",
                             resource_id,
+                            "s3_public_access_block",
                         )
                     )
                 else:
@@ -165,6 +179,7 @@ class IaCSecurityGate:
                                     "iac_security_gate",
                                     f"S3 bucket public access guard {key} is not set to true.",
                                     resource_id,
+                                    "s3_public_access_block",
                                 )
                             )
                 access_control = props.get("AccessControl")
@@ -175,6 +190,7 @@ class IaCSecurityGate:
                             "iac_security_gate",
                             "S3 bucket ACL is public.",
                             resource_id,
+                            "s3_public_acl",
                         )
                     )
 
@@ -196,6 +212,7 @@ class IaCSecurityGate:
                                     "iac_security_gate",
                                     "IAM policy allows Action=* and Resource=*.",
                                     resource_id,
+                                    "iam_wildcard",
                                 )
                             )
 
@@ -207,6 +224,7 @@ class IaCSecurityGate:
                             "iac_security_gate",
                             "RDS instance storage encryption is disabled.",
                             resource_id,
+                            "rds_encryption",
                         )
                     )
 
@@ -218,10 +236,21 @@ class IaCSecurityGate:
                             "iac_security_gate",
                             "EBS volume encryption is disabled.",
                             resource_id,
+                            "ebs_encryption",
                         )
                     )
 
-        return findings
+        # Deduplicate within heuristic findings: one finding per
+        # (resource_id, category) so a security group with N open ingress
+        # rules does not emit N identical findings.
+        seen_heuristic: set[tuple[str, str]] = set()
+        unique_findings: list[dict[str, Any]] = []
+        for f in findings:
+            hkey = (str(f.get("resource_id", "")), str(f.get("category", "")))
+            if hkey not in seen_heuristic:
+                seen_heuristic.add(hkey)
+                unique_findings.append(f)
+        return unique_findings
 
     def evaluate(
         self,
@@ -236,6 +265,7 @@ class IaCSecurityGate:
         run_id: str | None = None,
         region: str | None = None,
         stack_name: str | None = None,
+        profile_name: str | None = None,
     ) -> dict[str, Any]:
         """Evaluate synthesized CDK templates and return a gate report dict.
 
@@ -258,24 +288,39 @@ class IaCSecurityGate:
             findings.extend(file_findings)
 
         # --- External scanners ---
-        checkov_findings, checkov_status = run_checkov(cdk_out_dir, enabled=use_checkov)
+        checkov_findings, checkov_status = run_checkov(cdk_out_dir, enabled=use_checkov, template_files=templates)
         cfn_lint_findings, cfn_lint_status = run_cfn_lint(templates, enabled=use_cfn_lint)
 
-        # Merge all findings then deduplicate within the same source.
-        # Cross-source duplicates are intentionally preserved so each tool's
-        # signal contributes independently to the score.
+        # Merge all findings then deduplicate across sources.
+        # Key: (resource_id, template, category) — category groups semantically
+        # equivalent checks from different tools (e.g. heuristic SSH + CKV_AWS_24).
+        # Resolution: keep the highest severity; merge source labels when tied.
+        # Findings without a category fall back to their message string so they
+        # are never incorrectly merged with unrelated findings.
         all_findings = findings + checkov_findings + cfn_lint_findings
-        seen: set[tuple[str, str, str]] = set()
-        deduped: list[dict[str, Any]] = []
+        groups: dict[tuple[str, str, str], dict[str, Any]] = {}
         for f in all_findings:
             key = (
-                str(f.get("source", "")),
                 str(f.get("resource_id", "")),
-                str(f.get("message", "")),
+                str(f.get("template", "")),
+                str(f.get("category") or f.get("message", "")),
             )
-            if key not in seen:
-                seen.add(key)
-                deduped.append(f)
+            existing = groups.get(key)
+            if existing is None:
+                groups[key] = dict(f)
+            else:
+                f_rank = _SEVERITY_ORDER.get(str(f.get("severity", "low")).lower(), 1)
+                ex_rank = _SEVERITY_ORDER.get(str(existing.get("severity", "low")).lower(), 1)
+                if f_rank > ex_rank:
+                    # Higher severity wins; preserve merged source label.
+                    merged_source = f"{f['source']}+{existing['source']}"
+                    groups[key] = dict(f)
+                    groups[key]["source"] = merged_source
+                elif f_rank == ex_rank:
+                    # Same severity — merge source labels only.
+                    existing["source"] = f"{existing['source']}+{f['source']}"
+                # else: incoming severity is lower — discard, keep existing.
+        deduped = list(groups.values())
 
         # --- Scanner warnings for checkov / cfn-lint ---
         scanner_warnings: list[str] = []
@@ -311,7 +356,7 @@ class IaCSecurityGate:
                 scanner_warnings.append("infracost disabled by caller.")
 
         # --- AWS Config violations ---
-        config_analysis = fetch_violations(region=region, stack_name=stack_name, enabled=use_aws_config)
+        config_analysis = fetch_violations(region=region, stack_name=stack_name, enabled=use_aws_config, profile_name=profile_name)
         if aws_config_violations is not None:
             # Explicit override from caller — use it directly.
             effective_config_violations = int(aws_config_violations)
@@ -334,9 +379,9 @@ class IaCSecurityGate:
 
         cost_score = 0
         if effective_cost_delta > 50:
-            cost_score = 40
+            cost_score = 10
         elif effective_cost_delta > 10:
-            cost_score = 15
+            cost_score = 5
 
         config_score = max(0, effective_config_violations) * 5
         total_score = int(severity_score + cost_score + config_score)

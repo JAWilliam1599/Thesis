@@ -122,20 +122,20 @@ path = gate.save_report(report, run_id="my_run")
 ### Scoring and Decisions
 
 - Severity points:
-  - `critical`: 30
+  - `critical`: 20
   - `high`: 10
   - `medium`: 5
   - `low`: 1
 - Cost adjustment:
-  - `cost_delta_usd > $10`: +15
-  - `cost_delta_usd > $50`: +40
+  - `cost_delta_usd > $10`: +5
+  - `cost_delta_usd > $50`: +10
 - AWS Config adjustment:
   - `aws_config_violations × 5`
 
 Decision thresholds:
 - `0–20`: `pass`
-- `21–60`: `review`
-- `> 60`: `reject`
+- `21–80`: `review`
+- `> 80`: `reject`
 
 ## Integration with CDK Pipeline
 

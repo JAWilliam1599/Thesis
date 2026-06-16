@@ -32,6 +32,31 @@ _SEVERITY_MAP: dict[str, str] = {
     "UNKNOWN": "medium",
 }
 
+# Map Checkov check IDs to semantic categories shared with iac_security_gate
+# heuristics so cross-source deduplication can collapse overlapping findings.
+# Unmapped check IDs use the check ID itself as the category.
+_CHECKOV_CATEGORY_MAP: dict[str, str] = {
+    "CKV_AWS_24": "sg_ssh_open",
+    "CKV_AWS_25": "sg_rdp_open",
+    "CKV_AWS_260": "sg_public_ingress",
+    "CKV_AWS_88": "sg_public_ingress",
+    "CKV_AWS_18": "s3_access_logging",
+    "CKV_AWS_21": "s3_versioning",
+    "CKV_AWS_19": "s3_encryption",
+    "CKV_AWS_20": "s3_public_acl",
+    "CKV_AWS_53": "s3_public_access_block",
+    "CKV_AWS_54": "s3_public_access_block",
+    "CKV_AWS_55": "s3_public_access_block",
+    "CKV_AWS_56": "s3_public_access_block",
+    "CKV_AWS_116": "lambda_dlq",
+    "CKV_AWS_115": "lambda_concurrency",
+    "CKV_AWS_117": "lambda_vpc",
+    "CKV_AWS_16": "rds_encryption",
+    "CKV_AWS_17": "rds_public",
+    "CKV_AWS_211": "ebs_encryption",
+    "CKV_AWS_212": "ebs_encryption",
+}
+
 _SKIPPED_STATUS = "skipped"
 _OK_STATUS = "ok"
 _NOT_INSTALLED_STATUS = "not_installed"
@@ -60,7 +85,13 @@ def _extract_findings_from_result(result: dict[str, Any]) -> list[dict[str, Any]
         resource: str = str(check.get("resource", "unknown"))
         file_path: str = str(check.get("repo_file_path") or check.get("file_path") or "")
 
+        # Checkov emits resource as "AWS::Type.LogicalId"; normalise to bare
+        # logical ID so it matches the heuristic resource_id for cross-source dedup.
+        if "." in resource:
+            resource = resource.split(".", 1)[1]
+
         message = f"[{check_id}] {check_name}" if check_id else check_name
+        category = _CHECKOV_CATEGORY_MAP.get(check_id, check_id)
 
         findings.append(
             {
@@ -69,6 +100,7 @@ def _extract_findings_from_result(result: dict[str, Any]) -> list[dict[str, Any]
                 "message": message,
                 "resource_id": resource,
                 "template": Path(file_path).name if file_path else "unknown",
+                "category": category,
             }
         )
 
@@ -79,8 +111,15 @@ def run_checkov(
     cdk_out_dir: Path,
     *,
     enabled: bool = True,
+    template_files: list[Path] | None = None,
 ) -> tuple[list[dict[str, Any]], str]:
-    """Run checkov against *cdk_out_dir* and return (findings, status).
+    """Run checkov against specific template files and return (findings, status).
+
+    *template_files* is the list of template paths to scan (as returned by
+    IaCSecurityGate.collect_templates()).  When provided, checkov is invoked
+    once per file with ``--file`` so only the current generation is scanned,
+    not any stale templates that may exist in cdk_out_dir from a prior run.
+    Falls back to scanning the directory when *template_files* is not provided.
 
     Status values: "ok" | "skipped" | "not_installed" | "error"
 
@@ -90,6 +129,68 @@ def run_checkov(
     if not enabled:
         return [], _SKIPPED_STATUS
 
+    targets = template_files or []
+    if not targets:
+        # No specific files supplied — fall back to directory scan
+        return _run_checkov_on_dir(cdk_out_dir)
+
+    all_findings: list[dict[str, Any]] = []
+    encountered_not_installed = False
+    encountered_error = False
+
+    for template_path in targets:
+        cmd = [
+            _resolve_executable("checkov"),
+            "--file",
+            str(template_path),
+            "--framework",
+            "cloudformation",
+            "-o",
+            "json",
+            "--compact",
+            "--quiet",
+        ]
+        try:
+            proc = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=120,
+            )
+        except FileNotFoundError:
+            encountered_not_installed = True
+            break
+        except Exception:
+            encountered_error = True
+            continue
+
+        raw_output = proc.stdout.strip()
+        if not raw_output:
+            continue
+        try:
+            parsed = json.loads(raw_output)
+        except json.JSONDecodeError:
+            encountered_error = True
+            continue
+
+        if isinstance(parsed, list):
+            for result in parsed:
+                if isinstance(result, dict):
+                    all_findings.extend(_extract_findings_from_result(result))
+        elif isinstance(parsed, dict):
+            all_findings.extend(_extract_findings_from_result(parsed))
+
+    if encountered_not_installed:
+        return [], _NOT_INSTALLED_STATUS
+    if encountered_error and not all_findings:
+        return [], _ERROR_STATUS
+    return all_findings, _OK_STATUS
+
+
+def _run_checkov_on_dir(
+    cdk_out_dir: Path,
+) -> tuple[list[dict[str, Any]], str]:
+    """Legacy directory-scan fallback (used when no template_files provided)."""
     cmd = [
         _resolve_executable("checkov"),
         "-d",

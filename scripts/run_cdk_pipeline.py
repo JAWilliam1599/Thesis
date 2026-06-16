@@ -12,6 +12,8 @@ if str(ROOT_DIR) not in sys.path:
 
 from pipeline.cdk_pipeline import (
     can_deploy,
+    clear_cdk_out,
+    extract_stack_name,
     load_gate_report,
     run_bootstrap,
     run_cdk_command,
@@ -19,7 +21,12 @@ from pipeline.cdk_pipeline import (
     write_approval,
     write_rejection_record,
 )
+from pipeline.aws_credentials import get_session
 from pipeline.notifier import get_notifier
+from pipeline.ssm_store import list_monitored_stacks, read_gate_result, write_gate_result
+from pipeline.eventbridge_trigger import publish_gate_event
+from Monitor.cloudwatch_publisher import publish_gate_metrics, put_log_event
+from Monitor.stack_monitor import setup_stack_monitoring
 
 
 def parse_args() -> argparse.Namespace:
@@ -40,7 +47,55 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--prompt", default=None, help="Original CDK request (used with --regen-on-reject).")
     parser.add_argument("--regen-on-reject", action="store_true", help="On gate reject, invoke CDK regen loop instead of exiting.")
     parser.add_argument("--max-regen-attempts", type=int, default=2, help="Maximum regen loop attempts (default: 2, used with --regen-on-reject).")
+    parser.add_argument("--query-status", action="store_true", help="Print last gate result per stack from SSM and exit (read-only).")
     return parser.parse_args()
+
+
+def query_status_main() -> int:
+    """Print the last gate result per stack stored in SSM and exit."""
+    stacks = list_monitored_stacks()
+    if not stacks:
+        print("No stacks found in SSM under /syssecops/gate/ (SSM may be disabled or no runs recorded yet).")
+        return 0
+
+    header = f"{'STACK':<40} {'SCORE':<8} {'DECISION':<10} {'RUN_ID':<40}"
+    print(header)
+    print("-" * len(header))
+    for stack in stacks:
+        result = read_gate_result(stack) or {}
+        score = result.get("latest_score", "—")
+        decision = result.get("latest_decision", "—")
+        run_id = result.get("latest_run_id", "—")
+        print(f"{stack:<40} {score:<8} {decision:<10} {run_id:<40}")
+    return 0
+
+
+def _emit_gate_observability(
+    gate_report: dict,
+    stack_name: str,
+) -> None:
+    """Fire all Phase 4 observability calls after a gate evaluation.
+
+    All calls are non-blocking; failures are logged as warnings.
+    Skips silently when AWS credentials are not available (local dev mode).
+    """
+    if get_session() is None:
+        import logging
+        logging.getLogger(__name__).debug(
+            "Phase 4 observability skipped — no AWS credentials available."
+        )
+        return
+
+    run_id = gate_report.get("run_id", "")
+    score = gate_report.get("score", 0)
+    decision = gate_report.get("decision", "reject")
+    findings = gate_report.get("findings") or []
+    report_path = gate_report.get("report_path") or ""
+
+    write_gate_result(stack_name, run_id, score, decision, report_path)
+    publish_gate_event(run_id, stack_name, decision, score)
+    publish_gate_metrics(stack_name, run_id, score, decision, findings)
+    put_log_event(stack_name, run_id, gate_report)
 
 
 def approve_and_deploy_main(args: argparse.Namespace, project_dir: Path, env: dict) -> int:
@@ -59,6 +114,7 @@ def approve_and_deploy_main(args: argparse.Namespace, project_dir: Path, env: di
 
     decision = str(gate_report.get("decision", "reject")).lower()
     score = gate_report.get("score", 0)
+    _emit_gate_observability(gate_report, extract_stack_name(gate_report))
 
     if decision == "reject":
         print(json.dumps({
@@ -100,6 +156,9 @@ def approve_and_deploy_main(args: argparse.Namespace, project_dir: Path, env: di
             )
         except Exception:
             pass
+    if deploy_ok:
+        stack_name = extract_stack_name(gate_report)
+        setup_stack_monitoring(stack_name, project_dir / "cdk.out")
     return 0 if deploy_ok else 12
 
 
@@ -110,6 +169,10 @@ def main() -> int:
     if not project_dir.exists():
         print(f"ERROR: project directory not found: {project_dir}")
         return 2
+
+    # --- Query-status path: read-only SSM lookup ---
+    if args.query_status:
+        return query_status_main()
 
     env = os.environ.copy()
     env["PYTHONUNBUFFERED"] = "1"
@@ -124,6 +187,7 @@ def main() -> int:
         if bootstrap["return_code"] != 0:
             return 9
 
+    clear_cdk_out(project_dir)
     synth = run_cdk_command(project_dir, "synth", env=env)
     print(json.dumps({"stage": "synth", **synth}, indent=2))
     if synth["return_code"] != 0:
@@ -143,6 +207,9 @@ def main() -> int:
     report_path = gate_report.get("report_path")
     if report_path:
         print(json.dumps({"stage": "gate_report", "path": report_path}, indent=2))
+
+    # Phase 4 observability: SSM, EventBridge, CloudWatch metrics + logs
+    _emit_gate_observability(gate_report, extract_stack_name(gate_report))
 
     diff = run_cdk_command(project_dir, "diff", env=env)
     print(json.dumps({"stage": "diff", **diff}, indent=2))
@@ -210,6 +277,9 @@ def main() -> int:
             )
         except Exception:
             pass
+    if deploy_ok:
+        stack_name = extract_stack_name(gate_report)
+        setup_stack_monitoring(stack_name, project_dir / "cdk.out")
     return 0 if deploy_ok else 12
 
 

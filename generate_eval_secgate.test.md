@@ -570,3 +570,366 @@ ls -lh logs/gate_reports/ logs/approvals/ logs/rejections/
 ```
 
 Open one of each and verify the JSON structure is complete and consistent (`run_id` matches across gate report, approval/rejection record).
+
+
+# Test 4
+
+Read [](file:///home/astia/Documents/Thesis/Thesis/GeneratedCDK/app.py#1-1), lines 1 to 20
+
+Read [](file:///home/astia/Documents/Thesis/Thesis/GeneratedCDK/requirements.txt)
+
+Here's the full pipeline from generate to deploy:
+
+---
+
+## Full Pipeline: Generate → Eval → Synth → Gate → Deploy
+
+### Prerequisites
+
+```fish
+# Activate venv
+source .venv/bin/activate.fish
+
+# Confirm AWS creds
+aws sts get-caller-identity
+
+# Confirm CDK
+cdk --version
+```
+
+---
+
+### Step 1 — Generate CDK code with regen loop
+
+Use run_cdk_regen.py — this generates, synths, and gates in one loop, retrying on failure:
+
+```fish
+python AIgen/run_cdk_regen.py \
+  --prompt "Create an S3 bucket with versioning and encryption enabled" \
+  --project-dir GeneratedCDK \
+  --max-attempts 5 \
+  --provider openrouter \
+  --api-key sk-or-v1-...
+```
+
+**What it does:** generates code → writes to app.py → `cdk synth` → IaC gate → retry on synth fail or gate reject.
+
+**When it finishes successfully**, app.py already has the passing code. Skip to Step 3.
+
+**If all attempts fail**, check `logs/cdk_regen/<run_id>/` for the last attempt's error and fix the prompt.
+
+---
+
+### Step 2 — (Alternative) Generate separately, then copy
+
+If you want to use the main AIgen pipeline instead:
+
+```fish
+# Generate + eval (saves to ExecCode/generated_code.py)
+python AIgen/run_generation_and_eval.py \
+  --provider openrouter \
+  --prompt "Create an S3 bucket with versioning and encryption" \
+  --api-key sk-or-v1-...
+
+# Copy generated code into CDK project
+cp ExecCode/generated_code.py GeneratedCDK/app.py
+```
+
+---
+
+### Step 3 — Install CDK project dependencies
+
+Do this once, or whenever requirements.txt changes:
+
+```fish
+pip install -r GeneratedCDK/requirements.txt
+```
+
+---
+
+### Step 4 — Run the full CDK pipeline (synth → gate → diff → deploy)
+
+```fish
+# Dry run — gate only, no deploy
+python scripts/run_cdk_pipeline.py \
+  --project-dir GeneratedCDK \
+  --no-checkov --no-cfn-lint
+
+echo "Exit: $status"
+# 0  = gate passed
+# 21 = gate says review (add --manual-approve)
+# 22 = gate rejected
+```
+
+**If exit 21** (review band, score 21–60):
+
+```fish
+python scripts/run_cdk_pipeline.py \
+  --project-dir GeneratedCDK \
+  --no-checkov --no-cfn-lint \
+  --manual-approve
+```
+
+**If exit 22** (rejected, score > 60): the code has security findings. Either fix the prompt and re-run Step 1, or use `--regen-on-reject` (Step 5).
+
+---
+
+### Step 5 — (On reject) Auto-regen from the pipeline
+
+```fish
+python scripts/run_cdk_pipeline.py \
+  --project-dir GeneratedCDK \
+  --no-checkov --no-cfn-lint \
+  --regen-on-reject \
+  --max-regen-attempts 3 \
+  --prompt "Create an S3 bucket with versioning and encryption enabled" \
+  --provider openrouter \
+  --api-key sk-or-v1-...
+```
+
+This re-invokes the regen loop automatically on reject, passing gate findings back to the model.
+
+---
+
+### Step 6 — Bootstrap (first deploy only)
+
+Only needed once per AWS account/region:
+
+```fish
+python scripts/run_cdk_pipeline.py \
+  --project-dir GeneratedCDK \
+  --bootstrap \
+  --no-checkov --no-cfn-lint
+```
+
+---
+
+### Step 7 — Deploy
+
+```fish
+python scripts/run_cdk_pipeline.py \
+  --project-dir GeneratedCDK \
+  --no-checkov --no-cfn-lint \
+  --deploy
+```
+
+For a review-band stack:
+
+```fish
+python scripts/run_cdk_pipeline.py \
+  --project-dir GeneratedCDK \
+  --no-checkov --no-cfn-lint \
+  --manual-approve \
+  --deploy
+```
+
+**Deploy is automatically blocked if gate decision is `reject`.** You cannot add `--deploy` to bypass it.
+
+---
+
+### Step 8 — Verify audit trail
+
+```fish
+# Check all logs produced
+ls -lh logs/gate_reports/ logs/approvals/ logs/rejections/
+
+# View the latest gate report
+cat logs/gate_reports/(ls -t logs/gate_reports/ | head -1) | python -m json.tool | head -40
+```
+
+---
+
+### Quick reference — exit codes
+
+| Code | Meaning | Fix |
+|------|---------|-----|
+| `0` | Gate passed (or review approved) | — |
+| `9` | Bootstrap failed | Check AWS creds + account |
+| `10` | `cdk synth` failed | Fix code in app.py |
+| `11` | `cdk diff` failed | Check CDK env vars |
+| `12` | `cdk deploy` failed | Check CloudFormation console |
+| `21` | Review required | Add `--manual-approve` |
+| `22` | Rejected | Fix findings or use `--regen-on-reject` |
+
+
+
+# Test 5
+
+Read [](file:///home/astia/Documents/Thesis/Thesis/Monitor/cdk.json)
+
+Read [](file:///home/astia/Documents/Thesis/Thesis/AIgen/run_generation_and_eval.py#1-1), lines 1 to 50
+
+Searched for regex `argparse|add_argument|--prompt|--provider|--model` (`**/AIgen/run_generation_and_eval.py`), 20 results
+
+Searched for regex `argparse|add_argument|--prompt|--provider|--project-dir` (`**/AIgen/run_cdk_regen.py`), 18 results
+
+Here is the complete step-by-step pipeline from code generation to monitoring:
+
+---
+
+## Full Pipeline: Generate → Eval → Gate → Deploy → Monitor
+
+### Prerequisites (one-time)
+
+```bash
+# From project root
+cd /home/astia/Documents/Thesis/Thesis
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Set required env vars (add to your shell profile or .env)
+export AWS_DEFAULT_REGION=us-east-1
+export SNS_TOPIC_ARN=arn:aws:sns:us-east-1:<account>:<topic>   # optional but recommended
+export SSM_ENABLED=true
+export EVENTBRIDGE_ENABLED=true
+```
+
+---
+
+### Step 1 — Generate CDK code (AIgen)
+
+**Option A — Bedrock:**
+```bash
+cd AIgen
+python run_cdk_regen.py \
+  --prompt "Create an S3 bucket with versioning and encryption" \
+  --project-dir ../GeneratedCDK \
+  --provider bedrock \
+  --max-attempts 2
+```
+
+**Option B — OpenRouter:**
+```bash
+cd AIgen
+python run_cdk_regen.py \
+  --prompt "Create an S3 bucket with versioning and encryption" \
+  --project-dir ../GeneratedCDK \
+  --provider openrouter \
+  --api-key $OPENROUTER_API_KEY
+```
+
+Output lands in app.py.
+
+---
+
+### Step 2 — CDK bootstrap (first time only per account/region)
+
+```bash
+cd /home/astia/Documents/Thesis/Thesis
+python scripts/run_cdk_pipeline.py --project-dir GeneratedCDK --bootstrap
+```
+
+---
+
+### Step 3 — Synth + Security Gate (no deploy)
+
+```bash
+python scripts/run_cdk_pipeline.py --project-dir GeneratedCDK
+```
+
+This runs:
+1. `cdk synth` → writes templates to cdk.out
+2. Gate evaluation (Checkov + cfn-lint + heuristics) → saves report to `logs/gate_reports/gate_<run_id>.json`
+3. `cdk diff`
+4. Phase 4 observability fires automatically: SSM write, EventBridge event, CloudWatch metrics + log event
+
+Read the gate decision from the output JSON:
+- `"decision": "pass"` → safe to deploy
+- `"decision": "review"` → manual approval required
+- `"decision": "reject"` → fix findings, regenerate
+
+---
+
+### Step 4a — Deploy (gate passed)
+
+```bash
+python scripts/run_cdk_pipeline.py --project-dir GeneratedCDK --deploy
+```
+
+After `deploy_ok`, `setup_stack_monitoring()` fires automatically → creates CloudWatch Application Insights registration + explicit alarms on the deployed resources.
+
+---
+
+### Step 4b — Deploy (gate in review band, manual approval)
+
+```bash
+# Use the run_id printed in step 3's output
+python scripts/run_cdk_pipeline.py \
+  --project-dir GeneratedCDK \
+  --approve-run-id cdk_20260616T120000Z \
+  --deploy
+```
+
+---
+
+### Step 4c — Regenerate on reject
+
+```bash
+python scripts/run_cdk_pipeline.py \
+  --project-dir GeneratedCDK \
+  --regen-on-reject \
+  --prompt "Create an S3 bucket with versioning and encryption" \
+  --max-regen-attempts 2
+```
+
+---
+
+### Step 5 — Deploy the ops-loop infra (one-time, after CDK bootstrap)
+
+```bash
+cd /home/astia/Documents/Thesis/Thesis/Monitor
+cdk deploy SysSecOpsOpsLoopStack
+```
+
+This provisions: Lambda drift detector, two EventBridge rules, CloudWatch alarms, and the SysSecOpsGate dashboard.
+
+---
+
+### Step 6 — Verify monitoring is live
+
+**Check SSM (latest gate result per stack):**
+```bash
+python scripts/run_cdk_pipeline.py --query-status
+```
+
+**Check CloudWatch metrics:**
+```bash
+aws cloudwatch get-metric-statistics \
+  --namespace SysSecOps/Gate \
+  --metric-name GateScore \
+  --start-time $(date -u -d '1 hour ago' +%FT%TZ) \
+  --end-time $(date -u +%FT%TZ) \
+  --period 300 \
+  --statistics Maximum
+```
+
+**Check CloudWatch Logs (full gate report):**
+```bash
+aws logs get-log-events \
+  --log-group-name /syssecops/gate/<stack_name> \
+  --log-stream-name <run_id>
+```
+
+**Open the CloudWatch dashboard:**
+```
+AWS Console → CloudWatch → Dashboards → SysSecOpsGate
+```
+
+**Check Application Insights (post-deploy resource monitoring):**
+```bash
+aws application-insights describe-application \
+  --resource-group-name syssecops-<stack_name>
+```
+
+---
+
+### Full automated flow (synth + gate + deploy in one command)
+
+```bash
+python scripts/run_cdk_pipeline.py \
+  --project-dir GeneratedCDK \
+  --deploy \
+  --regen-on-reject \
+  --prompt "Create an S3 bucket with versioning and encryption"
+```

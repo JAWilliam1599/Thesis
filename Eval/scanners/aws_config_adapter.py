@@ -13,6 +13,9 @@ Status values returned:
 """
 from __future__ import annotations
 
+import json
+import os
+import subprocess
 from typing import Any
 
 
@@ -24,11 +27,37 @@ _ERROR_STATUS = "error"
 _SKIPPED_STATUS = "skipped"
 
 
+def _cli_credential_session(boto3: Any, profile_name: str | None, region: str | None) -> Any:
+    """Return a boto3.Session with explicit credentials obtained via the AWS CLI.
+
+    Uses ``aws configure export-credentials --format process`` which supports
+    credential types that botocore cannot resolve natively (e.g. IAM Identity
+    Center 'login' sessions).  Returns None if the CLI call fails.
+    """
+    cmd = ["aws", "configure", "export-credentials", "--format", "process"]
+    if profile_name:
+        cmd += ["--profile", profile_name]
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
+        if result.returncode != 0:
+            return None
+        data = json.loads(result.stdout)
+        return boto3.Session(
+            aws_access_key_id=data["AccessKeyId"],
+            aws_secret_access_key=data["SecretAccessKey"],
+            aws_session_token=data.get("SessionToken"),
+            region_name=region,
+        )
+    except Exception:
+        return None
+
+
 def fetch_violations(
     region: str | None = None,
     stack_name: str | None = None,  # reserved for future stack-scoped filtering
     *,
     enabled: bool = True,
+    profile_name: str | None = None,
 ) -> dict[str, Any]:
     """Fetch non-compliant AWS Config rule count for the given region.
 
@@ -49,7 +78,13 @@ def fetch_violations(
 
     try:
         import boto3
-        from botocore.exceptions import ClientError, EndpointResolutionError, NoCredentialsError
+        from botocore.exceptions import (
+            ClientError,
+            CredentialRetrievalError,
+            EndpointResolutionError,
+            NoCredentialsError,
+            ProfileNotFound,
+        )
     except ImportError:
         return {
             "status": _NOT_INSTALLED_STATUS,
@@ -59,7 +94,27 @@ def fetch_violations(
         }
 
     try:
-        client = boto3.client("config", region_name=region)
+        effective_profile = profile_name or os.environ.get("AWS_PROFILE")
+        session = boto3.Session(profile_name=effective_profile)
+
+        # boto3 cannot natively resolve some AWS CLI credential types (e.g.
+        # IAM Identity Center 'login' sessions stored via aws sso login).
+        # Fall back to the CLI exporter to get explicit short-lived credentials.
+        if session.get_credentials() is None:
+            session = _cli_credential_session(boto3, effective_profile, region)
+            if session is None:
+                return {
+                    "status": _NO_CREDENTIALS_STATUS,
+                    "violation_count": 0,
+                    "non_compliant_rules": [],
+                    "message": (
+                        "boto3 could not resolve credentials and "
+                        "'aws configure export-credentials' also failed. "
+                        "Ensure your AWS session is active (e.g. aws sso login)."
+                    ),
+                }
+
+        client = session.client("config", region_name=region)
         paginator = client.get_paginator("describe_compliance_by_config_rule")
         pages = paginator.paginate(ComplianceTypes=["NON_COMPLIANT"])
 
@@ -77,12 +132,12 @@ def fetch_violations(
             "message": f"{len(non_compliant)} non-compliant rule(s) found.",
         }
 
-    except NoCredentialsError:
+    except (NoCredentialsError, CredentialRetrievalError, ProfileNotFound) as exc:
         return {
             "status": _NO_CREDENTIALS_STATUS,
             "violation_count": 0,
             "non_compliant_rules": [],
-            "message": "AWS credentials not found — Config check skipped.",
+            "message": f"AWS credentials not available — Config check skipped: {exc}",
         }
     except ClientError as exc:
         code = exc.response.get("Error", {}).get("Code", "")

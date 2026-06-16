@@ -1,16 +1,30 @@
 {
   "version": "53.0.0",
   "files": {
-    "a72673fe9c2d0eda7ab336f2cfc61275d8accd53c7b0158dde3916703fc0b1b6": {
+    "faa95a81ae7d7373f3e1f242268f904eb748d8d0fdd306e8a6fe515a1905a7d6": {
+      "displayName": "S3BucketStack/Custom::S3AutoDeleteObjectsCustomResourceProvider Code",
+      "source": {
+        "path": "asset.faa95a81ae7d7373f3e1f242268f904eb748d8d0fdd306e8a6fe515a1905a7d6",
+        "packaging": "zip"
+      },
+      "destinations": {
+        "current_account-current_region-e31788a2": {
+          "bucketName": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}",
+          "objectKey": "faa95a81ae7d7373f3e1f242268f904eb748d8d0fdd306e8a6fe515a1905a7d6.zip",
+          "assumeRoleArn": "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/cdk-hnb659fds-file-publishing-role-${AWS::AccountId}-${AWS::Region}"
+        }
+      }
+    },
+    "7083dba7efb14a4016eba8c454ab6ef62b33359ddb1e5a4d5864029d602a82b7": {
       "displayName": "S3BucketStack Template",
       "source": {
         "path": "S3BucketStack.template.json",
         "packaging": "file"
       },
       "destinations": {
-        "current_account-current_region-e9583f42": {
+        "current_account-current_region-dc72d110": {
           "bucketName": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}",
-          "objectKey": "a72673fe9c2d0eda7ab336f2cfc61275d8accd53c7b0158dde3916703fc0b1b6.json",
+          "objectKey": "7083dba7efb14a4016eba8c454ab6ef62b33359ddb1e5a4d5864029d602a82b7.json",
           "assumeRoleArn": "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/cdk-hnb659fds-file-publishing-role-${AWS::AccountId}-${AWS::Region}"
         }
       }

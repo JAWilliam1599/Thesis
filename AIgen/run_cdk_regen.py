@@ -34,7 +34,7 @@ ROOT_DIR = Path(__file__).resolve().parents[1]
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
-from pipeline.cdk_pipeline import run_cdk_command, run_iac_gate
+from pipeline.cdk_pipeline import clear_cdk_out, run_cdk_command, run_iac_gate
 
 logger = logging.getLogger(__name__)
 
@@ -91,7 +91,7 @@ def build_cdk_regen_prompt(
 
     return (
         f"The previous CDK code failed the IaC security gate (attempt {attempt}).\n"
-        f"Gate decision: {decision} | Score: {score} (threshold: pass ≤ 20, review ≤ 60, reject > 60)\n\n"
+        f"Gate decision: {decision} | Score: {score} (threshold: pass ≤ 20, review ≤ 80, reject > 80)\n\n"
         f"Original user request:\n{original_prompt}\n\n"
         f"Security gate findings that must be fixed:\n{findings_text}\n\n"
         "Requirements:\n"
@@ -217,13 +217,14 @@ def run_cdk_regen_loop(
     current_prompt = (
         f"Generate a complete AWS CDK Python application for this request:\n{original_prompt}\n\n"
         "Requirements:\n"
-        "1) Return only Python code.\n"
-        "2) Include App(), at least one Stack, and app.synth().\n"
-        "3) No input() at import time or in Stack.__init__.\n"
-        "4) Apply least-privilege IAM; no wildcard actions on sensitive resources.\n"
-        "5) Encrypt stateful resources by default.\n"
-        "6) Do not expose SSH/RDP to 0.0.0.0/0.\n"
-        "7) The app must synthesize non-interactively with `cdk synth`."
+        "1) Return only Python code — no markdown, no commentary, no triple backticks.\n"
+        "2) Define EXACTLY ONE Stack class. Do not define multiple stacks or helper stacks.\n"
+        "3) Include a single App() instantiation, instantiate only that one Stack, and call app.synth().\n"
+        "4) No input() at import time or in Stack.__init__.\n"
+        "5) Apply least-privilege IAM; no wildcard actions on sensitive resources.\n"
+        "6) Encrypt stateful resources by default.\n"
+        "7) Do not expose SSH/RDP to 0.0.0.0/0.\n"
+        "8) The app must synthesize non-interactively with `cdk synth`."
     )
 
     gate_report: dict[str, Any] = {}
@@ -253,6 +254,10 @@ def run_cdk_regen_loop(
         # Write code to CDK project
         app_py = project_dir / "app.py"
         app_py.write_text(code, encoding="utf-8")
+
+        # Clear stale cdk.out templates before synth so the gate only sees
+        # templates from the current app.py, not leftovers from prior attempts.
+        clear_cdk_out(project_dir)
 
         # Run synth
         synth = run_cdk_command(project_dir, "synth")

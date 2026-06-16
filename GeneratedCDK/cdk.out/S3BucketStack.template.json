@@ -1,6 +1,6 @@
 {
  "Resources": {
-  "SecureBucket1ED1C5CE": {
+  "MyBucketF68F3FF0": {
    "Type": "AWS::S3::Bucket",
    "Properties": {
     "BucketEncryption": {
@@ -12,46 +12,50 @@
       }
      ]
     },
-    "BucketName": "qwuagspivhvajwegf",
-    "PublicAccessBlockConfiguration": {
-     "BlockPublicAcls": true,
-     "BlockPublicPolicy": true,
-     "IgnorePublicAcls": true,
-     "RestrictPublicBuckets": true
-    },
+    "Tags": [
+     {
+      "Key": "aws-cdk:auto-delete-objects",
+      "Value": "true"
+     }
+    ],
     "VersioningConfiguration": {
      "Status": "Enabled"
     }
    },
-   "UpdateReplacePolicy": "Retain",
-   "DeletionPolicy": "Retain",
+   "UpdateReplacePolicy": "Delete",
+   "DeletionPolicy": "Delete",
    "Metadata": {
-    "aws:cdk:path": "S3BucketStack/SecureBucket/Resource"
+    "aws:cdk:path": "S3BucketStack/MyBucket/Resource"
    }
   },
-  "SecureBucketPolicy18EDC062": {
+  "MyBucketPolicyE7FBAC7B": {
    "Type": "AWS::S3::BucketPolicy",
    "Properties": {
     "Bucket": {
-     "Ref": "SecureBucket1ED1C5CE"
+     "Ref": "MyBucketF68F3FF0"
     },
     "PolicyDocument": {
      "Statement": [
       {
-       "Action": "s3:*",
-       "Condition": {
-        "Bool": {
-         "aws:SecureTransport": "false"
-        }
-       },
-       "Effect": "Deny",
+       "Action": [
+        "s3:PutBucketPolicy",
+        "s3:GetBucket*",
+        "s3:List*",
+        "s3:DeleteObject*"
+       ],
+       "Effect": "Allow",
        "Principal": {
-        "AWS": "*"
+        "AWS": {
+         "Fn::GetAtt": [
+          "CustomS3AutoDeleteObjectsCustomResourceProviderRole3B1BD092",
+          "Arn"
+         ]
+        }
        },
        "Resource": [
         {
          "Fn::GetAtt": [
-          "SecureBucket1ED1C5CE",
+          "MyBucketF68F3FF0",
           "Arn"
          ]
         },
@@ -61,7 +65,7 @@
           [
            {
             "Fn::GetAtt": [
-             "SecureBucket1ED1C5CE",
+             "MyBucketF68F3FF0",
              "Arn"
             ]
            },
@@ -76,13 +80,101 @@
     }
    },
    "Metadata": {
-    "aws:cdk:path": "S3BucketStack/SecureBucket/Policy/Resource"
+    "aws:cdk:path": "S3BucketStack/MyBucket/Policy/Resource"
+   }
+  },
+  "MyBucketAutoDeleteObjectsCustomResource2C28D565": {
+   "Type": "Custom::S3AutoDeleteObjects",
+   "Properties": {
+    "ServiceToken": {
+     "Fn::GetAtt": [
+      "CustomS3AutoDeleteObjectsCustomResourceProviderHandler9D90184F",
+      "Arn"
+     ]
+    },
+    "BucketName": {
+     "Ref": "MyBucketF68F3FF0"
+    }
+   },
+   "DependsOn": [
+    "MyBucketPolicyE7FBAC7B"
+   ],
+   "UpdateReplacePolicy": "Delete",
+   "DeletionPolicy": "Delete",
+   "Metadata": {
+    "aws:cdk:path": "S3BucketStack/MyBucket/AutoDeleteObjectsCustomResource/Default"
+   }
+  },
+  "CustomS3AutoDeleteObjectsCustomResourceProviderRole3B1BD092": {
+   "Type": "AWS::IAM::Role",
+   "Properties": {
+    "AssumeRolePolicyDocument": {
+     "Version": "2012-10-17",
+     "Statement": [
+      {
+       "Action": "sts:AssumeRole",
+       "Effect": "Allow",
+       "Principal": {
+        "Service": "lambda.amazonaws.com"
+       }
+      }
+     ]
+    },
+    "ManagedPolicyArns": [
+     {
+      "Fn::Sub": "arn:${AWS::Partition}:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+     }
+    ]
+   },
+   "Metadata": {
+    "aws:cdk:path": "S3BucketStack/Custom::S3AutoDeleteObjectsCustomResourceProvider/Role"
+   }
+  },
+  "CustomS3AutoDeleteObjectsCustomResourceProviderHandler9D90184F": {
+   "Type": "AWS::Lambda::Function",
+   "Properties": {
+    "Code": {
+     "S3Bucket": {
+      "Fn::Sub": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}"
+     },
+     "S3Key": "faa95a81ae7d7373f3e1f242268f904eb748d8d0fdd306e8a6fe515a1905a7d6.zip"
+    },
+    "Timeout": 900,
+    "MemorySize": 128,
+    "Handler": "index.handler",
+    "Role": {
+     "Fn::GetAtt": [
+      "CustomS3AutoDeleteObjectsCustomResourceProviderRole3B1BD092",
+      "Arn"
+     ]
+    },
+    "Runtime": "nodejs22.x",
+    "Description": {
+     "Fn::Join": [
+      "",
+      [
+       "Lambda function for auto-deleting objects in ",
+       {
+        "Ref": "MyBucketF68F3FF0"
+       },
+       " S3 bucket."
+      ]
+     ]
+    }
+   },
+   "DependsOn": [
+    "CustomS3AutoDeleteObjectsCustomResourceProviderRole3B1BD092"
+   ],
+   "Metadata": {
+    "aws:cdk:path": "S3BucketStack/Custom::S3AutoDeleteObjectsCustomResourceProvider/Handler",
+    "aws:asset:path": "asset.faa95a81ae7d7373f3e1f242268f904eb748d8d0fdd306e8a6fe515a1905a7d6",
+    "aws:asset:property": "Code"
    }
   },
   "CDKMetadata": {
    "Type": "AWS::CDK::Metadata",
    "Properties": {
-    "Analytics": "v2:deflate64:H4sIAAAAAAAA/zPSMzI11zNQTCwv1k1OydbNyUzSqw4uSUzO1kksL44vNtardipNzk4t0XFOy4OyIFRAfk5mciVCGMKvBQn4l5YUlJbU6gRUlmTk5+kb6xma6JkqZhVnZuoWleaVZOam6gVBaACPtJbYfwAAAA=="
+    "Analytics": "v2:deflate64:H4sIAAAAAAAA/5WMyw6CMBBFv0XWpSpqTNz52ENkaYwpddQRaA0zFQnh343URF26mjs5955IRrO5HA1UTaE+5mGBmWxTVjoXqqYDTWS7cjoHFuuT8WnXBiU+0ASL4Hv1rveIpK8uHdsNFMAQZ1fQTEG3Fx4ltkDdfKz+/8PtBykrhhJMr+7E2hHbcgtkXaXhZf/kH5RU9o5HqFaKQCyJgFNWZzTn1yZ2fHPciaThizXDiRxP5WxwJcSwcoaxBLn19wkQR7y6PwEAAA=="
    },
    "Metadata": {
     "aws:cdk:path": "S3BucketStack/CDKMetadata/Default"
@@ -92,9 +184,8 @@
  },
  "Outputs": {
   "BucketName": {
-   "Description": "Name of the created S3 bucket",
    "Value": {
-    "Ref": "SecureBucket1ED1C5CE"
+    "Ref": "MyBucketF68F3FF0"
    }
   }
  },

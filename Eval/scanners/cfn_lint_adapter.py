@@ -31,6 +31,14 @@ _SEVERITY_MAP: dict[str, str] = {
     "unknown": "medium",
 }
 
+# Map cfn-lint rule IDs to semantic categories shared with iac_security_gate
+# heuristics so cross-source deduplication can collapse overlapping findings.
+# Unmapped rule IDs use the rule ID itself as the category.
+_CFN_LINT_CATEGORY_MAP: dict[str, str] = {
+    "W3045": "s3_public_acl",
+    "W3005": "cfn_lint_dependency",
+}
+
 _SKIPPED_STATUS = "skipped"
 _OK_STATUS = "ok"
 _NOT_INSTALLED_STATUS = "not_installed"
@@ -83,6 +91,7 @@ def _parse_cfn_lint_output(
 
         full_message = f"[{rule_id}] {message}" if rule_id else message
         resource_id = _resource_id_from_location(location)
+        category = _CFN_LINT_CATEGORY_MAP.get(rule_id, rule_id)
 
         findings.append(
             {
@@ -91,6 +100,7 @@ def _parse_cfn_lint_output(
                 "message": full_message,
                 "resource_id": resource_id,
                 "template": template_name,
+                "category": category,
             }
         )
 

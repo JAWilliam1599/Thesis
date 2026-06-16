@@ -3,13 +3,19 @@
     {
       "type": "aws:cdk:creationStack",
       "data": [
-        "Kernel._Kernel_create (/tmp/tmp7tupjceo/lib/program.js:1:61224)",
-        "Kernel.create (/tmp/tmp7tupjceo/lib/program.js:1:51955)",
-        "KernelHost.processRequest (/tmp/tmp7tupjceo/lib/program.js:1:212065)",
-        "KernelHost.run (/tmp/tmp7tupjceo/lib/program.js:1:211120)",
-        "Immediate._onImmediate (/tmp/tmp7tupjceo/lib/program.js:1:211164)",
+        "Kernel._Kernel_create (/tmp/tmp78wv20x0/lib/program.js:1:61224)",
+        "Kernel.create (/tmp/tmp78wv20x0/lib/program.js:1:51955)",
+        "KernelHost.processRequest (/tmp/tmp78wv20x0/lib/program.js:1:212065)",
+        "KernelHost.run (/tmp/tmp78wv20x0/lib/program.js:1:211120)",
+        "Immediate._onImmediate (/tmp/tmp78wv20x0/lib/program.js:1:211164)",
         "...node internals..."
       ]
+    }
+  ],
+  "/S3BucketStack/Custom::S3AutoDeleteObjectsCustomResourceProvider": [
+    {
+      "type": "aws:cdk:is-custom-resource-handler-customResourceProvider",
+      "data": true
     }
   ],
   "/S3BucketStack/BucketName": [
@@ -20,11 +26,11 @@
     {
       "type": "aws:cdk:creationStack",
       "data": [
-        "Kernel._Kernel_create (/tmp/tmp7tupjceo/lib/program.js:1:61224)",
-        "Kernel.create (/tmp/tmp7tupjceo/lib/program.js:1:51955)",
-        "KernelHost.processRequest (/tmp/tmp7tupjceo/lib/program.js:1:212065)",
-        "KernelHost.run (/tmp/tmp7tupjceo/lib/program.js:1:211120)",
-        "Immediate._onImmediate (/tmp/tmp7tupjceo/lib/program.js:1:211164)",
+        "Kernel._Kernel_create (/tmp/tmp78wv20x0/lib/program.js:1:61224)",
+        "Kernel.create (/tmp/tmp78wv20x0/lib/program.js:1:51955)",
+        "KernelHost.processRequest (/tmp/tmp78wv20x0/lib/program.js:1:212065)",
+        "KernelHost.run (/tmp/tmp78wv20x0/lib/program.js:1:211120)",
+        "Immediate._onImmediate (/tmp/tmp78wv20x0/lib/program.js:1:211164)",
         "...node internals..."
       ]
     }
@@ -38,7 +44,7 @@
       "type": "aws:cdk:creationStack",
       "data": [
         "...App.synth in aws-cdk-lib...",
-        "/tmp/tmp7tupjceo/lib/program.js:1:542 (/tmp/tmp7tupjceo/lib/program.js:1:5429)"
+        "/tmp/tmp78wv20x0/lib/program.js:1:542 (/tmp/tmp78wv20x0/lib/program.js:1:5429)"
       ]
     }
   ],
@@ -51,25 +57,57 @@
       "type": "aws:cdk:creationStack",
       "data": [
         "...App.synth in aws-cdk-lib...",
-        "/tmp/tmp7tupjceo/lib/program.js:1:542 (/tmp/tmp7tupjceo/lib/program.js:1:5429)"
+        "/tmp/tmp78wv20x0/lib/program.js:1:542 (/tmp/tmp78wv20x0/lib/program.js:1:5429)"
       ]
     }
   ],
-  "/S3BucketStack/SecureBucket/Resource": [
+  "/S3BucketStack/MyBucket/Resource": [
     {
       "type": "aws:cdk:logicalId",
-      "data": "SecureBucket1ED1C5CE"
+      "data": "MyBucketF68F3FF0"
     },
     {
       "type": "aws:cdk:creationStack",
       "data": [
         "...new Bucket2 in aws-cdk-lib...",
-        "Kernel._Kernel_create (/tmp/tmp7tupjceo/lib/program.js:1:61224)",
-        "Kernel.create (/tmp/tmp7tupjceo/lib/program.js:1:51955)",
-        "KernelHost.processRequest (/tmp/tmp7tupjceo/lib/program.js:1:212065)",
-        "KernelHost.run (/tmp/tmp7tupjceo/lib/program.js:1:211120)",
-        "Immediate._onImmediate (/tmp/tmp7tupjceo/lib/program.js:1:211164)",
+        "Kernel._Kernel_create (/tmp/tmp78wv20x0/lib/program.js:1:61224)",
+        "Kernel.create (/tmp/tmp78wv20x0/lib/program.js:1:51955)",
+        "KernelHost.processRequest (/tmp/tmp78wv20x0/lib/program.js:1:212065)",
+        "KernelHost.run (/tmp/tmp78wv20x0/lib/program.js:1:211120)",
+        "Immediate._onImmediate (/tmp/tmp78wv20x0/lib/program.js:1:211164)",
         "...node internals..."
+      ]
+    },
+    {
+      "type": "aws:cdk:analytics:mixin",
+      "data": {
+        "mixin": "aws-cdk-lib.aws_s3.mixins.BucketAutoDeleteObjects"
+      }
+    }
+  ],
+  "/S3BucketStack/Custom::S3AutoDeleteObjectsCustomResourceProvider/Role": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "CustomS3AutoDeleteObjectsCustomResourceProviderRole3B1BD092"
+    },
+    {
+      "type": "aws:cdk:creationStack",
+      "data": [
+        "...aws-cdk-lib...",
+        "(no user code in 10 frames, use --stack-trace-limit to capture more)"
+      ]
+    }
+  ],
+  "/S3BucketStack/Custom::S3AutoDeleteObjectsCustomResourceProvider/Handler": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "CustomS3AutoDeleteObjectsCustomResourceProviderHandler9D90184F"
+    },
+    {
+      "type": "aws:cdk:creationStack",
+      "data": [
+        "...aws-cdk-lib...",
+        "(no user code in 10 frames, use --stack-trace-limit to capture more)"
       ]
     }
   ],
@@ -82,9 +120,9 @@
       "type": "aws:cdk:creationStack",
       "data": [
         "...App.synth in aws-cdk-lib...",
-        "/tmp/tmp7tupjceo/lib/program.js:1:542 (/tmp/tmp7tupjceo/lib/program.js:1:5429)",
-        "Kernel._Kernel_ensureSync (/tmp/tmp7tupjceo/lib/program.js:1:69840)",
-        "Kernel.invoke (/tmp/tmp7tupjceo/lib/program.js:1:54245)"
+        "/tmp/tmp78wv20x0/lib/program.js:1:542 (/tmp/tmp78wv20x0/lib/program.js:1:5429)",
+        "Kernel._Kernel_ensureSync (/tmp/tmp78wv20x0/lib/program.js:1:69840)",
+        "Kernel.invoke (/tmp/tmp78wv20x0/lib/program.js:1:54245)"
       ]
     }
   ],
@@ -97,23 +135,43 @@
       "type": "aws:cdk:creationStack",
       "data": [
         "...App.synth in aws-cdk-lib...",
-        "/tmp/tmp7tupjceo/lib/program.js:1:542 (/tmp/tmp7tupjceo/lib/program.js:1:5429)",
-        "Kernel._Kernel_ensureSync (/tmp/tmp7tupjceo/lib/program.js:1:69840)",
-        "Kernel.invoke (/tmp/tmp7tupjceo/lib/program.js:1:54245)"
+        "/tmp/tmp78wv20x0/lib/program.js:1:542 (/tmp/tmp78wv20x0/lib/program.js:1:5429)",
+        "Kernel._Kernel_ensureSync (/tmp/tmp78wv20x0/lib/program.js:1:69840)",
+        "Kernel.invoke (/tmp/tmp78wv20x0/lib/program.js:1:54245)"
       ]
     }
   ],
-  "/S3BucketStack/SecureBucket/Policy/Resource": [
+  "/S3BucketStack/MyBucket/Policy/Resource": [
     {
       "type": "aws:cdk:logicalId",
-      "data": "SecureBucketPolicy18EDC062"
+      "data": "MyBucketPolicyE7FBAC7B"
     },
     {
       "type": "aws:cdk:creationStack",
       "data": [
         "...new Bucket2 in aws-cdk-lib...",
-        "Kernel._Kernel_create (/tmp/tmp7tupjceo/lib/program.js:1:61224)",
-        "Kernel.create (/tmp/tmp7tupjceo/lib/program.js:1:51955)"
+        "Kernel._Kernel_create (/tmp/tmp78wv20x0/lib/program.js:1:61224)",
+        "Kernel.create (/tmp/tmp78wv20x0/lib/program.js:1:51955)",
+        "KernelHost.processRequest (/tmp/tmp78wv20x0/lib/program.js:1:212065)"
+      ]
+    },
+    {
+      "type": "aws:cdk:analytics:mixin",
+      "data": {
+        "mixin": "aws-cdk-lib.aws_s3.mixins.BucketPolicyStatements"
+      }
+    }
+  ],
+  "/S3BucketStack/MyBucket/AutoDeleteObjectsCustomResource/Default": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "MyBucketAutoDeleteObjectsCustomResource2C28D565"
+    },
+    {
+      "type": "aws:cdk:creationStack",
+      "data": [
+        "...aws-cdk-lib...",
+        "(no user code in 10 frames, use --stack-trace-limit to capture more)"
       ]
     }
   ]

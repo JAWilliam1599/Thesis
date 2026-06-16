@@ -86,6 +86,32 @@ def run_cdk_command(project_dir: Path, command_name: str, env: dict[str, str] | 
     }
 
 
+def clear_cdk_out(project_dir: Path) -> None:
+    """Delete all synthesized CloudFormation template files from cdk.out.
+
+    Removes only *.template.json files (and manifest.json / tree.json) so that
+    stale templates from a previous app.py generation are never picked up by the
+    gate or any scanner on the next synth.  The directory itself is preserved so
+    CDK does not need to recreate it.
+
+    Safe to call before every `cdk synth` — CDK always regenerates the full
+    output regardless.
+    """
+    import shutil
+
+    cdk_out = project_dir / "cdk.out"
+    if not cdk_out.is_dir():
+        return
+    for item in cdk_out.iterdir():
+        try:
+            if item.is_dir():
+                shutil.rmtree(item)
+            else:
+                item.unlink()
+        except Exception:
+            pass  # best-effort; synth will overwrite anyway
+
+
 def run_iac_gate(
     project_dir: Path,
     *,
@@ -136,6 +162,25 @@ def can_deploy(
 _DEFAULT_GATE_REPORTS_DIR = Path(__file__).resolve().parents[1] / "logs" / "gate_reports"
 _DEFAULT_APPROVALS_DIR = Path(__file__).resolve().parents[1] / "logs" / "approvals"
 _DEFAULT_REJECTIONS_DIR = Path(__file__).resolve().parents[1] / "logs" / "rejections"
+
+
+def extract_stack_name(gate_report: dict[str, Any]) -> str:
+    """Derive a stack name from a gate report.
+
+    Uses the first template filename in gate_report["inputs"]["templates"],
+    stripping the ".template.json" suffix.  Falls back to the run_id if no
+    templates are present.
+    """
+    templates: list[str] = (gate_report.get("inputs") or {}).get("templates") or []
+    if templates:
+        name = templates[0]
+        for suffix in (".template.json", ".json"):
+            if name.endswith(suffix):
+                name = name[: -len(suffix)]
+                break
+        # Strip any leading directory components returned in some CDK versions
+        return Path(name).name
+    return gate_report.get("run_id") or "unknown"
 
 
 def load_gate_report(run_id: str, log_dir: Path | None = None) -> dict[str, Any]:
