@@ -2,8 +2,16 @@ import argparse
 import json
 import os
 import re
+import sys
 from pathlib import Path
 from urllib import error, request
+
+if str(Path(__file__).resolve().parents[1]) not in sys.path:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from env_bootstrap import load_env
+
+load_env()
 
 DEFAULT_MODEL_ID = os.getenv("OPENROUTER_MODEL_ID", "qwen/qwen3-coder-30b-a3b-instruct")
 DEFAULT_API_URL = os.getenv("OPENROUTER_API_URL", "https://openrouter.ai/api/v1/chat/completions")

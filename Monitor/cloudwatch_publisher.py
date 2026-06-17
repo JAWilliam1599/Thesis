@@ -72,33 +72,30 @@ def publish_gate_metrics(
         {"Name": "StackName", "Value": stack_name},
         {"Name": "RunId", "Value": run_id},
     ]
-
-    metric_data = [
-        {
-            "MetricName": "GateScore",
-            "Dimensions": dimensions,
-            "Value": float(score),
-            "Unit": "None",
-        },
-        {
-            "MetricName": "GateDecision",
-            "Dimensions": dimensions,
-            "Value": float(decision_value),
-            "Unit": "None",
-        },
-        {
-            "MetricName": "CriticalFindings",
-            "Dimensions": dimensions,
-            "Value": float(critical_count),
-            "Unit": "Count",
-        },
-        {
-            "MetricName": "HighFindings",
-            "Dimensions": dimensions,
-            "Value": float(high_count),
-            "Unit": "Count",
-        },
+    stack_dimensions = [
+        {"Name": "StackName", "Value": stack_name},
     ]
+
+    # Publish at three dimension granularities:
+    #   1. StackName + RunId  — per-run drilldown
+    #   2. StackName only     — per-stack trend
+    #   3. No dimensions      — aggregate; required by the dashboard and alarms
+    #      (CloudWatch treats each dimension set as a distinct metric series, so
+    #      the dashboard/alarms that specify no dimensions would otherwise never
+    #      receive any data points.)
+    def _make_points(dims: list[dict]) -> list[dict]:
+        return [
+            {"MetricName": "GateScore",        "Dimensions": dims, "Value": float(score),          "Unit": "None"},
+            {"MetricName": "GateDecision",     "Dimensions": dims, "Value": float(decision_value), "Unit": "None"},
+            {"MetricName": "CriticalFindings", "Dimensions": dims, "Value": float(critical_count), "Unit": "Count"},
+            {"MetricName": "HighFindings",     "Dimensions": dims, "Value": float(high_count),     "Unit": "Count"},
+        ]
+
+    metric_data = (
+        _make_points(dimensions)
+        + _make_points(stack_dimensions)
+        + _make_points([])
+    )
 
     try:
         client = _get_client("cloudwatch")

@@ -192,7 +192,12 @@ def _handle_cloudformation_event(event: dict[str, Any]) -> None:
 
     # Extract stack name from ARN: arn:aws:cloudformation:...:stack/{name}/{id}
     stack_name = stack_id
-    if "/stack/" in stack_id:
+    if ":stack/" in stack_id:
+        try:
+            stack_name = stack_id.split(":stack/")[1].split("/")[0]
+        except IndexError:
+            pass
+    elif "/stack/" in stack_id:
         try:
             stack_name = stack_id.split("/stack/")[1].split("/")[0]
         except IndexError:

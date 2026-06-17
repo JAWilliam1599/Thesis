@@ -4,7 +4,13 @@ import importlib.util
 import json
 import logging
 import os
+import sys
 from pathlib import Path
+
+if str(Path(__file__).resolve().parents[1]) not in sys.path:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from env_bootstrap import load_env
 
 from botocore.exceptions import BotoCoreError, ClientError
 
@@ -220,6 +226,7 @@ def build_regen_prompt(original_prompt: str, report: dict, attempt_number: int) 
 
 
 def main() -> int:
+    load_env()
     evaluator = load_evaluator_module()
     args = parse_args()
     runtime_id = build_runtime_id()

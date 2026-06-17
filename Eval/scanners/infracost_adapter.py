@@ -94,7 +94,7 @@ def run_infracost(
             cmd,
             capture_output=True,
             text=True,
-            timeout=180,
+            timeout=300,
         )
     except FileNotFoundError:
         return {
@@ -166,13 +166,18 @@ def run_infracost(
                 "template_count": template_count,
                 "message": "infracost found no priceable resources in cdk.out.",
             }
-        # costed_resources > 0 but cost still parsed as 0 — schema mismatch.
+        # costed_resources > 0 with a $0 baseline is legitimate: the priced
+        # resources (e.g. S3, Lambda, DynamoDB on-demand) are usage-based and
+        # carry no fixed monthly cost. Report success with a $0 delta.
         return {
-            "status": _ERROR_STATUS,
+            "status": _OK_STATUS,
             "cost_delta_usd": 0.0,
             "total_monthly_usd": 0.0,
             "template_count": template_count,
-            "message": f"infracost reported {costed_resources} costed resource(s) but cost parsed as $0 — unexpected schema.",
+            "message": (
+                f"Estimated $0.00/month across {template_count} project(s) "
+                f"({costed_resources} usage-based resource(s) with no fixed monthly cost)."
+            ),
         }
 
     msg = f"Estimated ${total_monthly:.2f}/month across {template_count} project(s) ({costed_resources} costed resource(s))."

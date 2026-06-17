@@ -35,6 +35,7 @@ if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
 from pipeline.cdk_pipeline import clear_cdk_out, run_cdk_command, run_iac_gate
+from env_bootstrap import load_env
 
 logger = logging.getLogger(__name__)
 
@@ -356,6 +357,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> int:
+    load_env()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     args = parse_args()
     project_dir = Path(args.project_dir).resolve()

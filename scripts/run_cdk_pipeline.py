@@ -2,13 +2,48 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import os
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
+
+from env_bootstrap import load_env
+
+load_env()
+
+logger = logging.getLogger("cdk_pipeline")
+
+_LOG_DIR = ROOT_DIR / "logs"
+
+
+def _make_run_id() -> str:
+    return "cdk_" + datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+
+
+def _configure_logger(log_path: Path, verbose: bool) -> None:
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    logger.setLevel(logging.INFO)
+    logger.propagate = False
+
+    for handler in logger.handlers[:]:
+        logger.removeHandler(handler)
+        handler.close()
+
+    formatter = logging.Formatter("%(asctime)s %(levelname)s %(message)s")
+
+    file_handler = logging.FileHandler(log_path, encoding="utf-8")
+    file_handler.setFormatter(formatter)
+    logger.addHandler(file_handler)
+
+    if verbose:
+        stream_handler = logging.StreamHandler()
+        stream_handler.setFormatter(formatter)
+        logger.addHandler(stream_handler)
 
 from pipeline.cdk_pipeline import (
     can_deploy,
@@ -48,6 +83,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--regen-on-reject", action="store_true", help="On gate reject, invoke CDK regen loop instead of exiting.")
     parser.add_argument("--max-regen-attempts", type=int, default=2, help="Maximum regen loop attempts (default: 2, used with --regen-on-reject).")
     parser.add_argument("--query-status", action="store_true", help="Print last gate result per stack from SSM and exit (read-only).")
+    parser.add_argument("--log-file", default=None, help="Override log file path (default: logs/cdk_pipeline_<run_id>.log).")
+    parser.add_argument("--verbose", action="store_true", help="Also print log output to stderr in addition to the log file.")
     return parser.parse_args()
 
 
@@ -174,6 +211,13 @@ def main() -> int:
     if args.query_status:
         return query_status_main()
 
+    # --- Initialise file logger ---
+    run_id = args.run_id or _make_run_id()
+    args.run_id = run_id
+    log_path = Path(args.log_file) if args.log_file else _LOG_DIR / f"cdk_pipeline_{run_id}.log"
+    _configure_logger(log_path, getattr(args, "verbose", False))
+    logger.info("run_id=%s project_dir=%s log=%s", run_id, project_dir, log_path)
+
     env = os.environ.copy()
     env["PYTHONUNBUFFERED"] = "1"
 
@@ -184,13 +228,17 @@ def main() -> int:
     if args.bootstrap:
         bootstrap = run_bootstrap(project_dir, env=env)
         print(json.dumps({"stage": "bootstrap", **bootstrap}, indent=2))
+        logger.info("stage=bootstrap return_code=%s", bootstrap.get("return_code"))
         if bootstrap["return_code"] != 0:
+            logger.error("bootstrap failed: %s", bootstrap.get("stderr", "")[:400])
             return 9
 
     clear_cdk_out(project_dir)
     synth = run_cdk_command(project_dir, "synth", env=env)
     print(json.dumps({"stage": "synth", **synth}, indent=2))
+    logger.info("stage=synth return_code=%s", synth.get("return_code"))
     if synth["return_code"] != 0:
+        logger.error("synth failed: %s", synth.get("stderr", "")[:400])
         return 10
 
     gate_report = run_iac_gate(
@@ -201,9 +249,16 @@ def main() -> int:
         use_cfn_lint=not args.no_cfn_lint,
         use_infracost=not args.no_infracost,
         use_aws_config=not args.no_aws_config,
-        run_id=args.run_id,
+        run_id=run_id,
     )
     print(json.dumps({"stage": "gate", "gate": gate_report}, indent=2))
+    logger.info(
+        "stage=gate decision=%s score=%s findings=%d report=%s",
+        gate_report.get("decision"),
+        gate_report.get("score"),
+        len(gate_report.get("findings") or []),
+        gate_report.get("report_path"),
+    )
     report_path = gate_report.get("report_path")
     if report_path:
         print(json.dumps({"stage": "gate_report", "path": report_path}, indent=2))
@@ -213,11 +268,14 @@ def main() -> int:
 
     diff = run_cdk_command(project_dir, "diff", env=env)
     print(json.dumps({"stage": "diff", **diff}, indent=2))
+    logger.info("stage=diff return_code=%s", diff.get("return_code"))
     if diff["return_code"] != 0:
+        logger.error("diff failed: %s", diff.get("stderr", "")[:400])
         return 11
 
     allowed, reason = can_deploy(gate_report, manual_review_approved=args.manual_approve)
     print(json.dumps({"stage": "decision", "allowed": allowed, "reason": reason}, indent=2))
+    logger.info("stage=decision allowed=%s reason=%s", allowed, reason)
 
     # Write approval record when --manual-approve is used on a review-band decision
     if args.manual_approve and allowed and str(gate_report.get("decision", "")).lower() == "review":
@@ -252,14 +310,18 @@ def main() -> int:
         if args.regen_on_reject and args.prompt:
             from AIgen.run_cdk_regen import run_cdk_regen_loop
             print(json.dumps({"stage": "regen", "status": "starting", "max_attempts": args.max_regen_attempts}, indent=2))
+            logger.info("stage=regen status=starting max_attempts=%d", args.max_regen_attempts)
             regen_result = run_cdk_regen_loop(
                 original_prompt=args.prompt,
                 project_dir=project_dir,
                 max_attempts=args.max_regen_attempts,
             )
             print(json.dumps({"stage": "regen", **regen_result}, indent=2))
-            return 0 if regen_result.get("success") else 22
+            regen_success = regen_result.get("success")
+            logger.info("stage=regen success=%s attempts=%s", regen_success, regen_result.get("attempts"))
+            return 0 if regen_success else 22
 
+        logger.warning("stage=reject regen_skipped=True prompt_provided=%s", bool(args.prompt))
         return 22
 
     if not args.deploy:
