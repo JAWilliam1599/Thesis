@@ -209,3 +209,6 @@ Eval/dependency-check/plugins/
 # Downloaded archives
 dependency-check-*.zip
 *.zip
+
+# Backup folder
+Backup/
