@@ -1,13 +1,23 @@
-# ExecComponent - Runtime Execution Utilities
+# ExecComponent — Runtime Execution Utilities
 
 ## Purpose
 
-`ExecComponent/exec_code.py` provides subprocess-based execution helpers used by UI and pipeline modules for:
-- running generated Python code
-- running CDK shell commands (`cdk synth`, `cdk diff`, `cdk deploy`)
-- streaming command output to the UI
+`ExecComponent/exec_code.py` provides the subprocess-based execution backbone used by the
+pipeline to:
+- run AWS CDK shell commands (`cdk synth`, `cdk diff`, `cdk deploy`, `cdk bootstrap`)
+- run generated Python files
+- stream merged stdout/stderr output line-by-line for live UI rendering
 
-## Main APIs
+It is the execution layer between **Zone 1** outputs and **Zone 2** decisions: the
+`return_code` it returns drives gate and deploy decisions and Phase 4 observability calls.
+
+## Files
+
+| File | Role |
+|---|---|
+| `exec_code.py` | `exec_code` class: subprocess helpers + (legacy) project scaffolding |
+
+## The `exec_code` class
 
 ### `exec_code.start_command(command, cwd=None, env=None)`
 
@@ -40,9 +50,9 @@ print(result["output"])
 
 ## Where It Is Used
 
-- `pipeline/cdk_pipeline.py` for CDK CLI execution
-- `ui/cdk_control.py` for non-blocking CDK command streaming in Streamlit
-- pipeline/runtime code paths that execute generated files
+- `pipeline/cdk_pipeline.py` — all CDK CLI execution (`run_cdk_command`, `run_bootstrap`)
+- `AIgen/run_cdk_regen.py` — indirectly via the pipeline helpers during the regen loop
+- runtime code paths that execute generated files
 
 ## Behavioral Contract
 

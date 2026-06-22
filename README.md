@@ -4,20 +4,19 @@ This repository implements a practical subset of the SysSecOps model, with a CDK
 
 ## End-to-End Flow
 
-1. Generate IaC-oriented Python code (`AIgen/`)
-2. Evaluate generated code for quality/security (`Eval/`)
-3. Prepare CDK project in `GeneratedCDK/`
-4. Clear `cdk.out/` to prevent stale template accumulation
-5. Run `cdk synth`
-6. Run IaC security gate — heuristics + Checkov + cfn-lint + Infracost + AWS Config (`Eval/iac_security_gate.py`)
-7. Persist gate report to `logs/gate_reports/`
-8. **Phase 4:** Emit gate observability — SSM persist + EventBridge event + CloudWatch metrics + CloudWatch logs
-9. Run `cdk diff`
-10. Allow `cdk deploy` only when gate decision allows it
-11. Send SNS notification on review / reject / deploy outcome
-12. Write approval or rejection record to `logs/approvals/` or `logs/rejections/`
-13. **Phase 4:** Attach 3-layer security monitoring to deployed stack (Application Insights + metric alarms + CloudTrail/VPC flow alarms)
-14. On reject, optionally auto-regen CDK code and retry (`AIgen/run_cdk_regen.py`)
+1. Generate synthesizable CDK (Python) code from a prompt (`AIgen/`)
+2. Write the generated app to `GeneratedCDK/app.py`
+3. Clear `cdk.out/` to prevent stale template accumulation
+4. Run `cdk synth`
+5. Run IaC security gate — heuristics + Checkov + cfn-lint + Infracost + AWS Config (`Eval/iac_security_gate.py`)
+6. Persist gate report to `logs/gate_reports/`
+7. **Phase 4:** Emit gate observability — SSM persist + EventBridge event + CloudWatch metrics + CloudWatch logs
+8. Run `cdk diff`
+9. Allow `cdk deploy` only when the gate decision allows it
+10. Send SNS notification on review / reject / deploy outcome
+11. Write approval or rejection record to `logs/approvals/` or `logs/rejections/`
+12. **Phase 4:** Attach 3-layer security monitoring to deployed stack (Application Insights + metric alarms + CloudTrail/VPC flow alarms)
+13. On reject, optionally auto-regen CDK code and retry (`AIgen/run_cdk_regen.py`)
 
 This aligns with Zone 1 and Zone 2 in `SysSecOps-hybrid-with-RiskScringEngine-integrated-to-IaCSecurityGate.md`.
 
@@ -48,7 +47,8 @@ This aligns with Zone 1 and Zone 2 in `SysSecOps-hybrid-with-RiskScringEngine-in
 | `logs/rejections/` | Persisted rejection records with top findings |
 | `logs/cdk_regen/` | Per-run artifacts from CDK regen loop (prompts, code, gate reports) |
 | `ExecComponent/` | Safe subprocess execution helpers |
-| `ExecCode/` | Generated code outputs and per-run artifacts |
+| `Monitor/` | Phase 4 ops-loop + observability CDK stacks and runtime helpers |
+| `ui/` | Streamlit operator console (modular package) |
 
 ## Quick Start
 
@@ -89,10 +89,11 @@ Optional if using OpenRouter:
 export OPENROUTER_API_KEY=<your_key>
 ```
 
-### 3. Generate and evaluate code
+### 3. Generate CDK code with the regen loop
 
 ```bash
-python AIgen/run_generation_and_eval.py --prompt "Generate a secure AWS CDK Python app"
+python AIgen/run_cdk_regen.py --prompt "Generate a secure AWS CDK Python app" \
+  --project-dir GeneratedCDK --provider bedrock --max-attempts 2
 ```
 
 ### 4. Run CDK pipeline with risk gate (CLI)
@@ -123,7 +124,7 @@ python scripts/run_cdk_pipeline.py --project-dir GeneratedCDK --manual-approve -
 | `--no-aws-config` | off | Skip AWS Config fetch |
 | `--no-checkov` | off | Skip Checkov scan |
 | `--no-cfn-lint` | off | Skip cfn-lint scan |
-| `--manual-approve` | off | Approve review-band score (21–60) |
+| `--manual-approve` | off | Approve review-band score (21–80) |
 | `--deploy` | off | Run `cdk deploy` if gate allows |
 | `--bootstrap` | off | Run `cdk bootstrap` first |
 | `--prompt` | — | Original CDK request (used with `--regen-on-reject`) |
@@ -207,22 +208,26 @@ Shows gate score trend, findings counts, and alarm status widgets.
 
 ## Streamlit UI
 
-Run:
+Run (use the project virtualenv — system Python lacks Streamlit):
 
 ```bash
-streamlit run ui_app.py
+.venv/bin/python -m streamlit run ui/main.py
+# or the backward-compatible shim:
+.venv/bin/python -m streamlit run ui_app.py
 ```
 
-The `CDK Deploy` tab supports:
-- preparing generated code as `GeneratedCDK/app.py`
-- running `cdk synth`
-- running the full gate (heuristics + Checkov + cfn-lint + Infracost + AWS Config)
-- persisting gate report automatically
-- running `cdk diff`
-- enforcing deploy gating with optional manual review approval for score 21–60
-- writing approval records (with AWS ARN) when the review toggle is checked
-- writing rejection records automatically on gate reject
-- sending SNS notifications on gate and deploy events (when `SNS_TOPIC_ARN` is set)
+The console drives the full pipeline through six tabs — **🔑 Login**, **🚀 Pipeline**,
+**📂 Results**, **📡 Monitor**, **🛡️ Security**, **⚙️ Settings**. The Pipeline tab has four
+sub-tabs (Generate + Gate → Review & Edit → Decision → Deploy) and supports:
+
+- generating CDK code from a natural-language prompt
+- editing `GeneratedCDK/app.py` and re-running `cdk synth` + the full gate
+- enforcing deploy gating with optional manual approval for the review band (21–80)
+- writing approval/rejection records and (when `SNS_TOPIC_ARN` is set) SNS notifications
+- live monitoring of SSM gate state and CloudWatch alarms
+
+Credentials entered in the Login tab are saved to `~/.aws/` and `.env`, then injected into
+subprocesses as environment variables. See [`ui/README.md`](ui/README.md) for details.
 
 ## IaC Risk Gate Model (Implemented)
 
@@ -239,14 +244,14 @@ Implemented in `Eval/iac_security_gate.py`.
 | AWS Config | `Eval/scanners/aws_config_adapter.py` | Graceful degradation |
 
 **Scoring:**
-- `CRITICAL × 30`, `HIGH × 10`, `MEDIUM × 5`, `LOW × 1`
-- `cost_delta_usd > $10`: +15 pts | `> $50`: +40 pts
+- `CRITICAL × 20`, `HIGH × 10`, `MEDIUM × 5`, `LOW × 1`
+- `cost_delta_usd > $10`: +5 pts | `> $50`: +10 pts
 - `aws_config_violations × 5` pts
 
 **Decision thresholds:**
 - `0–20`: `pass` — auto deploy allowed
-- `21–60`: `review` — manual approval required
-- `> 60`: `reject` — blocked
+- `21–80`: `review` — manual approval required
+- `> 80`: `reject` — blocked
 
 **Gate reports** are persisted to `logs/gate_reports/gate_<run_id>.json` on every run.
 
@@ -308,9 +313,14 @@ Artifacts: `logs/cdk_regen/<run_id>/attempt_<N>/` (prompt, code, gate report, sy
 
 ## Documentation Index
 
-- `AIgen/README.md` — generation providers and regen loop
-- `Eval/README.md` — gate scoring, scanner adapters, report structure
-- `ExecComponent/README.md` — subprocess execution helpers
-- `UI_README.md` — Streamlit UI guide
-- `PHASE4_REPORT.md` — detailed Phase 4 implementation report
-- `CDK-ONLY-NEXT-STEPS.md` — implementation roadmap (Phases 1–4)
+- [`THESIS_REPORT.md`](THESIS_REPORT.md) — comprehensive thesis report (architecture, methodology, evaluation)
+- [`AIgen/README.md`](AIgen/README.md) — generation providers and the CDK regen loop
+- [`Eval/README.md`](Eval/README.md) — gate scoring, scanner adapters, report structure
+- [`pipeline/README.md`](pipeline/README.md) — CDK orchestration + Phase 4 governance
+- [`Monitor/README.md`](Monitor/README.md) — ops loop, alarms, dashboards, 3-layer monitoring
+- [`ExecComponent/README.md`](ExecComponent/README.md) — subprocess execution helpers
+- [`scripts/README.md`](scripts/README.md) — pipeline CLI flags and return codes
+- [`ui/README.md`](ui/README.md) — Streamlit operator console
+- [`GeneratedCDK/README.md`](GeneratedCDK/README.md) — the CDK deployment target
+- [`PHASE4_REPORT.md`](PHASE4_REPORT.md) — detailed Phase 4 implementation report
+- [`CDK-ONLY-NEXT-STEPS.md`](CDK-ONLY-NEXT-STEPS.md) — implementation roadmap (Phases 1–4)

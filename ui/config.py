@@ -74,7 +74,13 @@ RETURN_CODE_MEANING = {
     12: "CDK deploy failed",
     21: "Gate requires manual review",
     22: "Gate rejected the deployment",
+    124: "Deploy timed out (no progress) — check the AWS console for the stack status",
 }
+
+# Max wall-clock time (seconds) for the deploy subprocess before the UI gives
+# up and kills it. Guards against a hung deploy leaving the UI spinning forever.
+# Generous by default since real CDK deploys can be long-running.
+DEPLOY_TIMEOUT_SECONDS = 2700  # 45 minutes
 
 # Scanner CLI names for availability checks
 SCANNERS = ["checkov", "cfn-lint", "infracost"]

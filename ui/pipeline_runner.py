@@ -12,7 +12,9 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
+import threading
 from datetime import datetime, timezone
+from queue import Empty, Queue
 from typing import Any, Callable
 
 from ui import config, credentials, helpers
@@ -47,11 +49,18 @@ def _build_env() -> dict[str, str]:
 def stream_subprocess(
     args: list[str],
     on_line: Callable[[str], None] | None = None,
+    timeout: float | None = None,
 ) -> tuple[int, str]:
     """Run a command from the repo root, streaming merged stdout/stderr.
 
     Returns ``(return_code, full_output)``. ``on_line`` is invoked per line
     for live UI updates when provided.
+
+    When ``timeout`` is set, the process is killed if it produces no completion
+    within that many seconds (wall-clock). A timeout yields return code 124 so
+    callers can distinguish a hang from a normal non-zero exit. A reader thread
+    is used so the wall-clock deadline is enforced even when the child emits no
+    output at all (e.g. a hung interactive prompt).
     """
     env = _build_env()
     lines: list[str] = []
@@ -59,18 +68,72 @@ def stream_subprocess(
         args,
         cwd=str(config.ROOT_DIR),
         env=env,
+        stdin=subprocess.DEVNULL,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,
         bufsize=1,
     )
     assert process.stdout is not None
-    for raw in process.stdout:
-        line = raw.rstrip("\n")
+
+    if timeout is None:
+        for raw in process.stdout:
+            line = raw.rstrip("\n")
+            lines.append(line)
+            if on_line is not None:
+                on_line(line)
+        process.wait()
+        return process.returncode, "\n".join(lines)
+
+    # Timeout path: drain stdout on a background thread so the main thread can
+    # enforce a wall-clock deadline even when no output arrives.
+    queue: Queue[str | None] = Queue()
+
+    def _reader() -> None:
+        try:
+            for raw in process.stdout:  # type: ignore[union-attr]
+                queue.put(raw)
+        finally:
+            queue.put(None)  # sentinel: stdout closed
+
+    reader = threading.Thread(target=_reader, daemon=True)
+    reader.start()
+
+    deadline = datetime.now(timezone.utc).timestamp() + timeout
+    stdout_done = False
+    while True:
+        remaining = deadline - datetime.now(timezone.utc).timestamp()
+        if remaining <= 0:
+            process.kill()
+            timeout_msg = (
+                f"[ui] Deploy exceeded {int(timeout)}s without completing — "
+                "killing the process. Check the AWS CloudFormation console for "
+                "the stack's real status (it may have rolled back)."
+            )
+            lines.append(timeout_msg)
+            if on_line is not None:
+                on_line(timeout_msg)
+            process.wait()
+            return 124, "\n".join(lines)
+        try:
+            item = queue.get(timeout=min(remaining, 1.0))
+        except Empty:
+            continue
+        if item is None:
+            stdout_done = True
+            break
+        line = item.rstrip("\n")
         lines.append(line)
         if on_line is not None:
             on_line(line)
-    process.wait()
+
+    if stdout_done:
+        try:
+            process.wait(timeout=max(deadline - datetime.now(timezone.utc).timestamp(), 0))
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait()
+            return 124, "\n".join(lines)
     return process.returncode, "\n".join(lines)
 
 
@@ -159,7 +222,9 @@ def run_deploy_stage(
     if manual_approve:
         args.append("--manual-approve")
 
-    return_code, logs = stream_subprocess(args, on_line)
+    return_code, logs = stream_subprocess(
+        args, on_line, timeout=config.DEPLOY_TIMEOUT_SECONDS
+    )
     return {"return_code": return_code, "logs": logs}
 
 

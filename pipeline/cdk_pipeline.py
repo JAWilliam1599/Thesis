@@ -72,12 +72,19 @@ def run_bootstrap(project_dir: Path, env: dict[str, str] | None = None) -> dict[
     }
 
 
-def run_cdk_command(project_dir: Path, command_name: str, env: dict[str, str] | None = None) -> dict[str, Any]:
+def run_cdk_command(
+    project_dir: Path,
+    command_name: str,
+    env: dict[str, str] | None = None,
+    line_handler=None,
+) -> dict[str, Any]:
     command = build_cdk_command(command_name)
     effective_env = resolve_cdk_env()
     if env:
         effective_env.update(env)
-    result = exec_code.run_command(command, cwd=str(project_dir), env=effective_env)
+    result = exec_code.run_command(
+        command, cwd=str(project_dir), env=effective_env, line_handler=line_handler
+    )
     return {
         "command": command,
         "command_name": command_name,

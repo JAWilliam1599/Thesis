@@ -1,84 +1,86 @@
-# AIgen - Zone 1 Generation Module
+# AIgen — Zone 1 Code Generation
 
 ## Purpose
 
-`AIgen/` is the Zone 1 entry point in the SysSecOps model: generate IaC-oriented Python code from prompts, then hand off to evaluation and CDK deployment gate.
+`AIgen/` is the **Zone 1** entry point in the SysSecOps model: it generates synthesizable
+AWS CDK (Python) code from a natural-language prompt, then drives the
+**generate → synth → gate → regenerate** feedback loop. Gate findings are injected back into
+the next prompt so the model remediates its own security issues.
 
 ## Files
 
 | File | Role |
 |---|---|
-| `bedrock_codegen.py` | Bedrock-based generation |
-| `openrouter_codegen.py` | OpenRouter-based generation |
-| `run_generation_and_eval.py` | Main orchestration: generate → evaluate → regenerate on failure |
-| `run_cdk_regen.py` | CDK-specific regen loop: generate → synth → gate → retry on reject |
+| `bedrock_codegen.py` | AWS Bedrock generation backend (Qwen 3 Coder 30B) |
+| `openrouter_codegen.py` | OpenRouter generation backend (HTTP); drop-in alternative to Bedrock |
+| `run_cdk_regen.py` | CDK regen loop: generate → synth → gate → retry on reject |
 
-## Typical Flow
-
-1. User prompt requests infrastructure code
-2. Provider generates Python output
-3. Output is stored in `ExecCode/`
-4. `Eval/` returns structured report (`score`, `approval`, `issues`, risk fields)
-5. On failure, regeneration includes report feedback
-6. On pass, output can be prepared for CDK stage (`GeneratedCDK/`)
-
-## CLI Usage
-
-Generate only:
-
-```bash
-python AIgen/bedrock_codegen.py --prompt "Create secure AWS CDK Python stack"
+```mermaid
+flowchart LR
+    P[prompt] --> R[run_cdk_regen.py]
+    R -->|provider=bedrock| B[bedrock_codegen.py]
+    R -->|provider=openrouter| O[openrouter_codegen.py]
+    B & O --> APP[GeneratedCDK/app.py]
+    APP -->|cdk synth| OUT[cdk.out]
+    OUT -->|run_iac_gate| G[Eval.iac_security_gate]
+    G -->|reject: inject findings| R
+    G -->|pass / review| DONE[logs/cdk_regen/&lt;run_id&gt;/passed]
 ```
 
-Generate + evaluate + optional regeneration:
+---
 
-```bash
-python AIgen/run_generation_and_eval.py --prompt "Create secure AWS CDK Python stack" --max-regen 2
-```
+## `bedrock_codegen.py` — Bedrock Backend
 
-Use OpenRouter provider:
+Generates Python code via the Bedrock runtime. Output is plain Python prefixed with an
+`# INSTRUCTIONS: … # END INSTRUCTIONS` block.
 
-```bash
-python AIgen/run_generation_and_eval.py --provider openrouter --prompt "Create secure AWS CDK Python stack"
-```
-
-## Key Options (`run_generation_and_eval.py`)
-
-| Option | Description |
+| Function | Purpose |
 |---|---|
-| `--provider` | `bedrock` or `openrouter` |
-| `--prompt` | Generation prompt |
-| `--model-id` | Provider model ID |
-| `--region` | AWS region for Bedrock |
-| `--api-key` | OpenRouter API key override |
-| `--fail-below` | Evaluation threshold for regeneration |
-| `--max-regen` | Max regeneration attempts |
-| `--deployment-context` | `public`, `internal`, `onprem`, `sandbox` |
-| `--verbose` | Detailed logs |
+| `build_user_prompt(user_request)` | Wraps the request with structured requirements |
+| `extract_instructions(code_text)` | Pulls the instruction block out of generated code |
+| `extract_code(raw_text)` | Strips markdown fences → pure Python |
+| `call_bedrock(user_request, model_id, region=None, max_tokens=1400)` | Raw generation call |
+| `validate_model_id(model_id, region=None)` | Raises `ValueError` if the model is unavailable |
+| `is_quota_throttling_error(exc)` / `format_bedrock_error(exc)` | Throttle detection / error formatting |
+| `save_code(code, output_path)` | Writes `.py` + `.instructions.txt` |
+| `generate_and_save(...)` / `parse_args()` / `main()` | End-to-end + CLI |
+
+- **Env:** `BEDROCK_MODEL_ID` (default `qwen.qwen3-coder-30b-a3b-v1:0`), `AWS_REGION`.
+- **Deps:** `boto3` (`bedrock-runtime`).
+
+---
+
+## `openrouter_codegen.py` — OpenRouter Backend
+
+Same generation contract as Bedrock, but over HTTP to the OpenRouter API. Used when direct
+Bedrock access is unavailable.
+
+| Function | Purpose |
+|---|---|
+| `call_openrouter(user_request, model_id, api_key, api_url=…, max_tokens=2400, temperature=0.2, …)` | HTTP generation call |
+| `build_user_prompt` / `extract_instructions` / `extract_code` | Shared prompt + parsing helpers |
+| `is_quota_throttling_message(text)` / `format_openrouter_http_error(status, details)` | Error handling |
+| `save_code` / `generate_and_save` / `parse_args` / `main` | End-to-end + CLI |
+
+- **Env:** `OPENROUTER_API_KEY` (required), `OPENROUTER_MODEL_ID`
+  (default `qwen/qwen3-coder-30b-a3b-instruct`), `OPENROUTER_API_URL`, optional
+  `OPENROUTER_APP_NAME` / `OPENROUTER_APP_URL`.
+- **Deps:** `urllib`, `env_bootstrap.load_env()`.
+
+---
 
 ## Provider Configuration
 
 - Bedrock uses `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_REGION`.
 - OpenRouter uses `OPENROUTER_API_KEY` (or `--api-key`).
-- Avoid hardcoded credentials.
-
-## Handoff Contract to Eval
-
-This module relies on stable report keys from `Eval/`:
-- `score`
-- `approval`
-- `risk_level`
-- `risk_score`
-- `issues`
-- `security_analysis`
-
-These fields feed both regeneration prompts and UI decisions.
+- Never hardcode credentials — they are read from the environment or `.env`.
 
 ## Outputs
 
-- Current artifact: `ExecCode/generated_code.py`
-- Run artifacts: `ExecCode/run_<timestamp>/` with `passed/` and `failed/` attempts
-- CDK regen artifacts: `logs/cdk_regen/<run_id>/attempt_<N>/` (prompt, code, gate report, synth output)
+- Standalone generation writes `<output_path>.py` + `<output_path>.instructions.txt`.
+- The CDK regen loop writes generated code to `GeneratedCDK/app.py` and per-attempt
+  artifacts to `logs/cdk_regen/<run_id>/attempt_<N>/` (prompt, code, gate report, synth output),
+  with the winning/losing attempt copied to `passed/` or `failed/`.
 
 ## CDK Regen Loop (`run_cdk_regen.py`)
 
@@ -129,12 +131,13 @@ python scripts/run_cdk_pipeline.py \
 
 Implemented (Phase 1 + Phase 3):
 - Zone 1 generation and feedback loop
-- Structured failure feedback for regeneration
-- CDK-specific regen loop with gate findings injected into prompts
-- Provider abstraction (Bedrock / OpenRouter) preserved across both loops
+- Structured failure feedback for regeneration (synth errors and gate findings)
+- CDK regen loop with gate findings injected into the next prompt
+- Provider abstraction (Bedrock / OpenRouter)
 
 Not yet fully implemented in this module:
 - strict prompt templates dedicated to CDK-only output format
 - deterministic generation contract for multi-file CDK apps
 
-Use `CDK-ONLY-NEXT-STEPS.md` in the repo root for implementation priorities.
+See [`../CDK-ONLY-NEXT-STEPS.md`](../CDK-ONLY-NEXT-STEPS.md) for implementation priorities
+and [`../THESIS_REPORT.md`](../THESIS_REPORT.md) for the full system context.

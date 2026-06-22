@@ -419,6 +419,18 @@ def _render_deploy_result() -> None:
     else:
         meaning = config.RETURN_CODE_MEANING.get(rc, "Unknown error")
         st.error(f"Deploy failed: {meaning}" + (f" (exit {rc})" if rc is not None else ""))
+        logs = st.session_state.get("pipeline_logs_deploy") or ""
+        if any(
+            marker in logs
+            for marker in ("ROLLBACK", "CREATE_FAILED", "UPDATE_FAILED", "DELETE_FAILED")
+        ):
+            st.warning(
+                "The stack appears to have **rolled back** in CloudFormation. "
+                "Review the deploy logs below for the failing resource, fix the "
+                "code in **2 · Review & Edit**, and re-run synth + gate before "
+                "deploying again. If the stack is stuck in `ROLLBACK_COMPLETE`, "
+                "delete it in the AWS console before redeploying."
+            )
 
     with st.expander("Deploy logs", expanded=rc != 0):
         st.code(st.session_state.get("pipeline_logs_deploy") or "(no logs)")

@@ -1,22 +1,32 @@
-# Eval - Zone 2 Security Gate and Scoring
+# Eval — Zone 2 Security Gate and Scoring
 
 ## Purpose
 
-`Eval/` implements Zone 2 in the SysSecOps model:
-- validate generated Python code
-- score risk and quality
-- gate CDK deployments via synthesized-template checks
+`Eval/` implements **Zone 2** in the SysSecOps model: it gates CDK deployments by analyzing
+the synthesized CloudFormation templates, aggregating findings from four independent
+scanners, deduplicating across sources, and producing a single **scored risk decision**
+(`pass` / `review` / `reject`).
 
 ## Files
 
 | File | Role |
 |---|---|
-| `main.py` | Evaluation coordinator |
-| `quickVal.py` | Syntax and heuristic checks |
-| `securityAnalysis.py` | Security scanner aggregation |
-| `riskScoring.py` | Risk scoring for generated code |
-| `evaluate_generated_code.py` | CLI entry point for code evaluation |
-| `iac_security_gate.py` | CDK synth template analyzer + deployment gate score |
+| `iac_security_gate.py` | CDK synth template analyzer + deployment gate scorer |
+| `scanners/` | Pluggable scanner adapters (Checkov, cfn-lint, Infracost, AWS Config) |
+| `dependency-check/` | Bundled OWASP Dependency-Check distribution (optional SCA tooling) |
+
+```mermaid
+flowchart TB
+    T[cdk.out/*.template.json] --> GATE[iac_security_gate.evaluate]
+    GATE --> H[heuristics]
+    GATE --> CK[checkov_adapter]
+    GATE --> CL[cfn_lint_adapter]
+    GATE --> IC[infracost_adapter]
+    GATE --> AC[aws_config_adapter]
+    H & CK & CL --> DEDUP[dedup by resource/template/category]
+    DEDUP & IC & AC --> SCORE[score → decision]
+    SCORE --> RPT[logs/gate_reports/gate_&lt;run_id&gt;.json]
+```
 
 ## Scanner Adapters (`Eval/scanners/`)
 
@@ -27,31 +37,18 @@
 | `infracost_adapter.py` | Infracost CLI | Phase 2 | `not_installed`, `not_supported`, `error` |
 | `aws_config_adapter.py` | AWS Config (boto3) | Phase 2 | `not_installed`, `no_credentials`, `not_configured`, `error` |
 
-All adapters return a dict with at minimum: `{status, message}` plus adapter-specific fields. The gate merges all findings and scores them together.
+All adapters return a dict with at minimum `{status, message}` plus adapter-specific fields,
+and never raise — a missing tool degrades to a `skipped`/`not_installed` status while the
+gate still proceeds.
 
-## A. Generated Code Evaluation
+| Adapter | Entry point | Normalization highlights |
+|---|---|---|
+| `checkov_adapter.py` | `run_checkov(cdk_out_dir, *, enabled=True, template_files=None)` | Per-file scan; maps check IDs → categories (`CKV_AWS_24`→`sg_ssh_open`); strips type prefix from resource IDs |
+| `cfn_lint_adapter.py` | `run_cfn_lint(template_files, *, enabled=True)` | Maps rule IDs → categories (`W3045`→`s3_public_acl`); `error`→high, `warning`→medium |
+| `infracost_adapter.py` | `run_infracost(cdk_out_dir, *, enabled=True)` | `infracost scan --json`; sums per-project monthly cost |
+| `aws_config_adapter.py` | `fetch_violations(region=None, stack_name=None, *, enabled=True, profile_name=None)` | `describe_compliance_by_config_rule(NON_COMPLIANT)`; SSO credential fallback |
 
-Evaluate generated Python file:
-
-```bash
-python Eval/evaluate_generated_code.py --file ExecCode/generated_code.py
-```
-
-With deployment context:
-
-```bash
-python Eval/evaluate_generated_code.py --file ExecCode/generated_code.py --deployment-context internal
-```
-
-Primary report keys consumed by pipeline/UI:
-- `score`
-- `approval`
-- `risk_level`
-- `risk_score`
-- `issues`
-- `security_analysis`
-
-## B. IaC Security Gate for CDK
+## A. IaC Security Gate for CDK
 
 `iac_security_gate.py` analyzes synthesized CloudFormation templates in `cdk.out` and returns a gate report.
 

@@ -88,6 +88,11 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def _stream_line(line: str, _output_lines: list) -> None:
+    """Echo each subprocess output line immediately for live UI streaming."""
+    print(line, end="", flush=True)
+
+
 def query_status_main() -> int:
     """Print the last gate result per stack stored in SSM and exit."""
     stacks = list_monitored_stacks()
@@ -181,7 +186,8 @@ def approve_and_deploy_main(args: argparse.Namespace, project_dir: Path, env: di
         return 0
 
     notifier = get_notifier()
-    deploy = run_cdk_command(project_dir, "deploy", env=env)
+    print(json.dumps({"stage": "deploy", "status": "started"}), flush=True)
+    deploy = run_cdk_command(project_dir, "deploy", env=env, line_handler=_stream_line)
     print(json.dumps({"stage": "deploy", **deploy}, indent=2))
     deploy_ok = deploy["return_code"] == 0
     if notifier:
@@ -327,7 +333,8 @@ def main() -> int:
     if not args.deploy:
         return 0
 
-    deploy = run_cdk_command(project_dir, "deploy", env=env)
+    print(json.dumps({"stage": "deploy", "status": "started"}), flush=True)
+    deploy = run_cdk_command(project_dir, "deploy", env=env, line_handler=_stream_line)
     print(json.dumps({"stage": "deploy", **deploy}, indent=2))
     deploy_ok = deploy["return_code"] == 0
     if notifier:
