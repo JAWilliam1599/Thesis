@@ -5,10 +5,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from Eval.scanners.ansible_lint_adapter import run_ansible_lint
 from Eval.scanners.aws_config_adapter import fetch_violations
 from Eval.scanners.checkov_adapter import run_checkov
 from Eval.scanners.cfn_lint_adapter import run_cfn_lint
 from Eval.scanners.infracost_adapter import run_infracost
+from Eval.scanners.secret_scan_adapter import run_secret_scan
 
 SEVERITY_POINTS = {
     "critical": 20,
@@ -71,6 +73,69 @@ def _new_finding(
         "message": message,
         "resource_id": resource_id,
         "category": category,
+    }
+
+
+def _dedupe_findings(all_findings: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Collapse semantically equivalent findings reported by multiple scanners.
+
+    Key: (resource_id, template, category) — category groups equivalent checks
+    from different tools (e.g. heuristic SSH + CKV_AWS_24, or an ansible-lint
+    rule + a secret-scan hit on the same line).  Resolution keeps the highest
+    severity and merges source labels when tied.  Findings without a category
+    fall back to their message string so unrelated findings are never merged.
+    """
+    groups: dict[tuple[str, str, str], dict[str, Any]] = {}
+    for f in all_findings:
+        key = (
+            str(f.get("resource_id", "")),
+            str(f.get("template", "")),
+            str(f.get("category") or f.get("message", "")),
+        )
+        existing = groups.get(key)
+        if existing is None:
+            groups[key] = dict(f)
+        else:
+            f_rank = _SEVERITY_ORDER.get(str(f.get("severity", "low")).lower(), 1)
+            ex_rank = _SEVERITY_ORDER.get(str(existing.get("severity", "low")).lower(), 1)
+            if f_rank > ex_rank:
+                merged_source = f"{f['source']}+{existing['source']}"
+                groups[key] = dict(f)
+                groups[key]["source"] = merged_source
+            elif f_rank == ex_rank:
+                existing["source"] = f"{existing['source']}+{f['source']}"
+            # else: incoming severity is lower — discard, keep existing.
+    return list(groups.values())
+
+
+def _score_findings(
+    deduped: list[dict[str, Any]],
+    *,
+    cost_delta_usd: float,
+    config_violations: int,
+) -> dict[str, Any]:
+    """Compute the risk score and decision from deduplicated findings.
+
+    Shared by the CloudFormation (CDK) and Ansible (on-prem) gate paths so both
+    use the identical severity weights, cost banding, and decision thresholds.
+    """
+    severity_score = sum(_severity_points(item.get("severity", "low")) for item in deduped)
+
+    cost_score = 0
+    if cost_delta_usd > 50:
+        cost_score = 10
+    elif cost_delta_usd > 10:
+        cost_score = 5
+
+    config_score = max(0, config_violations) * 5
+    total_score = int(severity_score + cost_score + config_score)
+
+    return {
+        "severity": severity_score,
+        "cost": cost_score,
+        "aws_config": config_score,
+        "total": total_score,
+        "decision": _decision(total_score),
     }
 
 
@@ -292,35 +357,8 @@ class IaCSecurityGate:
         cfn_lint_findings, cfn_lint_status = run_cfn_lint(templates, enabled=use_cfn_lint)
 
         # Merge all findings then deduplicate across sources.
-        # Key: (resource_id, template, category) — category groups semantically
-        # equivalent checks from different tools (e.g. heuristic SSH + CKV_AWS_24).
-        # Resolution: keep the highest severity; merge source labels when tied.
-        # Findings without a category fall back to their message string so they
-        # are never incorrectly merged with unrelated findings.
         all_findings = findings + checkov_findings + cfn_lint_findings
-        groups: dict[tuple[str, str, str], dict[str, Any]] = {}
-        for f in all_findings:
-            key = (
-                str(f.get("resource_id", "")),
-                str(f.get("template", "")),
-                str(f.get("category") or f.get("message", "")),
-            )
-            existing = groups.get(key)
-            if existing is None:
-                groups[key] = dict(f)
-            else:
-                f_rank = _SEVERITY_ORDER.get(str(f.get("severity", "low")).lower(), 1)
-                ex_rank = _SEVERITY_ORDER.get(str(existing.get("severity", "low")).lower(), 1)
-                if f_rank > ex_rank:
-                    # Higher severity wins; preserve merged source label.
-                    merged_source = f"{f['source']}+{existing['source']}"
-                    groups[key] = dict(f)
-                    groups[key]["source"] = merged_source
-                elif f_rank == ex_rank:
-                    # Same severity — merge source labels only.
-                    existing["source"] = f"{existing['source']}+{f['source']}"
-                # else: incoming severity is lower — discard, keep existing.
-        deduped = list(groups.values())
+        deduped = _dedupe_findings(all_findings)
 
         # --- Scanner warnings for checkov / cfn-lint ---
         scanner_warnings: list[str] = []
@@ -375,18 +413,17 @@ class IaCSecurityGate:
                 scanner_warnings.append("AWS Config check disabled by caller.")
 
         # --- Scoring ---
-        severity_score = sum(_severity_points(item.get("severity", "low")) for item in deduped)
+        score_parts = _score_findings(
+            deduped,
+            cost_delta_usd=effective_cost_delta,
+            config_violations=effective_config_violations,
+        )
+        severity_score = score_parts["severity"]
+        cost_score = score_parts["cost"]
+        config_score = score_parts["aws_config"]
+        total_score = score_parts["total"]
 
-        cost_score = 0
-        if effective_cost_delta > 50:
-            cost_score = 10
-        elif effective_cost_delta > 10:
-            cost_score = 5
-
-        config_score = max(0, effective_config_violations) * 5
-        total_score = int(severity_score + cost_score + config_score)
-
-        decision = _decision(total_score)
+        decision = score_parts["decision"]
 
         timestamp = datetime.now(tz=timezone.utc).isoformat()
 
@@ -422,6 +459,144 @@ class IaCSecurityGate:
             "findings": deduped,
             "cost_analysis": cost_analysis,
             "config_analysis": config_analysis,
+            "report_path": None,
+        }
+
+        if run_id:
+            result["report_path"] = self.save_report(result, run_id)
+
+        return result
+
+    # --- Ansible / on-prem path ---
+
+    def collect_ansible_files(
+        self,
+        ansible_dir: Path,
+        changed_files: list[Path] | None = None,
+    ) -> list[Path]:
+        """Return the YAML playbook/var files to scan on the Ansible path.
+
+        When *changed_files* is provided (git-scoped), it is filtered to the
+        YAML files under *ansible_dir*.  When None, every ``*.yml`` / ``*.yaml``
+        file under *ansible_dir* is returned (full scan).
+        """
+        exts = {".yml", ".yaml"}
+        if changed_files is not None:
+            files: list[Path] = []
+            for f in changed_files:
+                p = Path(f)
+                if p.suffix.lower() in exts and p.is_file():
+                    files.append(p)
+            return sorted(set(files))
+
+        if not ansible_dir.exists() or not ansible_dir.is_dir():
+            return []
+        found = [p for p in ansible_dir.rglob("*") if p.suffix.lower() in exts and p.is_file()]
+        return sorted(set(found))
+
+    def evaluate_ansible(
+        self,
+        ansible_dir: Path,
+        *,
+        changed_files: list[Path] | None = None,
+        aws_config_violations: int | None = None,
+        use_ansible_lint: bool = True,
+        use_checkov: bool = True,
+        use_secret_scan: bool = True,
+        run_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Evaluate Ansible playbooks and return a gate report dict.
+
+        Mirrors :meth:`evaluate` but sources findings from ansible-lint, checkov
+        (``--framework ansible``) and the secret scanner instead of synthesized
+        CloudFormation templates.  The same risk engine (severity weights, cost
+        banding, thresholds) and report schema are reused so CDK and Ansible
+        results are directly comparable.
+
+        *changed_files*:
+            When provided, only these files are scanned (git-scoped); otherwise
+            every YAML file under *ansible_dir* is scanned.
+        *aws_config_violations*:
+            Optional override for AWS Config violations (e.g. for SSM-managed
+            private nodes).  Defaults to 0 \u2014 Infracost and AWS Config auto-runs
+            do not apply to playbooks.
+        """
+        ansible_dir = Path(ansible_dir)
+        target_files = self.collect_ansible_files(ansible_dir, changed_files)
+
+        ansible_findings, ansible_status = run_ansible_lint(
+            target_files, enabled=use_ansible_lint, project_dir=ansible_dir
+        )
+        checkov_findings, checkov_status = run_checkov(
+            ansible_dir,
+            enabled=use_checkov,
+            template_files=target_files,
+            framework="ansible",
+        )
+        secret_findings, secret_status = run_secret_scan(target_files, enabled=use_secret_scan)
+
+        deduped = _dedupe_findings(ansible_findings + checkov_findings + secret_findings)
+
+        scanner_warnings: list[str] = []
+        for label, status in (
+            ("ansible-lint", ansible_status),
+            ("checkov", checkov_status),
+            ("secret-scan", secret_status),
+        ):
+            if status == "not_installed":
+                scanner_warnings.append(f"{label} not installed — scan skipped.")
+            elif status == "error":
+                scanner_warnings.append(f"{label} encountered an error — scan skipped.")
+            elif status == "skipped":
+                scanner_warnings.append(f"{label} disabled by caller.")
+
+        if not target_files:
+            scanner_warnings.append("No Ansible YAML files matched — nothing to scan.")
+
+        effective_config_violations = int(aws_config_violations) if aws_config_violations is not None else 0
+
+        # Infracost / AWS Config auto-runs do not apply to playbooks; cost is 0.
+        score_parts = _score_findings(
+            deduped,
+            cost_delta_usd=0.0,
+            config_violations=effective_config_violations,
+        )
+
+        timestamp = datetime.now(tz=timezone.utc).isoformat()
+        decision = score_parts["decision"]
+
+        result: dict[str, Any] = {
+            "run_id": run_id,
+            "timestamp": timestamp,
+            "score": score_parts["total"],
+            "decision": decision,
+            "message": _decision_message(decision),
+            "thresholds": {
+                "pass_max": THRESHOLDS["pass_max"],
+                "review_max": THRESHOLDS["review_max"],
+            },
+            "components": {
+                "severity": score_parts["severity"],
+                "cost": score_parts["cost"],
+                "aws_config": score_parts["aws_config"],
+            },
+            "inputs": {
+                "cost_delta_usd": 0.0,
+                "cost_delta_override": False,
+                "aws_config_violations": effective_config_violations,
+                "aws_config_override": aws_config_violations is not None,
+                "templates": [p.name for p in target_files],
+                "target": "ansible",
+            },
+            "scanner_status": {
+                "ansible_lint": ansible_status,
+                "checkov": checkov_status,
+                "secret_scan": secret_status,
+            },
+            "scanner_warnings": scanner_warnings,
+            "findings": deduped,
+            "cost_analysis": {"status": "not_supported", "message": "Cost analysis does not apply to Ansible playbooks."},
+            "config_analysis": {"status": "override" if aws_config_violations is not None else "skipped", "violation_count": effective_config_violations},
             "report_path": None,
         }
 

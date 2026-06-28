@@ -34,6 +34,8 @@ flowchart TB
 | `cloudtrail_stack.py` | `SysSecOpsCloudTrailStack`: CloudTrail → S3 + CloudWatch Logs |
 | `cloudwatch_publisher.py` | Publishes gate metrics + structured gate logs |
 | `stack_monitor.py` | Attaches 3-layer post-deploy security monitoring |
+| `ssm_hybrid.py` | SSM Hybrid Activation for on-prem nodes (registers private node as `mi-*` managed instance) |
+| `hybrid_dashboard.py` | Builds an AWS<->on-prem CloudWatch dashboard (risk score per target + network flow) |
 
 ## Deploy
 

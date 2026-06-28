@@ -1,0 +1,17 @@
+---
+# Hybrid demo playbook — installs and starts nginx on the on-prem node.
+# Reached over Tailscale via the inventory (see inventory.ini).
+- name: Configure web node
+  hosts: webnodes
+  become: true
+  tasks:
+    - name: Install nginx
+      ansible.builtin.package:
+        name: nginx
+        state: present
+
+    - name: Ensure nginx is running and enabled
+      ansible.builtin.service:
+        name: nginx
+        state: started
+        enabled: true

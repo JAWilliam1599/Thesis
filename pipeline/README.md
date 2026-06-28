@@ -31,10 +31,18 @@ flowchart LR
 | `__init__.py` | Package marker (no public API) |
 | `aws_credentials.py` | Central AWS credential resolver (boto3 chain + SSO auto-export) |
 | `cdk_pipeline.py` | Core orchestration: synth/bootstrap/diff/deploy, gate, deploy decision, audit records |
+| `ansible_pipeline.py` | On-prem orchestration: ansible-playbook syntax-check / `--check` / deploy + Ansible gate runner |
+| `git_changes.py` | Git changed-file discovery to scope the gate to modified files (`--base-ref`) |
+| `hybrid_status.py` | Read-only hybrid visibility: SSM managed nodes, SSM compliance, Tailscale devices |
 | `eventbridge_trigger.py` | Publishes `GateDecision` events to the EventBridge default bus |
 | `lambda_handler.py` | Ops-loop Lambda handler: reacts to AWS Config drift and CloudFormation rollback |
 | `notifier.py` | SNS notifier for pipeline lifecycle events |
-| `ssm_store.py` | SSM Parameter Store persistence/retrieval of latest gate result per stack |
+| `ssm_store.py` | SSM Parameter Store persistence/retrieval of latest gate result per target |
+
+> **Hybrid note:** the on-prem path reuses `can_deploy`, `write_approval`, and
+> `write_rejection_record` from `cdk_pipeline.py` unchanged; the `ansible_` run-id
+> prefix makes the persisted records (`approval_ansible_*.json`) self-describing.
+> The hybrid entrypoint is `scripts/run_hybrid_pipeline.py`.
 
 ---
 

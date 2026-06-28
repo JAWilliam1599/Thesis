@@ -20,6 +20,49 @@ This repository implements a practical subset of the SysSecOps model, with a CDK
 
 This aligns with Zone 1 and Zone 2 in `SysSecOps-hybrid-with-RiskScringEngine-integrated-to-IaCSecurityGate.md`.
 
+## Hybrid Mode (CDK + on-prem Ansible)
+
+The hybrid path extends the same gate / risk-scoring / deploy / observability
+workflow to an on-prem **Ansible** target — **without any code-generation step**
+(both the CDK app and the Ansible playbooks are bring-your-own code that already
+exist in the repo). You point the pipeline at two existing paths and it gates
+each side independently with the same risk engine and thresholds.
+
+```bash
+# Gate both sides; scan only files changed since HEAD~1
+python scripts/run_hybrid_pipeline.py \
+    --cdk-path examples/hybrid-demo/cdk \
+    --ansible-path examples/hybrid-demo/ansible \
+    --base-ref HEAD~1
+
+# On-prem only; deploy to a Tailscale-connected node if the gate allows
+python scripts/run_hybrid_pipeline.py \
+    --ansible-path examples/hybrid-demo/ansible \
+    --target-host 100.101.102.103 --deploy
+
+# Read-only status
+python scripts/run_hybrid_pipeline.py --query-status     # gate score/decision per target
+python scripts/run_hybrid_pipeline.py --hybrid-status    # SSM nodes + compliance + Tailscale mesh
+```
+
+Key differences from the CDK-only flow:
+
+- **No generation** — the hybrid orchestrator never calls `AIgen/`.
+- **Ansible scanners** — `ansible-lint` + Checkov (`--framework ansible`) +
+  a regex secret scan feed the *same* Risk Scoring Engine (severity weights and
+  thresholds are unchanged). Infracost / AWS Config do not apply to playbooks.
+- **Changed-file scoping** — `--base-ref` limits the Ansible scan to git-changed
+  YAML files (`pipeline/git_changes.py`); a full scan is used when omitted.
+- **Execution** — `ansible-playbook --syntax-check` (validate) →
+  `--check --diff` (dry-run) → `ansible-playbook -i <inventory>` (deploy) over
+  Tailscale, mirroring `cdk synth → diff → deploy`.
+- **On-prem monitoring** — `Monitor/ssm_hybrid.py` registers private nodes as
+  SSM managed instances (compliance events reuse the existing ops-loop);
+  `Monitor/hybrid_dashboard.py` builds an AWS<->on-prem CloudWatch dashboard.
+
+> UI integration for hybrid mode is intentionally deferred — the CLI is the
+> source of truth and emits JSON-friendly output for the UI to consume later.
+
 ## Repository Structure
 
 | Path | Role in pipeline |
@@ -27,8 +70,11 @@ This aligns with Zone 1 and Zone 2 in `SysSecOps-hybrid-with-RiskScringEngine-in
 | `AIgen/` | LLM generation (Bedrock/OpenRouter) + generation/eval orchestration |
 | `AIgen/run_cdk_regen.py` | CDK-specific regen loop: generate → synth → gate → retry on reject |
 | `Eval/` | Validation, security analysis, risk scoring, IaC gate |
-| `Eval/scanners/` | Pluggable scanner adapters (Checkov, cfn-lint, Infracost, AWS Config) |
+| `Eval/scanners/` | Pluggable scanner adapters (Checkov, cfn-lint, Infracost, AWS Config, ansible-lint, secret-scan) |
 | `pipeline/` | CDK command runner + deploy decision logic |
+| `pipeline/ansible_pipeline.py` | Ansible execution: syntax-check, dry-run (`--check`), deploy + Ansible gate runner |
+| `pipeline/git_changes.py` | Git changed-file discovery for scoping scans to modified files |
+| `pipeline/hybrid_status.py` | Read-only on-prem visibility: SSM nodes, SSM compliance, Tailscale devices |
 | `pipeline/notifier.py` | AWS SNS notifier for gate and deploy events |
 | `pipeline/ssm_store.py` | SSM Parameter Store persistence for gate results (Phase 4) |
 | `pipeline/eventbridge_trigger.py` | EventBridge custom event publisher (Phase 4) |
@@ -39,6 +85,10 @@ This aligns with Zone 1 and Zone 2 in `SysSecOps-hybrid-with-RiskScringEngine-in
 | `Monitor/stack_monitor.py` | 3-layer post-deploy security monitoring setup |
 | `Monitor/ops_loop_stack.py` | CDK stack for Lambda, EventBridge rules, CW alarms, dashboard |
 | `scripts/run_cdk_pipeline.py` | CLI pipeline: synth → gate → diff → optional deploy |
+| `scripts/run_hybrid_pipeline.py` | Hybrid CLI: gate CDK + Ansible (no generation), per-target observability |
+| `Monitor/ssm_hybrid.py` | SSM Hybrid Activation for on-prem nodes (managed instance registration) |
+| `Monitor/hybrid_dashboard.py` | AWS<->on-prem CloudWatch dashboard (risk score + network flow) |
+| `examples/hybrid-demo/` | Minimal hybrid project: one CDK stack + one Ansible playbook |
 | `ui/` | Streamlit UI modules including `CDK Deploy` control tab |
 | `ui_app.py` | Backward-compatible launcher that calls `ui/main.py` |
 | `GeneratedCDK/` | Generated CDK app and command logs |

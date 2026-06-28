@@ -112,6 +112,7 @@ def run_checkov(
     *,
     enabled: bool = True,
     template_files: list[Path] | None = None,
+    framework: str = "cloudformation",
 ) -> tuple[list[dict[str, Any]], str]:
     """Run checkov against specific template files and return (findings, status).
 
@@ -120,6 +121,9 @@ def run_checkov(
     once per file with ``--file`` so only the current generation is scanned,
     not any stale templates that may exist in cdk_out_dir from a prior run.
     Falls back to scanning the directory when *template_files* is not provided.
+
+    *framework* selects the checkov runner ("cloudformation" for synthesized CDK
+    templates, "ansible" for on-prem playbooks).
 
     Status values: "ok" | "skipped" | "not_installed" | "error"
 
@@ -132,7 +136,7 @@ def run_checkov(
     targets = template_files or []
     if not targets:
         # No specific files supplied — fall back to directory scan
-        return _run_checkov_on_dir(cdk_out_dir)
+        return _run_checkov_on_dir(cdk_out_dir, framework=framework)
 
     all_findings: list[dict[str, Any]] = []
     encountered_not_installed = False
@@ -144,7 +148,7 @@ def run_checkov(
             "--file",
             str(template_path),
             "--framework",
-            "cloudformation",
+            framework,
             "-o",
             "json",
             "--compact",
@@ -189,6 +193,8 @@ def run_checkov(
 
 def _run_checkov_on_dir(
     cdk_out_dir: Path,
+    *,
+    framework: str = "cloudformation",
 ) -> tuple[list[dict[str, Any]], str]:
     """Legacy directory-scan fallback (used when no template_files provided)."""
     cmd = [
@@ -196,7 +202,7 @@ def _run_checkov_on_dir(
         "-d",
         str(cdk_out_dir),
         "--framework",
-        "cloudformation",
+        framework,
         "-o",
         "json",
         "--compact",

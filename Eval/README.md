@@ -11,9 +11,17 @@ scanners, deduplicating across sources, and producing a single **scored risk dec
 
 | File | Role |
 |---|---|
-| `iac_security_gate.py` | CDK synth template analyzer + deployment gate scorer |
-| `scanners/` | Pluggable scanner adapters (Checkov, cfn-lint, Infracost, AWS Config) |
+| `iac_security_gate.py` | CDK synth template analyzer + Ansible playbook analyzer + deployment gate scorer |
+| `scanners/` | Pluggable scanner adapters (Checkov, cfn-lint, Infracost, AWS Config, ansible-lint, secret-scan) |
 | `dependency-check/` | Bundled OWASP Dependency-Check distribution (optional SCA tooling) |
+
+> **Hybrid (on-prem) path:** `IaCSecurityGate.evaluate_ansible()` scores Ansible
+> playbooks using `ansible-lint`, Checkov (`--framework ansible`) and a regex
+> secret scan, reusing the identical dedup + scoring helpers
+> (`_dedupe_findings`, `_score_findings`) as the CloudFormation path — so CDK and
+> Ansible decisions use the same severity weights and thresholds. Infracost /
+> AWS Config do not apply (cost component is 0). Pass `changed_files=...` to
+> scope the scan to git-changed YAML.
 
 ```mermaid
 flowchart TB
@@ -36,6 +44,8 @@ flowchart TB
 | `cfn_lint_adapter.py` | cfn-lint | Phase 1 | `not_installed`, `error`, `skipped` |
 | `infracost_adapter.py` | Infracost CLI | Phase 2 | `not_installed`, `not_supported`, `error` |
 | `aws_config_adapter.py` | AWS Config (boto3) | Phase 2 | `not_installed`, `no_credentials`, `not_configured`, `error` |
+| `ansible_lint_adapter.py` | ansible-lint | Hybrid | `not_installed`, `error`, `skipped` |
+| `secret_scan_adapter.py` | regex secret scan (no external tool) | Hybrid | `skipped` |
 
 All adapters return a dict with at minimum `{status, message}` plus adapter-specific fields,
 and never raise — a missing tool degrades to a `skipped`/`not_installed` status while the
