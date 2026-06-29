@@ -287,6 +287,68 @@ echo 'TAILSCALE_TAILNET=your-tailnet-name'  >> .env   # or "-" for default
 
 ---
 
+## Part 8 — Clean up / teardown
+
+Undo everything the demo created. Skip any sub-step you didn't run. Order:
+on-prem first, then AWS, then connectivity, then the VM.
+
+### 8.1 — On-prem: remove what the playbook installed
+```bash
+ssh ubuntu@onprem-node 'sudo systemctl stop nginx && sudo apt-get remove -y nginx nginx-common && sudo apt-get autoremove -y'
+ssh ubuntu@onprem-node 'systemctl is-active nginx'   # → inactive (or "not-found")
+```
+
+### 8.2 — AWS CDK: destroy the deployed stack
+```bash
+cd examples/hybrid-demo/cdk
+cdk destroy HybridDemoStack          # confirm with "y"
+cd ../../..
+```
+The bucket uses `RemovalPolicy.DESTROY`, so it is deleted with the stack.
+
+### 8.3 — AWS monitoring (only if you did Part 6)
+```bash
+# Delete the dashboard
+aws cloudwatch delete-dashboards --dashboard-names SysSecOps-Hybrid
+
+# Deregister the on-prem managed instance (mi-*), then remove leftover activations
+aws ssm describe-instance-information --query 'InstanceInformationList[?starts_with(InstanceId,`mi-`)].InstanceId' --output text
+aws ssm deregister-managed-instance --instance-id mi-xxxxxxxxxxxx     # paste the id above
+aws ssm describe-activations --query 'ActivationList[].ActivationId' --output text
+aws ssm delete-activation --activation-id <activation-id>             # for each id
+
+# Remove the IAM role created by ssm_hybrid.py
+aws iam detach-role-policy --role-name SysSecOpsHybridRole --policy-arn arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+aws iam delete-role --role-name SysSecOpsHybridRole
+```
+On the VM, stop/uninstall the SSM agent if you registered it:
+```bash
+ssh ubuntu@onprem-node 'sudo service amazon-ssm-agent stop; sudo dpkg -r amazon-ssm-agent'
+```
+
+### 8.4 — Tailscale: remove the node
+- Admin console → **Machines** → `onprem-node` → **Remove**. Or on the VM:
+  ```bash
+  sudo tailscale logout && sudo tailscale down
+  ```
+- Revoke any auth/API keys you generated (**Settings → Keys**) and clear local creds:
+  ```bash
+  sed -i '/TAILSCALE_API_KEY/d;/TAILSCALE_TAILNET/d' .env
+  ```
+
+### 8.5 — Delete the VM
+```bash
+multipass delete onprem-node && multipass purge          # multipass
+# VirtualBox/UTM: just delete the VM from the GUI
+```
+
+### 8.6 — Local artifacts (optional)
+```bash
+rm -rf examples/hybrid-demo/cdk/cdk.out logs/hybrid_*.json
+```
+
+---
+
 ## Recommended first-time order
 
 1. Part 0 — install tooling.
@@ -294,3 +356,4 @@ echo 'TAILSCALE_TAILNET=your-tailnet-name'  >> .env   # or "-" for default
 3. Parts 1–3 — VM + Tailscale + `ansible ... -m ping` succeeds.
 4. Part 5 (on-prem `--deploy`) — confirm nginx is `active` on the VM.
 5. Parts 6–7 — optional AWS monitoring + status dashboards.
+6. Part 8 — clean up everything when done.
