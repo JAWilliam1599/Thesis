@@ -182,6 +182,9 @@ cython_debug/
 # Runtime log
 logs/
 ExecCode/*
+RiskScoringCitation/click-main/*
+RiskScoringCitation/rich-main/*
+RiskScoringCitation/typer-master/*
 
 CreateExampleEnv/*
 *.docx.md
