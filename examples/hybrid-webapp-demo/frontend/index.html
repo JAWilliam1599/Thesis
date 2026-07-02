@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Hybrid Guestbook</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="wrap">
+      <h1>Hybrid Guestbook</h1>
+      <p class="sub">
+        Static frontend on <strong>S3 + CloudFront</strong>, API on
+        <strong>Lambda + API Gateway</strong>, data in an
+        <strong>on-prem PostgreSQL</strong> database reached over Tailscale.
+      </p>
+
+      <section class="card">
+        <h2>Sign the guestbook</h2>
+        <form id="entry-form">
+          <label>
+            Name
+            <input id="name" name="name" maxlength="80" required />
+          </label>
+          <label>
+            Message
+            <textarea id="message" name="message" maxlength="500" required></textarea>
+          </label>
+          <button type="submit">Add entry</button>
+          <span id="status" class="status"></span>
+        </form>
+      </section>
+
+      <section class="card">
+        <h2>Entries</h2>
+        <ul id="entries" class="entries">
+          <li class="muted">Loading…</li>
+        </ul>
+      </section>
+    </main>
+
+    <!--
+      config.js is generated at deploy time with the API Gateway URL, e.g.:
+        window.APP_CONFIG = { apiBaseUrl: "https://xxxx.execute-api.<region>.amazonaws.com/prod" };
+      During local preview it falls back to a relative /prod path.
+    -->
+    <script src="config.js"></script>
+    <script src="app.js"></script>
+  </body>
+</html>

@@ -1,0 +1,7 @@
+# Backend Lambda runtime dependencies.
+#
+# psycopg2 is NOT installed here — it is provided by the Lambda layer under
+# ../layers/psycopg2 so that `cdk synth` never needs Docker. boto3 is already
+# present in the Lambda runtime. This file documents the intent and is used
+# only if you choose to bundle deps into the function instead of the layer.
+psycopg2-binary>=2.9

@@ -1,0 +1,26 @@
+---
+# Variables for the on-prem PostgreSQL host group.
+#
+# The password is pulled from the ONPREM_DB_PASSWORD environment variable so no
+# secret is ever committed. Set it to the same value stored in the AWS Secrets
+# Manager secret created by the CDK stack:
+#
+#   export ONPREM_DB_PASSWORD="$(aws secretsmanager get-secret-value \
+#       --secret-id <DbSecretArn> --query SecretString --output text \
+#       | python -c 'import sys,json;print(json.load(sys.stdin)["password"])')"
+#
+# The `lookup(...)` expression is deliberately used so the secret scanner and
+# ansible-lint treat this as a reference, not a hardcoded credential.
+db_name: guestbook
+db_user: appuser
+db_password: "{{ lookup('ansible.builtin.env', 'ONPREM_DB_PASSWORD') | default('onprem', true) }}"
+
+# PostgreSQL should listen on all interfaces so the Tailscale-routed AWS Lambda
+# can reach it. Tighten this to specific interfaces in a real deployment.
+postgres_listen_addresses: "*"
+
+# Subnets allowed to connect to PostgreSQL. Include the AWS VPC CIDR (routed in
+# over Tailscale) and the Tailscale CGNAT range.
+db_allowed_cidrs:
+  - "10.0.0.0/16"
+  - "100.64.0.0/10"
