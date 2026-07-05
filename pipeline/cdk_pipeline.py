@@ -128,6 +128,7 @@ def run_iac_gate(
     use_cfn_lint: bool = True,
     use_infracost: bool = True,
     use_aws_config: bool = True,
+    use_ml_risk: bool = True,
     run_id: str | None = None,
     region: str | None = None,
 ) -> dict[str, Any]:
@@ -143,6 +144,8 @@ def run_iac_gate(
         use_cfn_lint=use_cfn_lint,
         use_infracost=use_infracost,
         use_aws_config=use_aws_config,
+        use_ml_risk=use_ml_risk,
+        source_dir=project_dir,
         run_id=run_id,
         region=region,
     )
@@ -166,9 +169,16 @@ def can_deploy(
     return False, "Risk gate rejected this deployment (score > 60)."
 
 
-_DEFAULT_GATE_REPORTS_DIR = Path(__file__).resolve().parents[1] / "logs" / "gate_reports"
-_DEFAULT_APPROVALS_DIR = Path(__file__).resolve().parents[1] / "logs" / "approvals"
-_DEFAULT_REJECTIONS_DIR = Path(__file__).resolve().parents[1] / "logs" / "rejections"
+def _logs_root() -> Path:
+    """Repo logs root, overridable per project via SYSSECOPS_LOG_DIR.
+
+    Read at call time (not import time) so the UI can point each subprocess
+    at a per-project directory.
+    """
+    override = os.environ.get("SYSSECOPS_LOG_DIR")
+    if override:
+        return Path(override)
+    return Path(__file__).resolve().parents[1] / "logs"
 
 
 def extract_stack_name(gate_report: dict[str, Any]) -> str:
@@ -195,7 +205,7 @@ def load_gate_report(run_id: str, log_dir: Path | None = None) -> dict[str, Any]
 
     Raises FileNotFoundError if the report file does not exist.
     """
-    report_dir = Path(log_dir) if log_dir else _DEFAULT_GATE_REPORTS_DIR
+    report_dir = Path(log_dir) if log_dir else _logs_root() / "gate_reports"
     report_path = report_dir / f"gate_{run_id}.json"
     if not report_path.exists():
         raise FileNotFoundError(
@@ -241,7 +251,7 @@ def write_approval(
 
     Returns the path of the written approval JSON file.
     """
-    approvals_dir = Path(log_dir) if log_dir else _DEFAULT_APPROVALS_DIR
+    approvals_dir = Path(log_dir) if log_dir else _logs_root() / "approvals"
     approvals_dir.mkdir(parents=True, exist_ok=True)
     approval_path = approvals_dir / f"approval_{run_id}.json"
     identity = _get_caller_identity()
@@ -268,7 +278,7 @@ def write_rejection_record(
 
     Returns the path of the written rejection JSON file.
     """
-    rejections_dir = Path(log_dir) if log_dir else _DEFAULT_REJECTIONS_DIR
+    rejections_dir = Path(log_dir) if log_dir else _logs_root() / "rejections"
     rejections_dir.mkdir(parents=True, exist_ok=True)
     rejection_path = rejections_dir / f"rejection_{run_id}.json"
     identity = _get_caller_identity()

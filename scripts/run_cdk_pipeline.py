@@ -18,7 +18,11 @@ load_env()
 
 logger = logging.getLogger("cdk_pipeline")
 
-_LOG_DIR = ROOT_DIR / "logs"
+
+def _log_dir() -> Path:
+    """Logs root, overridable per project via SYSSECOPS_LOG_DIR (call time)."""
+    override = os.environ.get("SYSSECOPS_LOG_DIR")
+    return Path(override) if override else ROOT_DIR / "logs"
 
 
 def _make_run_id() -> str:
@@ -74,6 +78,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--aws-config-violations", type=int, default=None, help="Override AWS Config violations count (default: auto-fetch via boto3).")
     parser.add_argument("--no-infracost", action="store_true", help="Skip infracost cost analysis.")
     parser.add_argument("--no-aws-config", action="store_true", help="Skip AWS Config violations fetch.")
+    parser.add_argument("--no-ml-risk", action="store_true", help="Skip the ML (logistic regression) risk score on the CDK Python source.")
     parser.add_argument("--manual-approve", action="store_true", help="Approve review decision (21-60) for deploy.")
     parser.add_argument("--deploy", action="store_true", help="Run deploy if gate allows.")
     parser.add_argument("--bootstrap", action="store_true", help="Run cdk bootstrap before synth (required for first deploy).")
@@ -136,7 +141,9 @@ def _emit_gate_observability(
 
     write_gate_result(stack_name, run_id, score, decision, report_path)
     publish_gate_event(run_id, stack_name, decision, score)
-    publish_gate_metrics(stack_name, run_id, score, decision, findings)
+    ml_analysis = gate_report.get("ml_analysis") or {}
+    ml_score = ml_analysis.get("ml_score") if ml_analysis.get("status") == "ok" else None
+    publish_gate_metrics(stack_name, run_id, score, decision, findings, ml_score=ml_score)
     put_log_event(stack_name, run_id, gate_report)
 
 
@@ -220,7 +227,7 @@ def main() -> int:
     # --- Initialise file logger ---
     run_id = args.run_id or _make_run_id()
     args.run_id = run_id
-    log_path = Path(args.log_file) if args.log_file else _LOG_DIR / f"cdk_pipeline_{run_id}.log"
+    log_path = Path(args.log_file) if args.log_file else _log_dir() / f"cdk_pipeline_{run_id}.log"
     _configure_logger(log_path, getattr(args, "verbose", False))
     logger.info("run_id=%s project_dir=%s log=%s", run_id, project_dir, log_path)
 
@@ -255,6 +262,7 @@ def main() -> int:
         use_cfn_lint=not args.no_cfn_lint,
         use_infracost=not args.no_infracost,
         use_aws_config=not args.no_aws_config,
+        use_ml_risk=not args.no_ml_risk,
         run_id=run_id,
     )
     print(json.dumps({"stage": "gate", "gate": gate_report}, indent=2))

@@ -130,3 +130,155 @@ def get_gate_metric_average(metric_name: str, hours: int = 168) -> tuple[float |
 def _short(exc: Exception) -> str:
     msg = str(exc)
     return msg if len(msg) <= 200 else msg[:197] + "..."
+
+
+# --- CloudFormation stacks & resources ---------------------------------------
+_ACTIVE_STACK_STATUSES = [
+    "CREATE_COMPLETE", "UPDATE_COMPLETE", "UPDATE_ROLLBACK_COMPLETE",
+    "ROLLBACK_COMPLETE", "IMPORT_COMPLETE",
+]
+
+
+def list_cfn_stacks() -> tuple[list[str], str]:
+    """Names of active CloudFormation stacks in the configured region."""
+    client, error = _client("cloudformation")
+    if client is None:
+        return [], error
+    try:
+        paginator = client.get_paginator("list_stacks")
+        names: list[str] = []
+        for page in paginator.paginate(StackStatusFilter=_ACTIVE_STACK_STATUSES):
+            for summary in page.get("StackSummaries", []):
+                if summary.get("ParentId"):
+                    continue  # skip nested stacks
+                names.append(summary["StackName"])
+        return sorted(set(names)), ""
+    except Exception as exc:  # noqa: BLE001
+        return [], _short(exc)
+
+
+def list_stack_resources(stack_name: str) -> tuple[list[dict[str, Any]], str]:
+    """Resources of one CloudFormation stack (logical id, type, physical id, status)."""
+    client, error = _client("cloudformation")
+    if client is None:
+        return [], error
+    try:
+        paginator = client.get_paginator("list_stack_resources")
+        rows: list[dict[str, Any]] = []
+        for page in paginator.paginate(StackName=stack_name):
+            for res in page.get("StackResourceSummaries", []):
+                rows.append({
+                    "logical_id": res.get("LogicalResourceId", ""),
+                    "type": res.get("ResourceType", ""),
+                    "physical_id": res.get("PhysicalResourceId", ""),
+                    "status": res.get("ResourceStatus", ""),
+                })
+        return rows, ""
+    except Exception as exc:  # noqa: BLE001
+        return [], _short(exc)
+
+
+# --- Per-resource CloudWatch metrics -----------------------------------------
+# Resource type -> (metrics namespace, dimension name, [(metric, stat, unit label)])
+RESOURCE_METRICS: dict[str, tuple[str, str, list[tuple[str, str, str]]]] = {
+    "AWS::EC2::Instance": ("AWS/EC2", "InstanceId", [
+        ("CPUUtilization", "Average", "%"),
+        ("NetworkPacketsIn", "Sum", "packets"),
+        ("StatusCheckFailed", "Maximum", "failed"),
+    ]),
+    "AWS::Lambda::Function": ("AWS/Lambda", "FunctionName", [
+        ("Invocations", "Sum", "count"),
+        ("Errors", "Sum", "count"),
+        ("Duration", "Average", "ms"),
+    ]),
+    "AWS::RDS::DBInstance": ("AWS/RDS", "DBInstanceIdentifier", [
+        ("CPUUtilization", "Average", "%"),
+        ("DatabaseConnections", "Average", "count"),
+        ("FreeStorageSpace", "Average", "bytes"),
+    ]),
+    "AWS::ECS::Service": ("AWS/ECS", "ServiceName", [
+        ("CPUUtilization", "Average", "%"),
+        ("MemoryUtilization", "Average", "%"),
+    ]),
+}
+
+
+def get_metric_series(
+    namespace: str,
+    metric_name: str,
+    dimension_name: str,
+    dimension_value: str,
+    stat: str = "Average",
+    hours: int = 24,
+) -> tuple[list[dict[str, Any]], str]:
+    """Hourly datapoints for one metric, oldest first: [{time, value}]."""
+    client, error = _client("cloudwatch")
+    if client is None:
+        return [], error
+
+    from datetime import datetime, timedelta, timezone
+
+    end = datetime.now(timezone.utc)
+    start = end - timedelta(hours=hours)
+    try:
+        response = client.get_metric_statistics(
+            Namespace=namespace,
+            MetricName=metric_name,
+            Dimensions=[{"Name": dimension_name, "Value": dimension_value}],
+            StartTime=start,
+            EndTime=end,
+            Period=3600,
+            Statistics=[stat],
+        )
+        points = sorted(response.get("Datapoints", []), key=lambda p: p["Timestamp"])
+        return (
+            [{"time": p["Timestamp"], "value": p.get(stat, 0.0)} for p in points],
+            "",
+        )
+    except Exception as exc:  # noqa: BLE001
+        return [], _short(exc)
+
+
+# --- Console deep links -------------------------------------------------------
+def cloudwatch_dashboard_url(name: str) -> str:
+    region = _region()
+    return (
+        f"https://{region}.console.aws.amazon.com/cloudwatch/home"
+        f"?region={region}#dashboards:name={name}"
+    )
+
+
+def cloudwatch_automatic_dashboards_url() -> str:
+    region = _region()
+    return (
+        f"https://{region}.console.aws.amazon.com/cloudwatch/home"
+        f"?region={region}#home:dashboards"
+    )
+
+
+def cloudformation_stack_url(stack_name: str) -> str:
+    region = _region()
+    return (
+        f"https://{region}.console.aws.amazon.com/cloudformation/home"
+        f"?region={region}#/stacks?filteringText={stack_name}"
+    )
+
+
+# --- On-prem / hybrid mesh status ---------------------------------------------
+def get_hybrid_status() -> tuple[dict[str, Any], str]:
+    """SSM managed nodes + compliance + Tailscale devices (graceful on failure).
+
+    Exports the stored Tailscale settings into the process env first so the
+    shared pipeline collector can use them.
+    """
+    creds = credentials.load_credentials()
+    if creds.get("tailscale_key"):
+        os.environ.setdefault("TAILSCALE_API_KEY", creds["tailscale_key"])
+    if creds.get("tailscale_tailnet"):
+        os.environ.setdefault("TAILSCALE_TAILNET", creds["tailscale_tailnet"])
+    try:
+        from pipeline.hybrid_status import collect_hybrid_status
+
+        return collect_hybrid_status(), ""
+    except Exception as exc:  # noqa: BLE001
+        return {}, _short(exc)

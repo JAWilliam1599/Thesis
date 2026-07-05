@@ -39,7 +39,12 @@ from env_bootstrap import load_env
 
 logger = logging.getLogger(__name__)
 
-_DEFAULT_REGEN_LOG_DIR = ROOT_DIR / "logs" / "cdk_regen"
+
+def _default_regen_log_dir() -> Path:
+    """Regen artifact root, overridable per project via SYSSECOPS_LOG_DIR."""
+    override = os.environ.get("SYSSECOPS_LOG_DIR")
+    base = Path(override) if override else ROOT_DIR / "logs"
+    return base / "cdk_regen"
 
 CDK_SYSTEM_INSTRUCTION = (
     "You are a CDK infrastructure code generator. Return only executable Python code and no markdown. "
@@ -189,7 +194,7 @@ def run_cdk_regen_loop(
     if run_id is None:
         run_id = f"cdk_{datetime.now(tz=timezone.utc).strftime('%Y%m%dT%H%M%SZ')}"
 
-    regen_root = (Path(log_dir) if log_dir else _DEFAULT_REGEN_LOG_DIR) / run_id
+    regen_root = (Path(log_dir) if log_dir else _default_regen_log_dir()) / run_id
     regen_root.mkdir(parents=True, exist_ok=True)
 
     # Save original prompt

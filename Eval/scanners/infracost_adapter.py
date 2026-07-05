@@ -14,6 +14,7 @@ Status values returned:
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -119,12 +120,18 @@ def run_infracost(
     if not stdout:
         # infracost ran but produced no JSON — auth failure, unsupported dir, etc.
         detail = stderr.splitlines()[0] if stderr else "no output produced"
+        hint = ""
+        if not os.environ.get("INFRACOST_API_KEY"):
+            hint = (
+                " Hint: no INFRACOST_API_KEY is set — add it to the repo .env "
+                "or via the UI Login tab (free key from dashboard.infracost.io)."
+            )
         return {
             "status": _NOT_SUPPORTED_STATUS,
             "cost_delta_usd": 0.0,
             "total_monthly_usd": 0.0,
             "template_count": 0,
-            "message": f"infracost produced no output: {detail}",
+            "message": f"infracost produced no output: {detail}{hint}",
         }
 
     try:

@@ -28,6 +28,9 @@ def load_credentials() -> dict[str, str]:
         "session_token": "",
         "region": "",
         "openrouter_key": "",
+        "infracost_key": "",
+        "tailscale_key": "",
+        "tailscale_tailnet": "",
     }
 
     # AWS credentials file
@@ -68,6 +71,11 @@ def load_credentials() -> dict[str, str]:
 
     # OpenRouter key from .env
     creds["openrouter_key"] = _read_env_value("OPENROUTER_API_KEY")
+
+    # Infracost + Tailscale from .env
+    creds["infracost_key"] = _read_env_value("INFRACOST_API_KEY")
+    creds["tailscale_key"] = _read_env_value("TAILSCALE_API_KEY")
+    creds["tailscale_tailnet"] = _read_env_value("TAILSCALE_TAILNET")
 
     if not creds["region"]:
         creds["region"] = config.DEFAULT_REGION
@@ -115,6 +123,17 @@ def save_aws_credentials(
 def save_openrouter_key(api_key: str) -> None:
     """Update only the OPENROUTER_API_KEY line in the repo .env, preserving others."""
     _write_env_value("OPENROUTER_API_KEY", api_key.strip())
+
+
+def save_infracost_key(api_key: str) -> None:
+    """Update only the INFRACOST_API_KEY line in the repo .env, preserving others."""
+    _write_env_value("INFRACOST_API_KEY", api_key.strip())
+
+
+def save_tailscale_settings(api_key: str, tailnet: str) -> None:
+    """Update the TAILSCALE_API_KEY / TAILSCALE_TAILNET lines in the repo .env."""
+    _write_env_value("TAILSCALE_API_KEY", api_key.strip())
+    _write_env_value("TAILSCALE_TAILNET", tailnet.strip())
 
 
 # --- Validation -------------------------------------------------------------

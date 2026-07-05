@@ -8,6 +8,7 @@ Metrics published (namespace: SysSecOps/Gate):
     GateDecision      — 0=pass, 1=review, 2=reject
     CriticalFindings  — count of critical-severity findings
     HighFindings      — count of high-severity findings
+    MLRiskScore       — logistic-regression component (0-20; omitted when N/A)
 
 Dimensions: StackName + RunId
 
@@ -58,8 +59,12 @@ def publish_gate_metrics(
     score: int | float,
     decision: str,
     findings: list[dict[str, Any]] | None,
+    ml_score: int | float | None = None,
 ) -> None:
     """Publish gate evaluation metrics to CloudWatch.
+
+    ``ml_score`` — optional ML risk component; the MLRiskScore metric is only
+    emitted when a value is provided (the model does not apply to Ansible).
 
     Never raises — logs a warning on any failure so the pipeline is never blocked.
     """
@@ -84,12 +89,17 @@ def publish_gate_metrics(
     #      the dashboard/alarms that specify no dimensions would otherwise never
     #      receive any data points.)
     def _make_points(dims: list[dict]) -> list[dict]:
-        return [
+        points = [
             {"MetricName": "GateScore",        "Dimensions": dims, "Value": float(score),          "Unit": "None"},
             {"MetricName": "GateDecision",     "Dimensions": dims, "Value": float(decision_value), "Unit": "None"},
             {"MetricName": "CriticalFindings", "Dimensions": dims, "Value": float(critical_count), "Unit": "Count"},
             {"MetricName": "HighFindings",     "Dimensions": dims, "Value": float(high_count),     "Unit": "Count"},
         ]
+        if ml_score is not None:
+            points.append(
+                {"MetricName": "MLRiskScore", "Dimensions": dims, "Value": float(ml_score), "Unit": "None"}
+            )
+        return points
 
     metric_data = (
         _make_points(dimensions)

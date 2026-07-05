@@ -26,6 +26,7 @@ ENV_FILE = ROOT_DIR / ".env"
 # --- Subprocess targets -----------------------------------------------------
 REGEN_SCRIPT = ROOT_DIR / "AIgen" / "run_cdk_regen.py"
 PIPELINE_SCRIPT = ROOT_DIR / "scripts" / "run_cdk_pipeline.py"
+HYBRID_SCRIPT = ROOT_DIR / "scripts" / "run_hybrid_pipeline.py"
 
 # --- Defaults ---------------------------------------------------------------
 DEFAULT_REGION = "ap-southeast-2"

@@ -38,6 +38,15 @@ def initialize_session_state() -> None:
         "pipeline_deploy_running": False,
         "pipeline_deploy_done": False,
         "pipeline_deploy_rc": None,
+        # Hybrid workflow
+        "hybrid_run_id": None,
+        "hybrid_report": None,
+        "hybrid_logs": "",
+        "hybrid_running": False,
+        "hybrid_deploying": False,
+        "hybrid_deploy_done": False,
+        "hybrid_return_code": None,
+        "hybrid_manual_approve": False,
     }
     for key, value in defaults.items():
         st.session_state.setdefault(key, value)
@@ -63,11 +72,11 @@ def main() -> None:
     with pipeline_tab:
         tabs.render_pipeline_tab(settings)
     with results_tab:
-        tabs.render_results_tab()
+        tabs.render_results_tab(settings)
     with monitor_tab:
-        tabs.render_monitor_tab()
+        tabs.render_monitor_tab(settings)
     with security_tab:
-        tabs.render_security_tab()
+        tabs.render_security_tab(settings)
     with settings_tab:
         tabs.render_settings_tab(settings)
 

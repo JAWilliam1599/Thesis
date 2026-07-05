@@ -30,11 +30,18 @@ def render_gate_report(gate: dict[str, Any] | None) -> None:
     )
 
     components = gate.get("components", {})
-    cols = st.columns(4)
+    cols = st.columns(5)
     cols[0].metric("Gate score", score)
     cols[1].metric("Severity", components.get("severity", 0))
     cols[2].metric("Cost", components.get("cost", 0))
     cols[3].metric("AWS Config", components.get("aws_config", 0))
+    ml_analysis = gate.get("ml_analysis") or {}
+    ml_help = None
+    if ml_analysis.get("status") == "ok":
+        ml_help = f"P(insecure) = {ml_analysis.get('probability', 0.0):.2f}"
+    elif ml_analysis.get("status"):
+        ml_help = f"status: {ml_analysis['status']}"
+    cols[4].metric("ML risk", components.get("ml_risk", 0), help=ml_help)
 
     _render_scanner_status(gate.get("scanner_status", {}))
 

@@ -1,4 +1,9 @@
-"""Discovery and loading helpers for run folders and gate reports."""
+"""Discovery and loading helpers for run folders and gate reports.
+
+All discovery functions accept an optional ``logs_root`` (the active
+project's artifact directory); they default to the legacy flat ``logs/``
+layout used by the built-in default project.
+"""
 from __future__ import annotations
 
 import json
@@ -37,26 +42,27 @@ def format_run_label(path: Path) -> str:
 
 
 # --- Gate reports -----------------------------------------------------------
-def list_gate_reports() -> list[Path]:
+def list_gate_reports(logs_root: Path | None = None) -> list[Path]:
     """All persisted gate report JSON files, most recent (mtime) first."""
-    if not config.GATE_REPORTS_DIR.exists():
+    reports_dir = (logs_root or config.LOGS_DIR) / "gate_reports"
+    if not reports_dir.exists():
         return []
-    reports = list(config.GATE_REPORTS_DIR.glob("gate_*.json"))
-    return sorted(reports, key=lambda p: p.stat().st_mtime, reverse=True)
+    found = list(reports_dir.glob("gate_*.json"))
+    return sorted(found, key=lambda p: p.stat().st_mtime, reverse=True)
 
 
 def load_gate_report(path: Path) -> dict[str, Any] | None:
     return _read_json(path)
 
 
-def newest_gate_report() -> dict[str, Any] | None:
-    reports = list_gate_reports()
-    return _read_json(reports[0]) if reports else None
+def newest_gate_report(logs_root: Path | None = None) -> dict[str, Any] | None:
+    found = list_gate_reports(logs_root)
+    return _read_json(found[0]) if found else None
 
 
-def load_all_gate_reports() -> list[dict[str, Any]]:
+def load_all_gate_reports(logs_root: Path | None = None) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
-    for path in list_gate_reports():
+    for path in list_gate_reports(logs_root):
         data = _read_json(path)
         if data:
             out.append(data)
@@ -64,14 +70,14 @@ def load_all_gate_reports() -> list[dict[str, Any]]:
 
 
 # --- Approvals / rejections -------------------------------------------------
-def load_approvals() -> list[dict[str, Any]]:
+def load_approvals(logs_root: Path | None = None) -> list[dict[str, Any]]:
     """All approval records, most recent (mtime) first."""
-    return _load_record_dir(config.APPROVALS_DIR)
+    return _load_record_dir((logs_root or config.LOGS_DIR) / "approvals")
 
 
-def load_rejections() -> list[dict[str, Any]]:
+def load_rejections(logs_root: Path | None = None) -> list[dict[str, Any]]:
     """All rejection records, most recent (mtime) first."""
-    return _load_record_dir(config.REJECTIONS_DIR)
+    return _load_record_dir((logs_root or config.LOGS_DIR) / "rejections")
 
 
 def _load_record_dir(directory: Path) -> list[dict[str, Any]]:
@@ -87,9 +93,9 @@ def _load_record_dir(directory: Path) -> list[dict[str, Any]]:
 
 
 # --- CDK regen runs ---------------------------------------------------------
-def find_cdk_regen_gate_report(run_id: str) -> dict[str, Any] | None:
+def find_cdk_regen_gate_report(run_id: str, logs_root: Path | None = None) -> dict[str, Any] | None:
     """Load the winning/final gate report for a regen run id from disk."""
-    run_dir = config.CDK_REGEN_DIR / run_id
+    run_dir = (logs_root or config.LOGS_DIR) / "cdk_regen" / run_id
     candidates = [
         run_dir / "passed" / "gate_report.json",
         run_dir / "failed" / "final_gate_report.json",

@@ -70,7 +70,11 @@ from Monitor.stack_monitor import setup_stack_monitoring
 
 logger = logging.getLogger("hybrid_pipeline")
 
-_LOG_DIR = ROOT_DIR / "logs"
+
+def _log_dir() -> Path:
+    """Logs root, overridable per project via SYSSECOPS_LOG_DIR (call time)."""
+    override = os.environ.get("SYSSECOPS_LOG_DIR")
+    return Path(override) if override else ROOT_DIR / "logs"
 
 
 def _make_run_id() -> str:
@@ -116,7 +120,9 @@ def _emit_observability(gate_report: dict, name: str) -> None:
     try:
         write_gate_result(name, run_id, score, decision, report_path)
         publish_gate_event(run_id, name, decision, score)
-        publish_gate_metrics(name, run_id, score, decision, findings)
+        ml_analysis = gate_report.get("ml_analysis") or {}
+        ml_score = ml_analysis.get("ml_score") if ml_analysis.get("status") == "ok" else None
+        publish_gate_metrics(name, run_id, score, decision, findings, ml_score=ml_score)
         put_log_event(name, run_id, gate_report)
     except Exception as exc:
         logger.warning("observability emit failed for %s — %s", name, exc)
@@ -166,6 +172,7 @@ def run_cdk_branch(args: argparse.Namespace, run_id: str, env: dict) -> dict:
         use_cfn_lint=not args.no_cfn_lint,
         use_infracost=not args.no_infracost,
         use_aws_config=not args.no_aws_config,
+        use_ml_risk=not args.no_ml_risk,
         run_id=run_id,
     )
     print(json.dumps({"stage": "cdk.gate", "gate": gate_report}, indent=2))
@@ -382,6 +389,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--no-checkov", action="store_true", help="Skip checkov on both branches.")
     p.add_argument("--no-cfn-lint", action="store_true", help="Skip cfn-lint (CDK branch).")
     p.add_argument("--no-infracost", action="store_true", help="Skip infracost (CDK branch).")
+    p.add_argument("--no-ml-risk", action="store_true", help="Skip the ML risk score on the CDK Python source (CDK branch).")
     p.add_argument("--no-aws-config", action="store_true", help="Skip AWS Config fetch (CDK branch).")
     p.add_argument("--no-ansible-lint", action="store_true", help="Skip ansible-lint (Ansible branch).")
     p.add_argument("--no-secret-scan", action="store_true", help="Skip secret scan (Ansible branch).")
@@ -406,7 +414,7 @@ def main() -> int:
         return 2
 
     run_id = args.run_id or _make_run_id()
-    log_path = Path(args.log_file) if args.log_file else _LOG_DIR / f"{run_id}.log"
+    log_path = Path(args.log_file) if args.log_file else _log_dir() / f"{run_id}.log"
     _configure_logger(log_path, args.verbose)
     logger.info("run_id=%s cdk=%s ansible=%s", run_id, args.cdk_path, args.ansible_path)
 
@@ -426,7 +434,7 @@ def main() -> int:
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "branches": branches,
     }
-    report_path = _LOG_DIR / f"{run_id}.json"
+    report_path = _log_dir() / f"{run_id}.json"
     report_path.parent.mkdir(parents=True, exist_ok=True)
     report_path.write_text(json.dumps(hybrid_report, indent=2), encoding="utf-8")
     print(json.dumps({"stage": "hybrid", "report_path": str(report_path), "branches": [

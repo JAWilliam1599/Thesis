@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -10,6 +11,7 @@ from Eval.scanners.aws_config_adapter import fetch_violations
 from Eval.scanners.checkov_adapter import run_checkov
 from Eval.scanners.cfn_lint_adapter import run_cfn_lint
 from Eval.scanners.infracost_adapter import run_infracost
+from Eval.scanners.ml_risk_adapter import run_ml_risk
 from Eval.scanners.secret_scan_adapter import run_secret_scan
 
 SEVERITY_POINTS = {
@@ -23,6 +25,14 @@ THRESHOLDS = {
     "pass_max": 20,
     "review_max": 80,
 }
+
+
+def _logs_root() -> Path:
+    """Repo logs root, overridable per project via SYSSECOPS_LOG_DIR."""
+    override = os.environ.get("SYSSECOPS_LOG_DIR")
+    if override:
+        return Path(override)
+    return Path(__file__).resolve().parents[1] / "logs"
 
 
 def _severity_points(severity: str) -> int:
@@ -113,11 +123,15 @@ def _score_findings(
     *,
     cost_delta_usd: float,
     config_violations: int,
+    ml_score: int = 0,
 ) -> dict[str, Any]:
     """Compute the risk score and decision from deduplicated findings.
 
     Shared by the CloudFormation (CDK) and Ansible (on-prem) gate paths so both
     use the identical severity weights, cost banding, and decision thresholds.
+    ``ml_score`` is the pre-computed logistic-regression component
+    (``round(P(insecure) * 20)``); it is 0 on the Ansible path where the model
+    does not apply.
     """
     severity_score = sum(_severity_points(item.get("severity", "low")) for item in deduped)
 
@@ -128,12 +142,14 @@ def _score_findings(
         cost_score = 5
 
     config_score = max(0, config_violations) * 5
-    total_score = int(severity_score + cost_score + config_score)
+    ml_component = max(0, int(ml_score))
+    total_score = int(severity_score + cost_score + config_score + ml_component)
 
     return {
         "severity": severity_score,
         "cost": cost_score,
         "aws_config": config_score,
+        "ml_risk": ml_component,
         "total": total_score,
         "decision": _decision(total_score),
     }
@@ -151,7 +167,7 @@ class IaCSecurityGate:
         Returns the absolute path of the written file.
         """
         if log_dir is None:
-            log_dir = Path(__file__).resolve().parents[1] / "logs" / "gate_reports"
+            log_dir = _logs_root() / "gate_reports"
         log_dir = Path(log_dir)
         log_dir.mkdir(parents=True, exist_ok=True)
         report_path = log_dir / f"gate_{run_id}.json"
@@ -327,6 +343,8 @@ class IaCSecurityGate:
         use_cfn_lint: bool = True,
         use_infracost: bool = True,
         use_aws_config: bool = True,
+        use_ml_risk: bool = True,
+        source_dir: Path | None = None,
         run_id: str | None = None,
         region: str | None = None,
         stack_name: str | None = None,
@@ -337,6 +355,11 @@ class IaCSecurityGate:
         cost_delta_usd / aws_config_violations:
             Pass an explicit value to override automation.  Pass None (default)
             to let the gate auto-run Infracost / AWS Config and use the result.
+        source_dir:
+            Directory containing the CDK app's Python source (e.g. the project
+            dir).  When provided and ``use_ml_risk`` is True, the trained
+            logistic-regression model scores the source (bandit + semgrep
+            features) and adds ``round(P(insecure) * 20)`` points.
         run_id:
             When provided, the gate report is persisted to
             logs/gate_reports/gate_<run_id>.json and report_path is included
@@ -412,11 +435,31 @@ class IaCSecurityGate:
             elif status == "skipped":
                 scanner_warnings.append("AWS Config check disabled by caller.")
 
+        # --- ML risk (logistic regression on the CDK Python source) ---
+        if source_dir is not None:
+            ml_analysis = run_ml_risk(Path(source_dir), enabled=use_ml_risk)
+        else:
+            ml_analysis = {
+                "status": "skipped",
+                "probability": 0.0,
+                "ml_score": 0,
+                "files": [],
+                "message": "No source directory provided — ML risk scoring skipped.",
+            }
+        if ml_analysis["status"] not in ("ok", "skipped"):
+            scanner_warnings.append(
+                f"ML risk model not applied: {ml_analysis.get('message', '')}"
+            )
+        elif ml_analysis["status"] == "skipped" and source_dir is not None and not use_ml_risk:
+            scanner_warnings.append("ML risk model disabled by caller.")
+        effective_ml_score = int(ml_analysis.get("ml_score", 0))
+
         # --- Scoring ---
         score_parts = _score_findings(
             deduped,
             cost_delta_usd=effective_cost_delta,
             config_violations=effective_config_violations,
+            ml_score=effective_ml_score,
         )
         severity_score = score_parts["severity"]
         cost_score = score_parts["cost"]
@@ -441,12 +484,14 @@ class IaCSecurityGate:
                 "severity": severity_score,
                 "cost": cost_score,
                 "aws_config": config_score,
+                "ml_risk": score_parts["ml_risk"],
             },
             "inputs": {
                 "cost_delta_usd": effective_cost_delta,
                 "cost_delta_override": cost_delta_usd is not None,
                 "aws_config_violations": effective_config_violations,
                 "aws_config_override": aws_config_violations is not None,
+                "ml_probability": ml_analysis.get("probability", 0.0),
                 "templates": [path.name for path in templates],
             },
             "scanner_status": {
@@ -454,11 +499,13 @@ class IaCSecurityGate:
                 "cfn_lint": cfn_lint_status,
                 "infracost": cost_analysis["status"],
                 "aws_config": config_analysis["status"],
+                "ml_risk": ml_analysis["status"],
             },
             "scanner_warnings": scanner_warnings,
             "findings": deduped,
             "cost_analysis": cost_analysis,
             "config_analysis": config_analysis,
+            "ml_analysis": ml_analysis,
             "report_path": None,
         }
 
@@ -579,6 +626,7 @@ class IaCSecurityGate:
                 "severity": score_parts["severity"],
                 "cost": score_parts["cost"],
                 "aws_config": score_parts["aws_config"],
+                "ml_risk": 0,
             },
             "inputs": {
                 "cost_delta_usd": 0.0,
@@ -597,6 +645,13 @@ class IaCSecurityGate:
             "findings": deduped,
             "cost_analysis": {"status": "not_supported", "message": "Cost analysis does not apply to Ansible playbooks."},
             "config_analysis": {"status": "override" if aws_config_violations is not None else "skipped", "violation_count": effective_config_violations},
+            "ml_analysis": {
+                "status": "not_applicable",
+                "probability": 0.0,
+                "ml_score": 0,
+                "files": [],
+                "message": "ML risk model is trained on Python sources; it does not apply to Ansible playbooks.",
+            },
             "report_path": None,
         }
 
