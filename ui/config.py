@@ -31,12 +31,20 @@ HYBRID_SCRIPT = ROOT_DIR / "scripts" / "run_hybrid_pipeline.py"
 # --- Defaults ---------------------------------------------------------------
 DEFAULT_REGION = "ap-southeast-2"
 DEFAULT_BEDROCK_MODEL = "anthropic.claude-3-5-sonnet-20240620-v1:0"
-DEFAULT_OPENROUTER_MODEL = "anthropic/claude-3.5-sonnet"
+DEFAULT_OPENROUTER_MODEL = "deepseek/deepseek-v4-flash"
 PROVIDERS = ["bedrock", "openrouter"]
 
 # --- Gate thresholds (mirrors Eval/iac_security_gate.py) --------------------
 GATE_PASS_MAX = 20
 GATE_REVIEW_MAX = 80
+
+# --- Gate scoring weights (mirrors Eval/iac_security_gate.py COST_BANDS) -----
+GATE_COST_HIGH_USD = 50.0
+GATE_COST_HIGH_POINTS = 10
+GATE_COST_MED_USD = 10.0
+GATE_COST_MED_POINTS = 5
+# Mirrors Eval/scanners/ml_risk_adapter.py ML_MAX_POINTS
+GATE_ML_MAX_POINTS = 20
 
 # --- Presentation maps ------------------------------------------------------
 # Gate decision -> (emoji, hex color, human label)

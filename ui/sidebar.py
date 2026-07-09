@@ -110,7 +110,6 @@ def render_sidebar() -> dict[str, Any]:
     creds = credentials.load_credentials()
     aws_ready = bool(creds.get("access_key") and creds.get("secret_key"))
     openrouter_ready = bool(creds.get("openrouter_key"))
-    infracost_ready = bool(creds.get("infracost_key"))
 
     with st.sidebar:
         st.header("⚙️ Configuration")
@@ -124,8 +123,6 @@ def render_sidebar() -> dict[str, Any]:
             ("✅ **AWS** ready" if aws_ready else "⚠️ **AWS** not configured")
             + "  \n"
             + ("✅ **OpenRouter** ready" if openrouter_ready else "⚠️ **OpenRouter** not set")
-            + "  \n"
-            + ("✅ **Infracost** ready" if infracost_ready else "⚠️ **Infracost** not set")
         )
         if not (aws_ready or openrouter_ready):
             st.info("Set credentials in the 🔑 Login tab.")
@@ -173,6 +170,45 @@ def render_sidebar() -> dict[str, Any]:
             use_ansible_lint = st.checkbox("ansible-lint (Ansible branch)", value=True)
             use_secret_scan = st.checkbox("Secret scan (Ansible branch)", value=True)
 
+        st.divider()
+        st.subheader("Gate thresholds")
+        st.caption("Score bands that decide PASS / REVIEW / REJECT for each run.")
+        pass_max = st.number_input(
+            "Pass point (≤ = PASS)", min_value=0, max_value=1000,
+            value=config.GATE_PASS_MAX, step=1,
+            help="Scores at or below this value auto-pass.",
+        )
+        review_max = st.number_input(
+            "Review point (≤ = REVIEW, above = REJECT)", min_value=0, max_value=1000,
+            value=config.GATE_REVIEW_MAX, step=1,
+            help="Scores above the pass point up to this value need manual review; "
+            "anything higher is rejected.",
+        )
+        if review_max < pass_max:
+            st.error("Review point must be ≥ pass point. Using defaults for this run.")
+            pass_max = config.GATE_PASS_MAX
+            review_max = config.GATE_REVIEW_MAX
+
+        with st.expander("Cost & ML weights", expanded=False):
+            cost_high_usd = st.number_input(
+                "High cost band threshold (USD)", min_value=0.0, value=float(config.GATE_COST_HIGH_USD), step=1.0,
+                help="Cost delta above this adds the high-band points.",
+            )
+            cost_high_points = st.number_input(
+                "High cost band points", min_value=0, value=config.GATE_COST_HIGH_POINTS, step=1,
+            )
+            cost_med_usd = st.number_input(
+                "Medium cost band threshold (USD)", min_value=0.0, value=float(config.GATE_COST_MED_USD), step=1.0,
+                help="Cost delta above this (but below the high threshold) adds the medium-band points.",
+            )
+            cost_med_points = st.number_input(
+                "Medium cost band points", min_value=0, value=config.GATE_COST_MED_POINTS, step=1,
+            )
+            ml_max_points = st.number_input(
+                "ML risk max points", min_value=0, value=config.GATE_ML_MAX_POINTS, step=1,
+                help="Points added at P(insecure)=1.0 from the logistic-regression model (CDK branch).",
+            )
+
     return {
         "project": project,
         "provider": provider,
@@ -186,7 +222,13 @@ def render_sidebar() -> dict[str, Any]:
         "use_ml_risk": use_ml_risk,
         "use_ansible_lint": use_ansible_lint,
         "use_secret_scan": use_secret_scan,
+        "pass_max": int(pass_max),
+        "review_max": int(review_max),
+        "cost_high_usd": float(cost_high_usd),
+        "cost_high_points": int(cost_high_points),
+        "cost_med_usd": float(cost_med_usd),
+        "cost_med_points": int(cost_med_points),
+        "ml_max_points": int(ml_max_points),
         "aws_ready": aws_ready,
         "openrouter_ready": openrouter_ready,
-        "infracost_ready": infracost_ready,
     }

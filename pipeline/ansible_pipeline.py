@@ -21,7 +21,7 @@ from pathlib import Path
 from typing import Any
 
 from ExecComponent.exec_code import exec_code
-from Eval.iac_security_gate import IaCSecurityGate
+from Eval.iac_security_gate import IaCSecurityGate, THRESHOLDS, COST_BANDS
 from pipeline.git_changes import changed_files
 
 _YAML_EXTS = (".yml", ".yaml")
@@ -132,6 +132,12 @@ def run_ansible_gate(
     use_checkov: bool = True,
     use_secret_scan: bool = True,
     aws_config_violations: int | None = None,
+    pass_max: int = THRESHOLDS["pass_max"],
+    review_max: int = THRESHOLDS["review_max"],
+    cost_high_usd: float = COST_BANDS["high_usd"],
+    cost_high_points: int = COST_BANDS["high_points"],
+    cost_med_usd: float = COST_BANDS["med_usd"],
+    cost_med_points: int = COST_BANDS["med_points"],
 ) -> dict[str, Any]:
     """Run the Ansible security gate over *ansible_dir*.
 
@@ -158,6 +164,12 @@ def run_ansible_gate(
         use_checkov=use_checkov,
         use_secret_scan=use_secret_scan,
         aws_config_violations=aws_config_violations,
+        pass_max=pass_max,
+        review_max=review_max,
+        cost_high_usd=cost_high_usd,
+        cost_high_points=cost_high_points,
+        cost_med_usd=cost_med_usd,
+        cost_med_points=cost_med_points,
     )
 
 

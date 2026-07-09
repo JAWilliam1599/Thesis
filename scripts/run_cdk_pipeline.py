@@ -62,6 +62,8 @@ from pipeline.cdk_pipeline import (
 )
 from pipeline.aws_credentials import get_session
 from pipeline.notifier import get_notifier
+from Eval.iac_security_gate import THRESHOLDS, COST_BANDS
+from Eval.scanners.ml_risk_adapter import ML_MAX_POINTS
 from pipeline.ssm_store import list_monitored_stacks, read_gate_result, write_gate_result
 from pipeline.eventbridge_trigger import publish_gate_event
 from Monitor.cloudwatch_publisher import publish_gate_metrics, put_log_event
@@ -76,12 +78,20 @@ def parse_args() -> argparse.Namespace:
                         help="Skip synth+gate and approve an existing review-band report by run_id. Use with --deploy.")
     parser.add_argument("--cost-delta-usd", type=float, default=None, help="Override Infracost cost delta in USD (default: auto-detect via infracost).")
     parser.add_argument("--aws-config-violations", type=int, default=None, help="Override AWS Config violations count (default: auto-fetch via boto3).")
+    parser.add_argument("--pass-max", type=int, default=THRESHOLDS["pass_max"], help=f"Max score for an auto-PASS decision (default: {THRESHOLDS['pass_max']}).")
+    parser.add_argument("--review-max", type=int, default=THRESHOLDS["review_max"], help=f"Max score for a REVIEW decision; above this is REJECT (default: {THRESHOLDS['review_max']}).")
+    parser.add_argument("--cost-high-usd", type=float, default=COST_BANDS["high_usd"], help=f"Cost delta (USD) above which the high cost-band points apply (default: {COST_BANDS['high_usd']}).")
+    parser.add_argument("--cost-high-points", type=int, default=COST_BANDS["high_points"], help=f"Points added when cost delta exceeds --cost-high-usd (default: {COST_BANDS['high_points']}).")
+    parser.add_argument("--cost-med-usd", type=float, default=COST_BANDS["med_usd"], help=f"Cost delta (USD) above which the medium cost-band points apply (default: {COST_BANDS['med_usd']}).")
+    parser.add_argument("--cost-med-points", type=int, default=COST_BANDS["med_points"], help=f"Points added when cost delta exceeds --cost-med-usd (default: {COST_BANDS['med_points']}).")
+    parser.add_argument("--ml-max-points", type=int, default=ML_MAX_POINTS, help=f"Max points contributed by the ML risk model at P(insecure)=1.0 (default: {ML_MAX_POINTS}).")
     parser.add_argument("--no-infracost", action="store_true", help="Skip infracost cost analysis.")
     parser.add_argument("--no-aws-config", action="store_true", help="Skip AWS Config violations fetch.")
     parser.add_argument("--no-ml-risk", action="store_true", help="Skip the ML (logistic regression) risk score on the CDK Python source.")
     parser.add_argument("--manual-approve", action="store_true", help="Approve review decision (21-60) for deploy.")
     parser.add_argument("--deploy", action="store_true", help="Run deploy if gate allows.")
     parser.add_argument("--bootstrap", action="store_true", help="Run cdk bootstrap before synth (required for first deploy).")
+    parser.add_argument("--bootstrap-only", action="store_true", help="Run cdk bootstrap for the account/region and exit (no synth/gate/deploy).")
     parser.add_argument("--no-checkov", action="store_true", help="Skip checkov scan (useful for fast-path testing).")
     parser.add_argument("--no-cfn-lint", action="store_true", help="Skip cfn-lint scan (useful for fast-path testing).")
     parser.add_argument("--prompt", default=None, help="Original CDK request (used with --regen-on-reject).")
@@ -234,6 +244,13 @@ def main() -> int:
     env = os.environ.copy()
     env["PYTHONUNBUFFERED"] = "1"
 
+    # --- Bootstrap-only path: bootstrap the account/region and exit ---
+    if args.bootstrap_only:
+        bootstrap = run_bootstrap(project_dir, env=env)
+        print(json.dumps({"stage": "bootstrap", **bootstrap}, indent=2))
+        logger.info("stage=bootstrap-only return_code=%s", bootstrap.get("return_code"))
+        return 0 if bootstrap["return_code"] == 0 else 9
+
     # --- Approve-only path: skip synth+gate, load existing report ---
     if args.approve_run_id:
         return approve_and_deploy_main(args, project_dir, env)
@@ -264,6 +281,13 @@ def main() -> int:
         use_aws_config=not args.no_aws_config,
         use_ml_risk=not args.no_ml_risk,
         run_id=run_id,
+        pass_max=args.pass_max,
+        review_max=args.review_max,
+        cost_high_usd=args.cost_high_usd,
+        cost_high_points=args.cost_high_points,
+        cost_med_usd=args.cost_med_usd,
+        cost_med_points=args.cost_med_points,
+        ml_max_points=args.ml_max_points,
     )
     print(json.dumps({"stage": "gate", "gate": gate_report}, indent=2))
     logger.info(

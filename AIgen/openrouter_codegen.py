@@ -20,12 +20,9 @@ DEFAULT_OUTPUT_PATH = ROOT_DIR / "ExecCode" / "generated_code.py"
 
 SYSTEM_INSTRUCTION = (
     "You are a code generator. Return only executable Python code and no markdown. "
-    "At the very top of the file, include a short instructions block using comments in this exact format: "
-    "'# INSTRUCTIONS:' then one instruction per line prefixed with '# ', then '# END INSTRUCTIONS'. "
-    "The instructions must be detailed and action-oriented: include how to run the code, how to deploy if applicable, "
-    "and how to provide required inputs (where to find IDs, names, or values in AWS console/CLI). "
     "When the user requests creating or modifying cloud resources (EC2, S3, RDS, VPC, Lambda, etc.), generate a complete AWS CDK app that can be synthesized non-interactively. "
     "Do not place input() calls inside Stack.__init__ or at import time. If values are required, use CfnParameter, CDK context, environment variables, or explicit constructor arguments with safe defaults. "
+    "Never use Vpc.from_lookup() (including is_default=True) or any *.from_lookup()/context-provider lookup: they need live AWS credentials and a concrete stack env and will crash `cdk synth` in this non-interactive pipeline. Create resources in-stack instead (e.g. ec2.Vpc(self, 'Vpc', max_azs=2)), or reference an existing VPC via CfnParameters + ec2.Vpc.from_vpc_attributes(...). "
     "The final file must include App(), at least one Stack, and app.synth(). The app must be runnable by cdk synth without manual prompts. "
     "If the environment running the generated code is non-interactive, include clear TODO comments or placeholders showing which values must be supplied. "
     "Always use AWS CDK to define infrastructure and produce CloudFormation-compatible constructs (do not use boto3 for infrastructure definition). "
@@ -40,37 +37,9 @@ class OpenRouterError(Exception):
 
 def build_user_prompt(user_request: str) -> str:
     return (
-        "Generate Python code for this request:\n"
-        f"{user_request}\n\n"
-        "Requirements:\n"
-        "1) Output only Python code.\n"
-        "2) Start the file with a detailed instructions comment block as described in the system instruction.\n"
-        "3) If the request involves AWS infrastructure, produce a complete AWS CDK app with App(), at least one Stack, and app.synth().\n"
-        "4) Do not place input() calls inside Stack.__init__ or at import time. Use CfnParameter, context, environment variables, or safe defaults instead.\n"
-        "5) The result must run non-interactively with cdk synth.\n"
-        "6) If AWS infrastructure or packages are needed, ask the user which CDK version and any dependencies.\n"
-        "7) Keep the code clear and practical."
+        "Generate Python code for this request, following the system instructions:\n"
+        f"{user_request}"
     )
-
-
-def extract_instructions(code_text: str) -> str:
-    lines = code_text.splitlines()
-    if not lines or lines[0].strip() != "# INSTRUCTIONS:":
-        return ""
-
-    instructions = []
-    for line in lines[1:]:
-        if line.strip() == "# END INSTRUCTIONS":
-            break
-        if line.lstrip().startswith("#"):
-            content = line.lstrip()[1:]
-            if content.startswith(" "):
-                content = content[1:]
-            instructions.append(content)
-        else:
-            instructions.append(line)
-
-    return "\n".join(instructions).strip()
 
 
 def extract_code(raw_text: str) -> str:
@@ -179,11 +148,6 @@ def format_openrouter_http_error(status: int, details: str) -> str:
 def save_code(code: str, output_path: Path) -> Path:
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(code, encoding="utf-8")
-
-    instructions = extract_instructions(code)
-    if instructions:
-        instructions_path = output_path.with_suffix(".instructions.txt")
-        instructions_path.write_text(instructions, encoding="utf-8")
     return output_path
 
 

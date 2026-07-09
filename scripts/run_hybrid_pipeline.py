@@ -63,6 +63,8 @@ from pipeline.ansible_pipeline import (
 )
 from pipeline.aws_credentials import get_session
 from pipeline.notifier import get_notifier
+from Eval.iac_security_gate import THRESHOLDS, COST_BANDS
+from Eval.scanners.ml_risk_adapter import ML_MAX_POINTS
 from pipeline.ssm_store import list_monitored_stacks, read_gate_result, write_gate_result
 from pipeline.eventbridge_trigger import publish_gate_event
 from Monitor.cloudwatch_publisher import publish_gate_metrics, put_log_event
@@ -174,6 +176,13 @@ def run_cdk_branch(args: argparse.Namespace, run_id: str, env: dict) -> dict:
         use_aws_config=not args.no_aws_config,
         use_ml_risk=not args.no_ml_risk,
         run_id=run_id,
+        pass_max=args.pass_max,
+        review_max=args.review_max,
+        cost_high_usd=args.cost_high_usd,
+        cost_high_points=args.cost_high_points,
+        cost_med_usd=args.cost_med_usd,
+        cost_med_points=args.cost_med_points,
+        ml_max_points=args.ml_max_points,
     )
     print(json.dumps({"stage": "cdk.gate", "gate": gate_report}, indent=2))
     stack_name = extract_stack_name(gate_report)
@@ -267,6 +276,12 @@ def run_ansible_branch(args: argparse.Namespace, run_id: str, env: dict) -> dict
         use_checkov=not args.no_checkov,
         use_secret_scan=not args.no_secret_scan,
         aws_config_violations=args.aws_config_violations,
+        pass_max=args.pass_max,
+        review_max=args.review_max,
+        cost_high_usd=args.cost_high_usd,
+        cost_high_points=args.cost_high_points,
+        cost_med_usd=args.cost_med_usd,
+        cost_med_points=args.cost_med_points,
     )
     print(json.dumps({"stage": "ansible.gate", "gate": gate_report}, indent=2))
     _emit_observability(gate_report, node_name)
@@ -383,6 +398,13 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--run-id", default=None, help="Override the hybrid run ID.")
     p.add_argument("--cost-delta-usd", type=float, default=None, help="Override Infracost cost delta (CDK branch).")
     p.add_argument("--aws-config-violations", type=int, default=None, help="Override AWS Config violations count.")
+    p.add_argument("--pass-max", type=int, default=THRESHOLDS["pass_max"], help=f"Max score for an auto-PASS decision (default: {THRESHOLDS['pass_max']}).")
+    p.add_argument("--review-max", type=int, default=THRESHOLDS["review_max"], help=f"Max score for a REVIEW decision; above this is REJECT (default: {THRESHOLDS['review_max']}).")
+    p.add_argument("--cost-high-usd", type=float, default=COST_BANDS["high_usd"], help=f"Cost delta (USD) above which the high cost-band points apply (default: {COST_BANDS['high_usd']}).")
+    p.add_argument("--cost-high-points", type=int, default=COST_BANDS["high_points"], help=f"Points added when cost delta exceeds --cost-high-usd (default: {COST_BANDS['high_points']}).")
+    p.add_argument("--cost-med-usd", type=float, default=COST_BANDS["med_usd"], help=f"Cost delta (USD) above which the medium cost-band points apply (default: {COST_BANDS['med_usd']}).")
+    p.add_argument("--cost-med-points", type=int, default=COST_BANDS["med_points"], help=f"Points added when cost delta exceeds --cost-med-usd (default: {COST_BANDS['med_points']}).")
+    p.add_argument("--ml-max-points", type=int, default=ML_MAX_POINTS, help=f"Max points contributed by the ML risk model at P(insecure)=1.0, CDK branch (default: {ML_MAX_POINTS}).")
     p.add_argument("--manual-approve", action="store_true", help="Approve review-band (21-80) decisions for deploy.")
     p.add_argument("--deploy", action="store_true", help="Deploy each branch that the gate allows.")
     p.add_argument("--bootstrap", action="store_true", help="Run cdk bootstrap before synth (CDK branch).")

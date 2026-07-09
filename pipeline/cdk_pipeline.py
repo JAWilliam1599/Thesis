@@ -8,7 +8,8 @@ from pathlib import Path
 from typing import Any
 
 from ExecComponent.exec_code import exec_code
-from Eval.iac_security_gate import IaCSecurityGate
+from Eval.iac_security_gate import IaCSecurityGate, THRESHOLDS, COST_BANDS
+from Eval.scanners.ml_risk_adapter import ML_MAX_POINTS
 
 
 def resolve_cdk_env() -> dict[str, str]:
@@ -131,6 +132,13 @@ def run_iac_gate(
     use_ml_risk: bool = True,
     run_id: str | None = None,
     region: str | None = None,
+    pass_max: int = THRESHOLDS["pass_max"],
+    review_max: int = THRESHOLDS["review_max"],
+    cost_high_usd: float = COST_BANDS["high_usd"],
+    cost_high_points: int = COST_BANDS["high_points"],
+    cost_med_usd: float = COST_BANDS["med_usd"],
+    cost_med_points: int = COST_BANDS["med_points"],
+    ml_max_points: int = ML_MAX_POINTS,
 ) -> dict[str, Any]:
     if run_id is None:
         run_id = f"cdk_{datetime.now(tz=timezone.utc).strftime('%Y%m%dT%H%M%SZ')}"
@@ -148,6 +156,13 @@ def run_iac_gate(
         source_dir=project_dir,
         run_id=run_id,
         region=region,
+        pass_max=pass_max,
+        review_max=review_max,
+        cost_high_usd=cost_high_usd,
+        cost_high_points=cost_high_points,
+        cost_med_usd=cost_med_usd,
+        cost_med_points=cost_med_points,
+        ml_max_points=ml_max_points,
     )
 
 
@@ -166,7 +181,8 @@ def can_deploy(
         if manual_review_approved:
             return True, "Manual review approved."
         return False, "Risk gate requires manual review approval."
-    return False, "Risk gate rejected this deployment (score > 60)."
+    review_max = gate_report.get("thresholds", {}).get("review_max", THRESHOLDS["review_max"])
+    return False, f"Risk gate rejected this deployment (score > {review_max})."
 
 
 def _logs_root() -> Path:

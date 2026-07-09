@@ -173,6 +173,13 @@ def _register_application_insights(stack_name: str) -> None:
                 ResourceGroupName=resource_group_name,
                 AutoConfigEnabled=True,
                 OpsCenterEnabled=False,
+                Tags=[
+                    # The AWS-managed "ApplicationInsights-..." CFN stack this
+                    # creates has an opaque name; tag the app so the console
+                    # shows which deployed stack it monitors.
+                    {"Key": "monitored-stack", "Value": stack_name},
+                    {"Key": "managed-by", "Value": "syssecops-pipeline"},
+                ],
             )
             logger.info(
                 "Application Insights: registered application for stack=%r group=%r",
@@ -686,19 +693,129 @@ def setup_stack_monitoring(stack_name: str, cdk_out_dir: Path) -> None:
         _setup_vpc_flow_log_alarms(stack_name, template)
 
 
-def teardown_stack_monitoring(stack_name: str) -> None:
-    """Remove CloudWatch Application Insights registration for a destroyed stack.
+def teardown_stack_monitoring(stack_name: str) -> dict[str, Any]:
+    """Remove every monitoring artifact created for *stack_name*.
 
-    Optional cleanup — never raises.
+    Cleans up, in order:
+      1. CloudWatch alarms named ``syssecops-<stack>-*`` (Layers 2/3)
+      2. CloudWatch Logs metric filters named ``syssecops-<stack>-*``
+      3. The Application Insights application (``syssecops-<stack>`` group) —
+         AWS then removes its auto-created ``ApplicationInsights-…`` helper stack
+      4. The ``syssecops-<stack>`` resource group
+      5. The ``/syssecops/gate/<stack>`` log group (gate report log events)
+      6. The ``/syssecops/gate/<stack>/latest_*`` SSM parameters
+
+    Best-effort: each step is independent and never raises. Returns a summary
+    dict for UI/CLI display: counts per artifact type plus an ``errors`` list.
     """
+    prefix = f"syssecops-{stack_name}-"
     resource_group_name = f"syssecops-{stack_name}"
+    summary: dict[str, Any] = {
+        "alarms_deleted": 0,
+        "metric_filters_deleted": 0,
+        "application_insights_deleted": False,
+        "resource_group_deleted": False,
+        "log_group_deleted": False,
+        "ssm_parameters_deleted": False,
+        "errors": [],
+    }
+
+    # 1 — CloudWatch alarms
+    try:
+        cw = _get_client("cloudwatch")
+        names: list[str] = []
+        paginator = cw.get_paginator("describe_alarms")
+        for page in paginator.paginate(AlarmNamePrefix=prefix):
+            names.extend(a["AlarmName"] for a in page.get("MetricAlarms", []))
+        for i in range(0, len(names), 100):
+            cw.delete_alarms(AlarmNames=names[i:i + 100])
+        summary["alarms_deleted"] = len(names)
+        logger.info("teardown: deleted %d alarm(s) for stack=%r", len(names), stack_name)
+    except Exception as exc:
+        summary["errors"].append(f"alarms: {exc}")
+        logger.warning("teardown: alarm cleanup failed for stack=%r — %s", stack_name, exc)
+
+    # 2 — CloudWatch Logs metric filters (CloudTrail / VPC flow log alarms)
+    try:
+        logs_client = _get_client("logs")
+        paginator = logs_client.get_paginator("describe_metric_filters")
+        filters: list[tuple[str, str]] = []
+        for page in paginator.paginate(filterNamePrefix=prefix):
+            for mf in page.get("metricFilters", []):
+                filters.append((mf["logGroupName"], mf["filterName"]))
+        for log_group, filter_name in filters:
+            logs_client.delete_metric_filter(
+                logGroupName=log_group, filterName=filter_name
+            )
+        summary["metric_filters_deleted"] = len(filters)
+        logger.info(
+            "teardown: deleted %d metric filter(s) for stack=%r", len(filters), stack_name
+        )
+    except Exception as exc:
+        summary["errors"].append(f"metric filters: {exc}")
+        logger.warning(
+            "teardown: metric filter cleanup failed for stack=%r — %s", stack_name, exc
+        )
+
+    # 3 — Application Insights application
     try:
         client = _get_client("application-insights")
         client.delete_application(ResourceGroupName=resource_group_name)
+        summary["application_insights_deleted"] = True
         logger.info(
             "Application Insights: deleted application for group=%r", resource_group_name
         )
     except Exception as exc:
+        err_code = getattr(exc, "response", {}).get("Error", {}).get("Code", "") if hasattr(exc, "response") else ""
+        if err_code == "ResourceNotFoundException":
+            logger.debug("teardown: no Application Insights app for %r", resource_group_name)
+        else:
+            summary["errors"].append(f"application insights: {exc}")
+            logger.warning(
+                "Application Insights: teardown failed for stack=%r — %s", stack_name, exc
+            )
+
+    # 4 — Resource group
+    try:
+        rg = _get_client("resource-groups")
+        rg.delete_group(Group=resource_group_name)
+        summary["resource_group_deleted"] = True
+        logger.info("teardown: deleted resource group %r", resource_group_name)
+    except Exception as exc:
+        err_code = getattr(exc, "response", {}).get("Error", {}).get("Code", "") if hasattr(exc, "response") else ""
+        if err_code == "NotFoundException":
+            logger.debug("teardown: no resource group %r", resource_group_name)
+        else:
+            summary["errors"].append(f"resource group: {exc}")
+            logger.warning(
+                "teardown: resource group cleanup failed for stack=%r — %s", stack_name, exc
+            )
+
+    # 5 — Gate report log group
+    try:
+        logs_client = _get_client("logs")
+        logs_client.delete_log_group(logGroupName=f"/syssecops/gate/{stack_name}")
+        summary["log_group_deleted"] = True
+        logger.info("teardown: deleted log group /syssecops/gate/%s", stack_name)
+    except Exception as exc:
+        err_code = getattr(exc, "response", {}).get("Error", {}).get("Code", "") if hasattr(exc, "response") else ""
+        if err_code == "ResourceNotFoundException":
+            logger.debug("teardown: no gate log group for stack=%r", stack_name)
+        else:
+            summary["errors"].append(f"log group: {exc}")
+            logger.warning(
+                "teardown: log group cleanup failed for stack=%r — %s", stack_name, exc
+            )
+
+    # 6 — SSM gate parameters
+    try:
+        from pipeline.ssm_store import delete_gate_result
+
+        summary["ssm_parameters_deleted"] = delete_gate_result(stack_name)
+    except Exception as exc:
+        summary["errors"].append(f"ssm parameters: {exc}")
         logger.warning(
-            "Application Insights: teardown failed for stack=%r — %s", stack_name, exc
+            "teardown: SSM parameter cleanup failed for stack=%r — %s", stack_name, exc
         )
+
+    return summary

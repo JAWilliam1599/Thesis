@@ -135,6 +135,7 @@ Tailscale and pass it to the CDK stack as `onprem_db_cidr`.
 3. In the Tailscale admin console, **approve the advertised route** for the VM.
 
 4. Note the VM's Tailscale IP (`100.x.y.z`) — this is `onprem_db_host`.
+> 100.127.241.28
 
 The AWS-side Tailscale router (an EC2 instance) is created for you by the CDK
 stack; you approve its route after deploy (Part 6).
@@ -147,7 +148,7 @@ Edit [ansible/inventory.ini](ansible/inventory.ini):
 
 ```ini
 [dbservers]
-onprem-db ansible_host=100.112.100.124 ansible_user=ubuntu
+onprem-db ansible_host=100.127.241.28 ansible_user=ubuntu
 ```
 
 Confirm reachability from the control machine (repo root):
@@ -181,7 +182,8 @@ cd /home/astia/Documents/Thesis/Thesis
 
 .venv/bin/python scripts/run_hybrid_pipeline.py \
     --cdk-path examples/hybrid-webapp-demo/cdk \
-    --ansible-path examples/hybrid-webapp-demo/ansible
+    --ansible-path examples/hybrid-webapp-demo/ansible \
+    --review-max 100
 ```
 
 What happens:
@@ -227,8 +229,14 @@ CIDRs, and (via Tailscale from Part 2) makes the DB reachable from AWS.
 
 ## Part 6 — Deploy the AWS website
 
+> onprem_db_host is the same as the Tailscale IP of the on-prem VM you set in
+> [ansible/inventory.ini](ansible/inventory.ini). 
+
 The Secrets Manager secret must hold the **same** password you set on-prem.
-Pass the on-prem details as CDK context so they match your environment:
+The on-prem details are already pinned in [cdk/cdk.json](cdk/cdk.json) context
+(`onprem_db_host=100.127.241.28`, `onprem_db_cidr=192.168.64.0/24`), so a plain
+`cdk deploy` uses the correct values. Pass `-c` overrides only if your
+environment differs:
 
 ```bash
 cd examples/hybrid-webapp-demo/cdk
@@ -242,7 +250,7 @@ pip install \
 cdk bootstrap
 cdk deploy \
   -c onprem_db_cidr=192.168.64.0/24 \
-  -c onprem_db_host=100.64.0.10 \
+  -c onprem_db_host=100.127.241.28 \
   -c db_name=guestbook \
   -c db_user=appuser
 ```
@@ -251,11 +259,23 @@ After deploy:
 
 1. Note the outputs: `SiteUrl`, `ApiUrl`, `DbSecretArn`, `VpcCidr`,
    `TailscaleRouterInstanceId`.
+
+> HybridWebappStack.ApiUrl = https://5pxvz6fx8b.execute-api.us-east-1.amazonaws.com/prod/
+> HybridWebappStack.DbSecretArn = arn:aws:secretsmanager:us-east-1:926208928139:secret:OnPremDbSecretBC9CA235-VFGvuiBj6ZT3-Nv0kSr
+> HybridWebappStack.DistributionId = E1C3PJK1G3O0C5
+> HybridWebappStack.FrontendBucketName = hybridwebappstack-frontendbucketefe2e19c-w4jxyowcfedj
+> HybridWebappStack.GuestbookApiEndpoint961D601B = https://5pxvz6fx8b.execute-api.us-east-1.amazonaws.com/prod/
+> HybridWebappStack.SiteUrl = https://dr53e5y2yaulx.cloudfront.net
+> HybridWebappStack.TailscaleRouterInstanceId = i-0c1d48af993f1b697
+> HybridWebappStack.VpcCidr = 10.0.0.0/16
+
 2. **SSH to the Tailscale router EC2** (via SSM Session Manager) and bring it up
    so the VPC ↔ on-prem route works, then approve its route in the admin console:
    ```bash
    sudo tailscale up --advertise-routes=<VpcCidr> --accept-routes --authkey tskey-XXXX
    ```
+   > sudo tailscale-up --advertise-routes=
+
 3. Set the Secrets Manager password to match on-prem:
    ```bash
    aws secretsmanager put-secret-value --secret-id <DbSecretArn> \
@@ -264,16 +284,33 @@ After deploy:
         | ONPREM_DB_PASSWORD="$ONPREM_DB_PASSWORD" \
           python -c 'import os,sys,json;d=json.load(sys.stdin);d["password"]=os.environ["ONPREM_DB_PASSWORD"];print(json.dumps(d))')"
    ```
+
+  ```bash
+    aws secretsmanager put-secret-value --secret-id arn:aws:secretsmanager:us-east-1:926208928139:secret:OnPremDbSecretBC9CA235-VFGvuiBj6ZT3-Nv0kSr \
+     --secret-string "$(aws secretsmanager get-secret-value --secret-id arn:aws:secretsmanager:us-east-1:926208928139:secret:OnPremDbSecretBC9CA235-VFGvuiBj6ZT3-Nv0kSr \
+        --query SecretString --output text \
+        | ONPREM_DB_PASSWORD="$ONPREM_DB_PASSWORD" \
+          python -c 'import os,sys,json;d=json.load(sys.stdin);d["password"]=os.environ["ONPREM_DB_PASSWORD"];print(json.dumps(d))')"
+  ```
+
 4. Point the frontend at the API and upload it to the bucket:
    ```bash
    # Put the ApiUrl output into config.js
    printf 'window.APP_CONFIG = { apiBaseUrl: "%s" };\n' "<ApiUrl>" \
      > ../frontend/config.js
 
+   printf 'window.APP_CONFIG = { apiBaseUrl: "%s" };\n' "https://5pxvz6fx8b.execute-api.us-east-1.amazonaws.com/prod/" \
+     > ../frontend/config.js
+
    # Upload the static site and refresh the CDN
    aws s3 sync ../frontend "s3://<FrontendBucketName>"
    aws cloudfront create-invalidation \
      --distribution-id <DistributionId> --paths '/*'
+
+
+   aws s3 sync ../frontend "s3://hybridwebappstack-frontendbucketefe2e19c-w4jxyowcfedj"
+   aws cloudfront create-invalidation \
+     --distribution-id E1C3PJK1G3O0C5 --paths '/*'
    ```
 
 Open `SiteUrl` in a browser — the guestbook should list the seed rows served
@@ -292,14 +329,15 @@ export ONPREM_DB_PASSWORD=...    # as in Part 5
 ```
 
 > **This is not an end-to-end "working website" button.** It runs only the two
-> gated IaC deploys — `cdk deploy --all` (with the **default** context in
-> `app.py`, *not* your `-c onprem_db_*` overrides) and `ansible-playbook site.yml`.
+> gated IaC deploys — `cdk deploy --all` (using the context pinned in
+> [cdk/cdk.json](cdk/cdk.json), which already holds the correct
+> `onprem_db_host`/`onprem_db_cidr`) and `ansible-playbook site.yml`.
 > It does **not** populate the psycopg2 layer, bootstrap the account, sync the
 > DB password into Secrets Manager, bring up/approve the AWS Tailscale route, or
 > upload the frontend. For a real deploy you still need the one-time layer step
-> and the post-deploy steps 1–4 above. To match your environment, either edit
-> the context defaults in [cdk/app.py](cdk/app.py) or run `cdk deploy` manually
-> with `-c` overrides as shown above.
+> and the post-deploy steps 1–4 above. To point at a different environment, edit
+> the context in [cdk/cdk.json](cdk/cdk.json) or run `cdk deploy` manually with
+> `-c` overrides as shown above.
 
 ---
 

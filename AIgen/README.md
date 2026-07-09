@@ -31,18 +31,16 @@ flowchart LR
 
 ## `bedrock_codegen.py` — Bedrock Backend
 
-Generates Python code via the Bedrock runtime. Output is plain Python prefixed with an
-`# INSTRUCTIONS: … # END INSTRUCTIONS` block.
+Generates plain Python code via the Bedrock runtime.
 
 | Function | Purpose |
 |---|---|
-| `build_user_prompt(user_request)` | Wraps the request with structured requirements |
-| `extract_instructions(code_text)` | Pulls the instruction block out of generated code |
+| `build_user_prompt(user_request)` | Injects the request under the system instructions |
 | `extract_code(raw_text)` | Strips markdown fences → pure Python |
 | `call_bedrock(user_request, model_id, region=None, max_tokens=1400)` | Raw generation call |
 | `validate_model_id(model_id, region=None)` | Raises `ValueError` if the model is unavailable |
 | `is_quota_throttling_error(exc)` / `format_bedrock_error(exc)` | Throttle detection / error formatting |
-| `save_code(code, output_path)` | Writes `.py` + `.instructions.txt` |
+| `save_code(code, output_path)` | Writes the generated `.py` file |
 | `generate_and_save(...)` / `parse_args()` / `main()` | End-to-end + CLI |
 
 - **Env:** `BEDROCK_MODEL_ID` (default `qwen.qwen3-coder-30b-a3b-v1:0`), `AWS_REGION`.
@@ -58,7 +56,7 @@ Bedrock access is unavailable.
 | Function | Purpose |
 |---|---|
 | `call_openrouter(user_request, model_id, api_key, api_url=…, max_tokens=2400, temperature=0.2, …)` | HTTP generation call |
-| `build_user_prompt` / `extract_instructions` / `extract_code` | Shared prompt + parsing helpers |
+| `build_user_prompt` / `extract_code` | Shared prompt + parsing helpers |
 | `is_quota_throttling_message(text)` / `format_openrouter_http_error(status, details)` | Error handling |
 | `save_code` / `generate_and_save` / `parse_args` / `main` | End-to-end + CLI |
 
@@ -77,7 +75,7 @@ Bedrock access is unavailable.
 
 ## Outputs
 
-- Standalone generation writes `<output_path>.py` + `<output_path>.instructions.txt`.
+- Standalone generation writes `<output_path>.py`.
 - The CDK regen loop writes generated code to `GeneratedCDK/app.py` and per-attempt
   artifacts to `logs/cdk_regen/<run_id>/attempt_<N>/` (prompt, code, gate report, synth output),
   with the winning/losing attempt copied to `passed/` or `failed/`.

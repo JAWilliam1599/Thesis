@@ -1,7 +1,7 @@
 {
   "app": "../../../.venv/bin/python app.py",
   "context": {
-    "onprem_db_host": "100.112.100.124",
+    "onprem_db_host": "100.127.241.28",
     "onprem_db_cidr": "192.168.64.0/24",
     "db_name": "guestbook",
     "db_user": "appuser"

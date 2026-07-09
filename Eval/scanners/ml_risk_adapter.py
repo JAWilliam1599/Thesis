@@ -199,13 +199,14 @@ def run_ml_risk(
     source_dir: Path,
     *,
     enabled: bool = True,
+    max_points: int = ML_MAX_POINTS,
 ) -> dict[str, Any]:
     """Score the Python source under *source_dir* with the trained model.
 
     Returns a dict with keys:
         status      – see module docstring
         probability – worst-file P(insecure), 0.0-1.0
-        ml_score    – round(probability * ML_MAX_POINTS)
+        ml_score    – round(probability * max_points)
         files       – per-file [{file, probability, features}] breakdown
         message     – human-readable status detail
     """
@@ -275,7 +276,7 @@ def run_ml_risk(
 
     worst = max(per_file, key=lambda item: item["probability"])
     probability = worst["probability"]
-    ml_score = round(probability * ML_MAX_POINTS)
+    ml_score = round(probability * max(0, int(max_points)))
     return {
         "status": _OK_STATUS,
         "probability": probability,

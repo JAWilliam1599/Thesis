@@ -125,11 +125,6 @@ def save_openrouter_key(api_key: str) -> None:
     _write_env_value("OPENROUTER_API_KEY", api_key.strip())
 
 
-def save_infracost_key(api_key: str) -> None:
-    """Update only the INFRACOST_API_KEY line in the repo .env, preserving others."""
-    _write_env_value("INFRACOST_API_KEY", api_key.strip())
-
-
 def save_tailscale_settings(api_key: str, tailnet: str) -> None:
     """Update the TAILSCALE_API_KEY / TAILSCALE_TAILNET lines in the repo .env."""
     _write_env_value("TAILSCALE_API_KEY", api_key.strip())

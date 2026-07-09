@@ -25,7 +25,7 @@ def render_login_tab() -> None:
     st.header("🔑 Credentials")
     st.caption(
         "Enter credentials here instead of logging in via the terminal. "
-        "AWS keys are saved to `~/.aws/credentials`; the OpenRouter, Infracost "
+        "AWS keys are saved to `~/.aws/credentials`; the OpenRouter "
         "and Tailscale values to `.env`."
     )
     stored = credentials.load_credentials()
@@ -53,15 +53,6 @@ def render_login_tab() -> None:
             "API Key", value=stored.get("openrouter_key", ""), type="password"
         )
 
-        st.subheader("Infracost")
-        infracost_key = st.text_input(
-            "Infracost API Key",
-            value=stored.get("infracost_key", ""),
-            type="password",
-            help="Free key from https://dashboard.infracost.io — avoids running "
-            "`infracost auth login` in a terminal. Saved to `.env` as INFRACOST_API_KEY.",
-        )
-
         st.subheader("Tailscale (optional — on-prem monitoring)")
         tailscale_key = st.text_input(
             "Tailscale API Key",
@@ -81,6 +72,7 @@ def render_login_tab() -> None:
         return
 
     any_ok = False
+    aws_ok = False
 
     # AWS
     if access_key or secret_key:
@@ -91,6 +83,7 @@ def render_login_tab() -> None:
             credentials.save_aws_credentials(access_key, secret_key, session_token, region)
             st.success(f"AWS: {message}")
             any_ok = True
+            aws_ok = True
         else:
             st.error(f"AWS: {message}")
     else:
@@ -108,15 +101,6 @@ def render_login_tab() -> None:
     else:
         st.info("OpenRouter: no key entered — skipped.")
 
-    # Infracost (no validation endpoint worth blocking on — the CLI reports
-    # auth failures at scan time; just persist the key).
-    if infracost_key:
-        credentials.save_infracost_key(infracost_key)
-        st.success("Infracost: key saved to .env (INFRACOST_API_KEY).")
-        any_ok = True
-    else:
-        st.info("Infracost: no key entered — skipped.")
-
     # Tailscale
     if tailscale_key or tailscale_tailnet:
         credentials.save_tailscale_settings(tailscale_key, tailscale_tailnet)
@@ -126,6 +110,30 @@ def render_login_tab() -> None:
     if any_ok:
         st.session_state.creds_loaded = True
         st.toast("Credentials saved.", icon="✅")
+
+    # Auto-bootstrap the CDK environment once valid AWS creds are saved so the
+    # first deploy doesn't fail with "Is account bootstrapped?". cdk bootstrap
+    # is idempotent, so re-running it on an already-bootstrapped account is safe.
+    if aws_ok:
+        _run_cdk_bootstrap(header="Bootstrapping CDK environment (one-time per account/region)…")
+
+
+def _run_cdk_bootstrap(header: str) -> None:
+    """Run `cdk bootstrap` with a live status box; shared by Login + Pipeline."""
+    with st.status(header, expanded=True) as status:
+        result = _run_with_live_logs(
+            lambda on_line: pipeline_runner.run_bootstrap_stage(on_line)
+        )
+        if result["return_code"] == 0:
+            status.update(label="CDK environment ready (bootstrap complete).", state="complete")
+            st.toast("CDK bootstrap complete.", icon="✅")
+        else:
+            status.update(label="CDK bootstrap failed — see logs.", state="error")
+            st.error(
+                "cdk bootstrap failed. Check that the AWS credentials have "
+                "permission to create the CDKToolkit stack, then retry from the "
+                "Pipeline tab's Deploy step."
+            )
 
 
 # ===========================================================================
@@ -400,6 +408,8 @@ def _render_deploy_subtab(settings: dict[str, Any]) -> None:
         _run_deploy(settings)
         return
 
+    _render_bootstrap_control()
+
     gate = st.session_state.get("pipeline_gate_report")
     if not gate:
         st.info("No active run. Generate or load an approved run first.")
@@ -434,6 +444,29 @@ def _render_deploy_subtab(settings: dict[str, Any]) -> None:
         st.session_state.pipeline_logs_deploy = ""
         st.session_state.pipeline_deploy_running = True
         st.rerun()
+
+    with st.expander("🧰 Bootstrap CDK environment", expanded=False):
+        st.caption(
+            "Run this **once per AWS account/region** before your first deploy. "
+            "It creates the `CDKToolkit` stack + assets bucket that `cdk deploy` "
+            "publishes to. Safe to re-run (idempotent). If a deploy fails with "
+            "*\"Is account … bootstrapped?\"*, run this first."
+        )
+        if st.button("🧰 Run cdk bootstrap"):
+            _run_cdk_bootstrap(header="Bootstrapping CDK environment…")
+
+
+def _render_bootstrap_control() -> None:
+    """Standalone 'cdk bootstrap' control shown at the top of the Deploy tab."""
+    with st.expander("🧰 Bootstrap CDK environment (one-time per account/region)", expanded=False):
+        st.caption(
+            "Creates the `CDKToolkit` stack + assets bucket that `cdk deploy` "
+            "publishes to. This runs automatically after **Test & Save** on the "
+            "Login tab; use this button if a deploy fails with "
+            "*\"Is account … bootstrapped?\"*. Safe to re-run (idempotent)."
+        )
+        if st.button("🧰 Run cdk bootstrap", key="deploy_bootstrap_btn"):
+            _run_cdk_bootstrap(header="Bootstrapping CDK environment…")
 
 
 def _run_deploy(settings: dict[str, Any]) -> None:
@@ -820,7 +853,7 @@ def render_monitor_tab(settings: dict[str, Any]) -> None:
 
     resources_tab, stats_tab = st.tabs(["📈 Resources", "🛡️ App Statistics"])
     with resources_tab:
-        _render_monitor_resources()
+        _render_monitor_resources(settings)
     with stats_tab:
         _render_monitor_statistics(settings)
 
@@ -985,6 +1018,39 @@ def _render_monitor_aws() -> None:
             hide_index=True,
         )
 
+    _render_gate_dashboard([r["stack"] for r in rows] if rows else [])
+
+
+def _render_gate_dashboard(stacks: list[str]) -> None:
+    """In-app replica of the SysSecOpsGate CloudWatch dashboard (last 7 days)."""
+    st.markdown("**📊 Gate dashboard (live CloudWatch metrics)**")
+    if not stacks:
+        st.info("No monitored stacks yet — deploy a gated run to populate metrics.")
+        return
+
+    stack = st.selectbox("Stack / target", stacks, key="monitor_gate_dash_stack")
+    cols = st.columns(2)
+    for i, (metric, stat, unit) in enumerate(monitoring.GATE_DASHBOARD_METRICS):
+        with cols[i % 2]:
+            points, error = monitoring.get_gate_metric_series(stack, metric, stat=stat)
+            st.caption(f"{metric} ({stat}, {unit})")
+            if error:
+                st.warning(error)
+            elif not points:
+                st.info("No datapoints in the last 7 days.")
+            else:
+                values = [p["value"] for p in points]
+                chart: dict[str, list[Any]] = {
+                    "time": [p["time"] for p in points],
+                    metric: values,
+                }
+                y_cols = [metric]
+                if metric == "GateScore":
+                    chart["pass max (20)"] = [float(config.GATE_PASS_MAX)] * len(values)
+                    chart["reject min (80)"] = [float(config.GATE_REVIEW_MAX)] * len(values)
+                    y_cols += ["pass max (20)", "reject min (80)"]
+                st.line_chart(chart, x="time", y=y_cols)
+
 
 def _alarm_badge(state: str) -> str:
     emoji, _ = config.ALARM_STATE_STYLE.get(state, ("❔", "#9a6700"))
@@ -992,7 +1058,9 @@ def _alarm_badge(state: str) -> str:
 
 
 # --- Sub-tab: Resources --------------------------------------------------------
-def _render_monitor_resources() -> None:
+def _render_monitor_resources(settings: dict[str, Any]) -> None:
+    project = settings.get("project") or projects.get_active_project()
+    is_hybrid = project.get("workflow") == "hybrid"
     creds = credentials.load_credentials()
     aws_ready = bool(creds.get("access_key") and creds.get("secret_key"))
 
@@ -1003,32 +1071,55 @@ def _render_monitor_resources() -> None:
             "deployed stacks and resource metrics."
         )
     else:
-        _render_stack_resources()
+        _render_stack_resources(is_hybrid)
+        _render_monitoring_apps()
 
     st.divider()
     st.subheader("Dashboards")
-    st.markdown(
-        f"- [CloudWatch dashboards (incl. automatic per-service dashboards)]"
-        f"({monitoring.cloudwatch_automatic_dashboards_url()})\n"
-        f"- [SysSecOpsGate dashboard]({monitoring.cloudwatch_dashboard_url('SysSecOpsGate')})"
-        " — gate score / decision / findings trends\n"
-        f"- [SysSecOps-Hybrid dashboard]({monitoring.cloudwatch_dashboard_url('SysSecOps-Hybrid')})"
-        " — per-target risk scores + hybrid network flow"
+    st.caption(
+        "Gate metrics are charted in-app under **🛡️ App Statistics**; resource and "
+        "network-flow charts are above. Console shortcuts for the full versions:"
     )
+    lines = [
+        f"- [CloudWatch dashboards (incl. automatic per-service dashboards)]"
+        f"({monitoring.cloudwatch_automatic_dashboards_url()})"
+    ]
+    candidates = [("SysSecOpsGate", "gate score / decision / findings trends")]
+    if is_hybrid:
+        candidates.append(
+            ("SysSecOps-Hybrid", "per-target risk scores + hybrid network flow")
+        )
+    missing: list[str] = []
+    if aws_ready:
+        for name, desc in candidates:
+            if monitoring.dashboard_exists(name):
+                lines.append(
+                    f"- [{name} dashboard]({monitoring.cloudwatch_dashboard_url(name)}) — {desc}"
+                )
+            else:
+                missing.append(name)
+    st.markdown("\n".join(lines))
+    if missing:
+        st.caption(
+            "Not deployed yet: " + ", ".join(missing) + ". The SysSecOpsGate "
+            "dashboard is created by the ops-loop stack; SysSecOps-Hybrid via "
+            "`python -m Monitor.hybrid_dashboard --create`."
+        )
     st.caption(
         "AWS automatic dashboards (EC2, Lambda, RDS…) are generated by CloudWatch "
         "for every service in use — open the first link and pick a service."
     )
 
-    st.divider()
-    st.subheader("On-premise / hybrid mesh")
-    if not aws_ready:
-        st.info("Requires AWS credentials (SSM) — Tailscale settings are optional.")
-        return
-    _render_onprem_status()
+    if is_hybrid:
+        st.divider()
+        st.subheader("On-premise / hybrid mesh")
+        if not aws_ready:
+            st.info("Requires AWS credentials (SSM) — Tailscale settings are optional.")
+            return
+        _render_onprem_status()
 
 
-def _render_stack_resources() -> None:
+def _render_stack_resources(is_hybrid: bool = False) -> None:
     stacks, error = monitoring.list_cfn_stacks()
     if error:
         st.warning(f"CloudFormation lookup failed: {error}")
@@ -1088,7 +1179,140 @@ def _render_stack_resources() -> None:
             elif not points:
                 st.info("No datapoints.")
             else:
-                st.line_chart({metric: [p["value"] for p in points]})
+                st.line_chart(
+                    {
+                        "time": [p["time"] for p in points],
+                        metric: [p["value"] for p in points],
+                    },
+                    x="time",
+                    y=metric,
+                )
+
+    if is_hybrid:
+        _render_network_flow(resources)
+    _render_delete_stack(stack)
+
+
+def _render_delete_stack(stack_name: str) -> None:
+    """Danger zone: delete the stack and cascade-delete its monitoring artifacts."""
+    with st.expander("🗑 Delete stack (danger zone)", expanded=False):
+        st.warning(
+            f"This deletes the CloudFormation stack **{stack_name}** and every "
+            "related monitoring artifact: CloudWatch alarms, metric filters, "
+            "the Application Insights app (and its auto-created "
+            "`ApplicationInsights-…` helper stack), the `syssecops-` resource "
+            "group, the gate log group, and the SSM gate parameters. "
+            "**This cannot be undone.**"
+        )
+        confirmation = st.text_input(
+            f"Type `{stack_name}` to confirm",
+            key=f"delete_confirm_{stack_name}",
+        )
+        if st.button(
+            "🗑 Delete stack and all monitoring",
+            type="primary",
+            disabled=confirmation.strip() != stack_name,
+            key=f"delete_button_{stack_name}",
+        ):
+            with st.status(f"Deleting {stack_name}…", expanded=True) as status:
+                summary, error = monitoring.destroy_stack(stack_name)
+                st.write(
+                    f"- CloudWatch alarms deleted: **{summary.get('alarms_deleted', 0)}**\n"
+                    f"- Metric filters deleted: **{summary.get('metric_filters_deleted', 0)}**\n"
+                    f"- Application Insights app: "
+                    f"**{'deleted' if summary.get('application_insights_deleted') else 'none found'}**\n"
+                    f"- Resource group: "
+                    f"**{'deleted' if summary.get('resource_group_deleted') else 'none found'}**\n"
+                    f"- Gate log group: "
+                    f"**{'deleted' if summary.get('log_group_deleted') else 'none found'}**\n"
+                    f"- SSM gate parameters: "
+                    f"**{'deleted' if summary.get('ssm_parameters_deleted') else 'failed'}**"
+                )
+                for err in summary.get("errors", []):
+                    st.warning(err)
+                if error:
+                    status.update(label="Stack deletion could not be started", state="error")
+                    st.error(f"CloudFormation delete failed: {error}")
+                else:
+                    status.update(
+                        label=f"Deletion of {stack_name} started", state="complete"
+                    )
+                    st.success(
+                        "CloudFormation is now deleting the stack "
+                        "(DELETE_IN_PROGRESS). Refresh this tab to track it — "
+                        "the stack disappears from the list when done."
+                    )
+            st.session_state.pop(f"delete_confirm_{stack_name}", None)
+
+
+def _render_network_flow(resources: list[dict[str, Any]]) -> None:
+    """EC2 packets in/out — in-app replica of the hybrid dashboard flow panels."""
+    instances = [
+        r for r in resources
+        if r["type"] == "AWS::EC2::Instance" and r["physical_id"]
+    ]
+    if not instances:
+        return
+
+    st.markdown("**Hybrid network flow (EC2 packets, last 24 h)**")
+    st.caption(
+        "Proxy for AWS ↔ on-prem traffic through the mesh — mirrors the "
+        "SysSecOps-Hybrid dashboard panels."
+    )
+    for instance in instances:
+        cols = st.columns(len(monitoring.NETWORK_FLOW_METRICS))
+        for col, (metric, stat, unit) in zip(cols, monitoring.NETWORK_FLOW_METRICS):
+            with col:
+                points, error = monitoring.get_metric_series(
+                    "AWS/EC2", metric, "InstanceId", instance["physical_id"], stat=stat
+                )
+                st.caption(f"{instance['logical_id']} · {metric} ({unit})")
+                if error:
+                    st.warning(error)
+                elif not points:
+                    st.info("No datapoints.")
+                else:
+                    st.line_chart(
+                        {
+                            "time": [p["time"] for p in points],
+                            metric: [p["value"] for p in points],
+                        },
+                        x="time",
+                        y=metric,
+                    )
+
+
+def _render_monitoring_apps() -> None:
+    """Map Application Insights apps to the stacks they monitor."""
+    with st.expander("🩺 Monitoring apps (CloudWatch Application Insights)", expanded=False):
+        st.caption(
+            "Each deployed stack is registered with Application Insights under a "
+            "`syssecops-<stack>` resource group. The confusingly named "
+            "`ApplicationInsights-…` CloudFormation stacks are **auto-created by "
+            "AWS** for its agent config — they are hidden from the stack list above. "
+            "Only apps whose stack still exists are shown; apps orphaned by a stack "
+            "deleted outside this app are hidden here (delete stacks via the danger "
+            "zone below to also remove their Application Insights app)."
+        )
+        apps, error = monitoring.list_monitoring_apps()
+        if error:
+            st.warning(f"Application Insights lookup failed: {error}")
+        elif not apps:
+            st.info("No Application Insights applications registered yet.")
+        else:
+            st.dataframe(
+                [
+                    {
+                        "Monitored stack": a["monitored_stack"],
+                        "Resource group": a["resource_group"],
+                        "Lifecycle": a["lifecycle"],
+                        "Auto-config": "✅" if a["auto_config"] else "—",
+                    }
+                    for a in apps
+                ],
+                width="stretch",
+                hide_index=True,
+            )
 
 
 def _render_onprem_status() -> None:

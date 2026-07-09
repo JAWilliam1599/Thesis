@@ -1,0 +1,186 @@
+---
+- name: Provision on-prem PostgreSQL for the hybrid guestbook demo
+  hosts: dbservers
+  become: true
+  vars:
+    pg_config_path: "{{ (pg_conf_files.files | first).path | default('') }}"
+    pg_config_dir: "{{ pg_config_path | dirname }}"
+
+  handlers:
+    - name: Restart postgresql
+      ansible.builtin.service:
+        name: postgresql
+        state: restarted
+
+    - name: Reload postgresql
+      ansible.builtin.service:
+        name: postgresql
+        state: reloaded
+
+  tasks:
+    - name: Install PostgreSQL server and client
+      ansible.builtin.apt:
+        name:
+          - postgresql
+          - postgresql-client
+          - acl
+        state: present
+        update_cache: true
+
+    - name: Ensure PostgreSQL is running and enabled
+      ansible.builtin.service:
+        name: postgresql
+        state: started
+        enabled: true
+
+    - name: Locate the PostgreSQL configuration file
+      ansible.builtin.find:
+        paths: /etc/postgresql
+        patterns: postgresql.conf
+        recurse: true
+      register: pg_conf_files
+
+    - name: Fail if no PostgreSQL configuration was found
+      ansible.builtin.assert:
+        that:
+          - pg_conf_files.files | length > 0
+        fail_msg: "Could not locate postgresql.conf under /etc/postgresql"
+
+    - name: Set listen_addresses so remote clients can connect
+      ansible.builtin.lineinfile:
+        path: "{{ pg_config_path }}"
+        regexp: '^\s*#?\s*listen_addresses\s*='
+        line: "listen_addresses = '{{ postgres_listen_addresses }}'"
+        state: present
+      notify: Restart postgresql
+
+    - name: Allow the AWS/Tailscale subnets in pg_hba.conf
+      ansible.builtin.blockinfile:
+        path: "{{ pg_config_dir }}/pg_hba.conf"
+        marker: "# {mark} HYBRID DEMO MANAGED BLOCK"
+        block: |
+          {% for cidr in db_allowed_cidrs %}
+          host    {{ db_name }}    {{ db_user }}    {{ cidr }}    scram-sha-256
+          {% endfor %}
+      notify: Reload postgresql
+
+    - name: Flush handlers so PostgreSQL reloads before we connect
+      ansible.builtin.meta: flush_handlers
+
+    - name: Check whether the application role already exists
+      ansible.builtin.command:
+        argv:
+          - psql
+          - "-tAc"
+          - "SELECT 1 FROM pg_roles WHERE rolname = '{{ db_user }}'"
+      become: true
+      become_user: postgres
+      register: role_check
+      changed_when: false
+
+    - name: Create the application role
+      ansible.builtin.command:
+        argv:
+          - psql
+          - "-c"
+          - "CREATE ROLE {{ db_user }} LOGIN PASSWORD '{{ db_password }}'"
+      become: true
+      become_user: postgres
+      when: role_check.stdout | trim != "1"
+      no_log: true
+      changed_when: true
+
+    - name: Check whether the application database already exists
+      ansible.builtin.command:
+        argv:
+          - psql
+          - "-tAc"
+          - "SELECT 1 FROM pg_database WHERE datname = '{{ db_name }}'"
+      become: true
+      become_user: postgres
+      register: db_check
+      changed_when: false
+
+    - name: Create the application database owned by the app role
+      ansible.builtin.command:
+        argv:
+          - createdb
+          - "-O"
+          - "{{ db_user }}"
+          - "{{ db_name }}"
+      become: true
+      become_user: postgres
+      when: db_check.stdout | trim != "1"
+      changed_when: true
+
+    - name: Copy the schema to the host
+      ansible.builtin.copy:
+        src: files/schema.sql
+        dest: /tmp/hybrid_guestbook_schema.sql
+        owner: postgres
+        group: postgres
+        mode: "0640"
+
+    - name: Apply the schema and seed data
+      ansible.builtin.command:
+        argv:
+          - psql
+          - "-d"
+          - "{{ db_name }}"
+          - "-f"
+          - /tmp/hybrid_guestbook_schema.sql
+      become: true
+      become_user: postgres
+      register: schema_apply
+      changed_when: "'INSERT 0 1' in schema_apply.stdout"
+
+    - name: Ensure the reactions (likes) column exists on the guestbook table
+      ansible.builtin.command:
+        argv:
+          - psql
+          - "-d"
+          - "{{ db_name }}"
+          - "-c"
+          - >-
+            ALTER TABLE guestbook
+            ADD COLUMN IF NOT EXISTS likes INTEGER NOT NULL DEFAULT 0
+      become: true
+      become_user: postgres
+      register: likes_column
+      changed_when: "'ALTER TABLE' in likes_column.stdout"
+
+    - name: Grant the application role access to the schema objects
+      ansible.builtin.command:
+        argv:
+          - psql
+          - "-d"
+          - "{{ db_name }}"
+          - "-c"
+          - >-
+            GRANT ALL ON ALL TABLES IN SCHEMA public TO {{ db_user }};
+            GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO {{ db_user }};
+            ALTER DEFAULT PRIVILEGES IN SCHEMA public
+            GRANT ALL ON TABLES TO {{ db_user }}
+      become: true
+      become_user: postgres
+      changed_when: true
+
+    - name: Allow PostgreSQL through the host firewall from the trusted subnets
+      ansible.builtin.command:
+        argv:
+          - ufw
+          - allow
+          - from
+          - "{{ item }}"
+          - to
+          - any
+          - port
+          - "5432"
+          - proto
+          - tcp
+      loop: "{{ db_allowed_cidrs }}"
+      register: ufw_rule
+      changed_when: "'Rule added' in ufw_rule.stdout or 'Rules updated' in ufw_rule.stdout"
+      failed_when:
+        - ufw_rule.rc != 0
+        - "'Skipping' not in ufw_rule.stderr"

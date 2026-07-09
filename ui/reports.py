@@ -43,7 +43,7 @@ def render_gate_report(gate: dict[str, Any] | None) -> None:
         ml_help = f"status: {ml_analysis['status']}"
     cols[4].metric("ML risk", components.get("ml_risk", 0), help=ml_help)
 
-    _render_scanner_status(gate.get("scanner_status", {}))
+    _render_scanner_status(gate)
 
     warnings = gate.get("scanner_warnings") or []
     if warnings:
@@ -55,15 +55,58 @@ def render_gate_report(gate: dict[str, Any] | None) -> None:
     _render_findings(findings)
 
 
-def _render_scanner_status(status: dict[str, str]) -> None:
+# Scanner-status key -> the "source" label its findings carry.
+_SCANNER_SOURCE = {
+    "checkov": "checkov",
+    "cfn_lint": "cfn-lint",
+    "ansible_lint": "ansible-lint",
+    "secret_scan": "secret-scan",
+}
+
+
+def _render_scanner_status(gate: dict[str, Any]) -> None:
+    """Explicit per-scanner outcome so 'ran but found nothing' is visible."""
+    status: dict[str, str] = gate.get("scanner_status") or {}
     if not status:
         return
-    chips = []
+
+    # Findings per source (dedup merges sources as "a+b" — count each part).
+    counts: dict[str, int] = {}
+    for finding in gate.get("findings") or []:
+        for src in str(finding.get("source", "")).split("+"):
+            src = src.strip()
+            if src:
+                counts[src] = counts.get(src, 0) + 1
+
+    lines: list[str] = []
     for name, state in status.items():
-        ok = state == "ok"
-        icon = "✅" if ok else "⚠️"
-        chips.append(f"{icon} {name}: {state}")
-    st.caption("  ·  ".join(chips))
+        if state != "ok":
+            lines.append(f"⚠️ **{name}** — {state}")
+            continue
+        source = _SCANNER_SOURCE.get(name)
+        if source is not None:
+            n = counts.get(source, 0)
+            lines.append(
+                f"✅ **{name}** — ran, {n} finding(s)" if n
+                else f"✅ **{name}** — ran, no findings"
+            )
+        elif name == "infracost":
+            cost = (gate.get("cost_analysis") or {}).get("total_monthly_usd", 0.0)
+            cost_pts = (gate.get("components") or {}).get("cost", 0)
+            note = f"+{cost_pts} pts" if cost_pts else "below the $10 → +5 band, +0 pts"
+            lines.append(f"✅ **infracost** — ran, ${cost:,.2f}/month ({note})")
+        elif name == "aws_config":
+            violations = (gate.get("inputs") or {}).get("aws_config_violations", 0)
+            lines.append(f"✅ **aws_config** — ran, {violations} violation(s)")
+        elif name == "ml_risk":
+            ml = gate.get("ml_analysis") or {}
+            lines.append(
+                f"✅ **ml_risk** — P(insecure) {ml.get('probability', 0.0):.2f} "
+                f"→ +{ml.get('ml_score', 0)} pts"
+            )
+        else:
+            lines.append(f"✅ **{name}** — ok")
+    st.markdown("  \n".join(lines))
 
 
 def _render_findings(findings: list[dict[str, Any]]) -> None:
@@ -96,6 +139,9 @@ def render_decision_banner(gate: dict[str, Any] | None) -> str:
     """Render the colored PASS/REVIEW/REJECT banner; return the decision."""
     decision = str((gate or {}).get("decision", "reject")).lower()
     score = (gate or {}).get("score", 0)
+    thresholds = (gate or {}).get("thresholds", {})
+    pass_max = thresholds.get("pass_max", config.GATE_PASS_MAX)
+    review_max = thresholds.get("review_max", config.GATE_REVIEW_MAX)
     emoji, color, label = config.DECISION_STYLE.get(
         decision, ("❔", "#57606a", decision.upper())
     )
@@ -105,7 +151,7 @@ def render_decision_banner(gate: dict[str, Any] | None) -> str:
         f"<span style='font-size:1.25rem;font-weight:700;color:{color};'>"
         f"{emoji} {label}</span>"
         f"<br><span style='color:#57606a;'>Gate score: {score} "
-        f"(pass ≤ {config.GATE_PASS_MAX}, review ≤ {config.GATE_REVIEW_MAX})</span></div>",
+        f"(pass ≤ {pass_max}, review ≤ {review_max})</span></div>",
         unsafe_allow_html=True,
     )
     return decision

@@ -116,6 +116,33 @@ def read_gate_result(stack_name: str) -> dict[str, str] | None:
         return None
 
 
+def delete_gate_result(stack_name: str) -> bool:
+    """Delete all /syssecops/gate/<stack>/* parameters for a destroyed stack.
+
+    Returns True when the parameters were removed (or none existed).
+    Never raises — logs a warning and returns False on failure.
+    No-ops (returns True) when SSM_ENABLED=false.
+    """
+    if not _is_enabled():
+        logger.debug("SSM disabled; skipping delete_gate_result for stack=%r", stack_name)
+        return True
+
+    prefix = f"{_SSM_PREFIX}/{stack_name}/"
+    try:
+        client = _get_client()
+        paginator = client.get_paginator("get_parameters_by_path")
+        names: list[str] = []
+        for page in paginator.paginate(Path=prefix, Recursive=True):
+            names.extend(p["Name"] for p in page.get("Parameters", []))
+        for i in range(0, len(names), 10):  # delete_parameters max batch = 10
+            client.delete_parameters(Names=names[i:i + 10])
+        logger.info("SSM: deleted %d parameter(s) for stack=%r", len(names), stack_name)
+        return True
+    except Exception as exc:
+        logger.warning("SSM: delete_gate_result failed for stack=%r — %s", stack_name, exc)
+        return False
+
+
 def list_monitored_stacks() -> list[str]:
     """Return all stack names tracked under /syssecops/gate/ in SSM.
 

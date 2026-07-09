@@ -123,8 +123,9 @@ def run_infracost(
         hint = ""
         if not os.environ.get("INFRACOST_API_KEY"):
             hint = (
-                " Hint: no INFRACOST_API_KEY is set — add it to the repo .env "
-                "or via the UI Login tab (free key from dashboard.infracost.io)."
+                " Hint: no INFRACOST_API_KEY is set — run `infracost auth login` "
+                "once, or put the key in the repo .env. Cost analysis is optional; "
+                "the gate continues without it."
             )
         return {
             "status": _NOT_SUPPORTED_STATUS,

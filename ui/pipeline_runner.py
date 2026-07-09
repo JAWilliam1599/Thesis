@@ -183,6 +183,7 @@ def run_generate_stage(
         args += ["--model-id", settings["model_id"]]
     if settings.get("region"):
         args += ["--region", settings["region"]]
+    args += _threshold_flags(settings)
 
     return_code, logs = stream_subprocess(args, on_line, logs_root=logs_root)
 
@@ -215,6 +216,7 @@ def run_synth_gate_stage(
         "--run-id", run_id,
     ]
     args += _scanner_flags(settings)
+    args += _threshold_flags(settings)
 
     return_code, logs = stream_subprocess(args, on_line, logs_root=logs_root)
 
@@ -229,6 +231,29 @@ def run_synth_gate_stage(
         "decision": helpers.decision_of(gate_report),
         "approve_run_id": (gate_report or {}).get("run_id", run_id),
     }
+
+
+# --- Bootstrap: one-time CDK bootstrap for the account/region ---------------
+def run_bootstrap_stage(
+    on_line: Callable[[str], None] | None = None,
+    logs_root: Path | None = None,
+) -> dict[str, Any]:
+    """Run `cdk bootstrap` for the configured account/region and return early.
+
+    Delegates to scripts/run_cdk_pipeline.py --bootstrap-only, which bootstraps
+    and exits without synth/gate/deploy. Exit code 0 means success, 9 means the
+    bootstrap command failed.
+    """
+    args = [
+        sys.executable,
+        str(config.PIPELINE_SCRIPT),
+        "--project-dir", str(config.GENERATED_CDK_DIR),
+        "--bootstrap-only",
+    ]
+    return_code, logs = stream_subprocess(
+        args, on_line, timeout=config.DEPLOY_TIMEOUT_SECONDS, logs_root=logs_root
+    )
+    return {"return_code": return_code, "logs": logs}
 
 
 # --- Stage 4: deploy --------------------------------------------------------
@@ -286,6 +311,7 @@ def run_hybrid_stage(
 
     args += _scanner_flags(settings)
     args += _hybrid_only_flags(settings)
+    args += _threshold_flags(settings)
     if deploy:
         args.append("--deploy")
         if manual_approve:
@@ -334,6 +360,21 @@ def _hybrid_only_flags(settings: dict[str, Any]) -> list[str]:
         flags.append("--no-ansible-lint")
     if not settings.get("use_secret_scan", True):
         flags.append("--no-secret-scan")
+    return flags
+
+
+def _threshold_flags(settings: dict[str, Any], *, include_ml: bool = True) -> list[str]:
+    """Gate threshold / scoring-weight flags shared by every gate-run script."""
+    flags: list[str] = [
+        "--pass-max", str(settings.get("pass_max", config.GATE_PASS_MAX)),
+        "--review-max", str(settings.get("review_max", config.GATE_REVIEW_MAX)),
+        "--cost-high-usd", str(settings.get("cost_high_usd", config.GATE_COST_HIGH_USD)),
+        "--cost-high-points", str(settings.get("cost_high_points", config.GATE_COST_HIGH_POINTS)),
+        "--cost-med-usd", str(settings.get("cost_med_usd", config.GATE_COST_MED_USD)),
+        "--cost-med-points", str(settings.get("cost_med_points", config.GATE_COST_MED_POINTS)),
+    ]
+    if include_ml:
+        flags += ["--ml-max-points", str(settings.get("ml_max_points", config.GATE_ML_MAX_POINTS))]
     return flags
 
 

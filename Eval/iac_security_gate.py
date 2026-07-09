@@ -11,7 +11,7 @@ from Eval.scanners.aws_config_adapter import fetch_violations
 from Eval.scanners.checkov_adapter import run_checkov
 from Eval.scanners.cfn_lint_adapter import run_cfn_lint
 from Eval.scanners.infracost_adapter import run_infracost
-from Eval.scanners.ml_risk_adapter import run_ml_risk
+from Eval.scanners.ml_risk_adapter import run_ml_risk, ML_MAX_POINTS
 from Eval.scanners.secret_scan_adapter import run_secret_scan
 
 SEVERITY_POINTS = {
@@ -24,6 +24,15 @@ SEVERITY_POINTS = {
 THRESHOLDS = {
     "pass_max": 20,
     "review_max": 80,
+}
+
+# Default cost-band weights: templates whose Infracost delta exceeds *usd*
+# contribute *points* to the risk score.  Adjustable per run by the caller.
+COST_BANDS = {
+    "high_usd": 50.0,
+    "high_points": 10,
+    "med_usd": 10.0,
+    "med_points": 5,
 }
 
 
@@ -39,10 +48,14 @@ def _severity_points(severity: str) -> int:
     return SEVERITY_POINTS.get(str(severity).strip().lower(), 1)
 
 
-def _decision(score: int) -> str:
-    if score <= THRESHOLDS["pass_max"]:
+def _decision(
+    score: int,
+    pass_max: int = THRESHOLDS["pass_max"],
+    review_max: int = THRESHOLDS["review_max"],
+) -> str:
+    if score <= pass_max:
         return "pass"
-    if score <= THRESHOLDS["review_max"]:
+    if score <= review_max:
         return "review"
     return "reject"
 
@@ -124,22 +137,29 @@ def _score_findings(
     cost_delta_usd: float,
     config_violations: int,
     ml_score: int = 0,
+    pass_max: int = THRESHOLDS["pass_max"],
+    review_max: int = THRESHOLDS["review_max"],
+    cost_high_usd: float = COST_BANDS["high_usd"],
+    cost_high_points: int = COST_BANDS["high_points"],
+    cost_med_usd: float = COST_BANDS["med_usd"],
+    cost_med_points: int = COST_BANDS["med_points"],
 ) -> dict[str, Any]:
     """Compute the risk score and decision from deduplicated findings.
 
     Shared by the CloudFormation (CDK) and Ansible (on-prem) gate paths so both
     use the identical severity weights, cost banding, and decision thresholds.
     ``ml_score`` is the pre-computed logistic-regression component
-    (``round(P(insecure) * 20)``); it is 0 on the Ansible path where the model
-    does not apply.
+    (``round(P(insecure) * ml_max_points)``); it is 0 on the Ansible path where
+    the model does not apply.  ``pass_max`` / ``review_max`` and the cost-band
+    weights are adjustable per run; they default to the module constants.
     """
     severity_score = sum(_severity_points(item.get("severity", "low")) for item in deduped)
 
     cost_score = 0
-    if cost_delta_usd > 50:
-        cost_score = 10
-    elif cost_delta_usd > 10:
-        cost_score = 5
+    if cost_delta_usd > cost_high_usd:
+        cost_score = cost_high_points
+    elif cost_delta_usd > cost_med_usd:
+        cost_score = cost_med_points
 
     config_score = max(0, config_violations) * 5
     ml_component = max(0, int(ml_score))
@@ -151,7 +171,7 @@ def _score_findings(
         "aws_config": config_score,
         "ml_risk": ml_component,
         "total": total_score,
-        "decision": _decision(total_score),
+        "decision": _decision(total_score, pass_max, review_max),
     }
 
 
@@ -349,6 +369,13 @@ class IaCSecurityGate:
         region: str | None = None,
         stack_name: str | None = None,
         profile_name: str | None = None,
+        pass_max: int = THRESHOLDS["pass_max"],
+        review_max: int = THRESHOLDS["review_max"],
+        cost_high_usd: float = COST_BANDS["high_usd"],
+        cost_high_points: int = COST_BANDS["high_points"],
+        cost_med_usd: float = COST_BANDS["med_usd"],
+        cost_med_points: int = COST_BANDS["med_points"],
+        ml_max_points: int = ML_MAX_POINTS,
     ) -> dict[str, Any]:
         """Evaluate synthesized CDK templates and return a gate report dict.
 
@@ -359,7 +386,10 @@ class IaCSecurityGate:
             Directory containing the CDK app's Python source (e.g. the project
             dir).  When provided and ``use_ml_risk`` is True, the trained
             logistic-regression model scores the source (bandit + semgrep
-            features) and adds ``round(P(insecure) * 20)`` points.
+            features) and adds ``round(P(insecure) * ml_max_points)`` points.
+        pass_max / review_max / cost_* / ml_max_points:
+            Adjustable scoring weights and decision thresholds; default to the
+            module constants when omitted.
         run_id:
             When provided, the gate report is persisted to
             logs/gate_reports/gate_<run_id>.json and report_path is included
@@ -437,7 +467,7 @@ class IaCSecurityGate:
 
         # --- ML risk (logistic regression on the CDK Python source) ---
         if source_dir is not None:
-            ml_analysis = run_ml_risk(Path(source_dir), enabled=use_ml_risk)
+            ml_analysis = run_ml_risk(Path(source_dir), enabled=use_ml_risk, max_points=ml_max_points)
         else:
             ml_analysis = {
                 "status": "skipped",
@@ -460,6 +490,12 @@ class IaCSecurityGate:
             cost_delta_usd=effective_cost_delta,
             config_violations=effective_config_violations,
             ml_score=effective_ml_score,
+            pass_max=pass_max,
+            review_max=review_max,
+            cost_high_usd=cost_high_usd,
+            cost_high_points=cost_high_points,
+            cost_med_usd=cost_med_usd,
+            cost_med_points=cost_med_points,
         )
         severity_score = score_parts["severity"]
         cost_score = score_parts["cost"]
@@ -477,8 +513,15 @@ class IaCSecurityGate:
             "decision": decision,
             "message": _decision_message(decision),
             "thresholds": {
-                "pass_max": THRESHOLDS["pass_max"],
-                "review_max": THRESHOLDS["review_max"],
+                "pass_max": pass_max,
+                "review_max": review_max,
+            },
+            "weights": {
+                "cost_high_usd": cost_high_usd,
+                "cost_high_points": cost_high_points,
+                "cost_med_usd": cost_med_usd,
+                "cost_med_points": cost_med_points,
+                "ml_max_points": ml_max_points,
             },
             "components": {
                 "severity": severity_score,
@@ -551,6 +594,12 @@ class IaCSecurityGate:
         use_checkov: bool = True,
         use_secret_scan: bool = True,
         run_id: str | None = None,
+        pass_max: int = THRESHOLDS["pass_max"],
+        review_max: int = THRESHOLDS["review_max"],
+        cost_high_usd: float = COST_BANDS["high_usd"],
+        cost_high_points: int = COST_BANDS["high_points"],
+        cost_med_usd: float = COST_BANDS["med_usd"],
+        cost_med_points: int = COST_BANDS["med_points"],
     ) -> dict[str, Any]:
         """Evaluate Ansible playbooks and return a gate report dict.
 
@@ -607,6 +656,12 @@ class IaCSecurityGate:
             deduped,
             cost_delta_usd=0.0,
             config_violations=effective_config_violations,
+            pass_max=pass_max,
+            review_max=review_max,
+            cost_high_usd=cost_high_usd,
+            cost_high_points=cost_high_points,
+            cost_med_usd=cost_med_usd,
+            cost_med_points=cost_med_points,
         )
 
         timestamp = datetime.now(tz=timezone.utc).isoformat()
@@ -619,8 +674,8 @@ class IaCSecurityGate:
             "decision": decision,
             "message": _decision_message(decision),
             "thresholds": {
-                "pass_max": THRESHOLDS["pass_max"],
-                "review_max": THRESHOLDS["review_max"],
+                "pass_max": pass_max,
+                "review_max": review_max,
             },
             "components": {
                 "severity": score_parts["severity"],

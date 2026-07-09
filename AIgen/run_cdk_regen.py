@@ -35,6 +35,8 @@ if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
 from pipeline.cdk_pipeline import clear_cdk_out, run_cdk_command, run_iac_gate
+from Eval.iac_security_gate import THRESHOLDS, COST_BANDS
+from Eval.scanners.ml_risk_adapter import ML_MAX_POINTS
 from env_bootstrap import load_env
 
 logger = logging.getLogger(__name__)
@@ -49,9 +51,6 @@ def _default_regen_log_dir() -> Path:
 CDK_SYSTEM_INSTRUCTION = (
     "You are a CDK infrastructure code generator. Return only executable Python code and no markdown. "
     "Generate a complete AWS CDK application that is ready to synthesize and deploy. "
-    "At the very top of the file, include a short instructions block using comments in this exact format: "
-    "'# INSTRUCTIONS:' then one instruction per line prefixed with '# ', then '# END INSTRUCTIONS'. "
-    "The instructions must describe how to bootstrap, synthesize, and deploy the stack. "
     "Rules: "
     "(1) The file must include App(), at least one Stack, and app.synth(). "
     "(2) Do not place input() calls inside Stack.__init__ or at import time. "
@@ -61,7 +60,14 @@ CDK_SYSTEM_INSTRUCTION = (
     "(5) Apply least-privilege IAM roles; avoid wildcards (*) on sensitive actions. "
     "(6) Encrypt S3 buckets, RDS instances, and EBS volumes by default. "
     "(7) Do not expose SSH (port 22) or RDP (port 3389) to 0.0.0.0/0. "
-    "(8) Use RemovalPolicy.RETAIN for stateful resources unless the user explicitly requests DESTROY."
+    "(8) Use RemovalPolicy.RETAIN for stateful resources unless the user explicitly requests DESTROY. "
+    "(9) NEVER use environment-dependent context lookups such as Vpc.from_lookup(), "
+    "    Vpc.from_lookup(is_default=True), MachineImage.lookup(), or any *.from_lookup() / "
+    "    HostedZone.from_lookup(). They require live AWS credentials and a concrete stack env at "
+    "    synth time and will crash `cdk synth` in this pipeline. Instead, CREATE resources in the "
+    "    stack (e.g. ec2.Vpc(self, 'Vpc', max_azs=2)) so the app synthesizes offline with no AWS "
+    "    account access. If an existing VPC must be referenced, take its id/AZs/subnet ids as "
+    "    CfnParameters and use ec2.Vpc.from_vpc_attributes(...), never from_lookup()."
 )
 
 
@@ -103,12 +109,10 @@ def build_cdk_regen_prompt(
         "Requirements:\n"
         "1) Fix ALL findings listed above.\n"
         "2) Return a complete, synthesizable AWS CDK Python app (App(), Stack, app.synth()).\n"
-        "3) No input() calls inside Stack.__init__ or at import time.\n"
-        "4) The app must run non-interactively with `cdk synth`.\n"
-        "5) Apply least-privilege IAM; avoid wildcard actions on sensitive resources.\n"
-        "6) Encrypt stateful resources (S3, RDS, EBS) by default.\n"
-        "7) Do not expose SSH (port 22) or RDP (port 3389) to the public internet.\n"
-        "8) Return only Python code — no markdown, no explanations."
+        "3) Apply least-privilege IAM; avoid wildcard actions on sensitive resources.\n"
+        "4) Encrypt stateful resources (S3, RDS, EBS) by default.\n"
+        "5) Do not expose SSH (port 22) or RDP (port 3389) to the public internet.\n"
+        "6) Return only Python code — no markdown, no explanations."
     )
 
 
@@ -185,6 +189,13 @@ def run_cdk_regen_loop(
     api_key: str | None = None,
     api_url: str | None = None,
     log_dir: Path | None = None,
+    pass_max: int = THRESHOLDS["pass_max"],
+    review_max: int = THRESHOLDS["review_max"],
+    cost_high_usd: float = COST_BANDS["high_usd"],
+    cost_high_points: int = COST_BANDS["high_points"],
+    cost_med_usd: float = COST_BANDS["med_usd"],
+    cost_med_points: int = COST_BANDS["med_points"],
+    ml_max_points: int = ML_MAX_POINTS,
 ) -> dict[str, Any]:
     """Run CDK regen loop: generate → synth → gate → repeat on reject.
 
@@ -218,19 +229,16 @@ def run_cdk_regen_loop(
             }
 
     attempts: list[dict[str, Any]] = []
-    current_prompt = build_cdk_regen_prompt(original_prompt, {}, attempt=0)
-    # First attempt uses just the original request as a CDK-focused prompt
+    # First attempt uses just the original request as a CDK-focused prompt.
     current_prompt = (
         f"Generate a complete AWS CDK Python application for this request:\n{original_prompt}\n\n"
         "Requirements:\n"
         "1) Return only Python code — no markdown, no commentary, no triple backticks.\n"
         "2) Define EXACTLY ONE Stack class. Do not define multiple stacks or helper stacks.\n"
         "3) Include a single App() instantiation, instantiate only that one Stack, and call app.synth().\n"
-        "4) No input() at import time or in Stack.__init__.\n"
-        "5) Apply least-privilege IAM; no wildcard actions on sensitive resources.\n"
-        "6) Encrypt stateful resources by default.\n"
-        "7) Do not expose SSH/RDP to 0.0.0.0/0.\n"
-        "8) The app must synthesize non-interactively with `cdk synth`."
+        "4) Apply least-privilege IAM; no wildcard actions on sensitive resources.\n"
+        "5) Encrypt stateful resources by default.\n"
+        "6) Do not expose SSH/RDP to 0.0.0.0/0."
     )
 
     gate_report: dict[str, Any] = {}
@@ -287,7 +295,17 @@ def run_cdk_regen_loop(
 
         # Run gate
         attempt_run_id = f"{run_id}_a{attempt_num}"
-        gate_report = run_iac_gate(project_dir, run_id=attempt_run_id)
+        gate_report = run_iac_gate(
+            project_dir,
+            run_id=attempt_run_id,
+            pass_max=pass_max,
+            review_max=review_max,
+            cost_high_usd=cost_high_usd,
+            cost_high_points=cost_high_points,
+            cost_med_usd=cost_med_usd,
+            cost_med_points=cost_med_points,
+            ml_max_points=ml_max_points,
+        )
         (attempt_dir / "gate_report.json").write_text(
             json.dumps(gate_report, indent=2), encoding="utf-8"
         )
@@ -358,6 +376,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--region", default=None, help="AWS region (Bedrock).")
     parser.add_argument("--api-key", default=None, help="OpenRouter API key.")
     parser.add_argument("--api-url", default=None, help="OpenRouter API URL override.")
+    parser.add_argument("--pass-max", type=int, default=THRESHOLDS["pass_max"], help=f"Max score for an auto-PASS decision (default: {THRESHOLDS['pass_max']}).")
+    parser.add_argument("--review-max", type=int, default=THRESHOLDS["review_max"], help=f"Max score for a REVIEW decision; above this is REJECT (default: {THRESHOLDS['review_max']}).")
+    parser.add_argument("--cost-high-usd", type=float, default=COST_BANDS["high_usd"], help=f"Cost delta (USD) above which the high cost-band points apply (default: {COST_BANDS['high_usd']}).")
+    parser.add_argument("--cost-high-points", type=int, default=COST_BANDS["high_points"], help=f"Points added when cost delta exceeds --cost-high-usd (default: {COST_BANDS['high_points']}).")
+    parser.add_argument("--cost-med-usd", type=float, default=COST_BANDS["med_usd"], help=f"Cost delta (USD) above which the medium cost-band points apply (default: {COST_BANDS['med_usd']}).")
+    parser.add_argument("--cost-med-points", type=int, default=COST_BANDS["med_points"], help=f"Points added when cost delta exceeds --cost-med-usd (default: {COST_BANDS['med_points']}).")
+    parser.add_argument("--ml-max-points", type=int, default=ML_MAX_POINTS, help=f"Max points contributed by the ML risk model at P(insecure)=1.0 (default: {ML_MAX_POINTS}).")
     return parser.parse_args()
 
 
@@ -380,6 +405,13 @@ def main() -> int:
         region=args.region,
         api_key=args.api_key,
         api_url=args.api_url,
+        pass_max=args.pass_max,
+        review_max=args.review_max,
+        cost_high_usd=args.cost_high_usd,
+        cost_high_points=args.cost_high_points,
+        cost_med_usd=args.cost_med_usd,
+        cost_med_points=args.cost_med_points,
+        ml_max_points=args.ml_max_points,
     )
     print(json.dumps(result, indent=2))
     return 0 if result.get("success") else 22

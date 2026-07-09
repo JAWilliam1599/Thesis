@@ -138,9 +138,27 @@ _ACTIVE_STACK_STATUSES = [
     "ROLLBACK_COMPLETE", "IMPORT_COMPLETE",
 ]
 
+# Infrastructure / bootstrap stacks that are not user-deployed workloads and so
+# are hidden from the Monitor tab's stack selector:
+#   CDKToolkit                 — the CDK bootstrap stack
+#   SysSecOpsCloudTrailStack   — shared account-wide CloudTrail for the pipeline
+#   SysSecOpsLoopStack         — the ops/monitoring control-loop stack
+# ("ApplicationInsights-*" helper stacks are filtered separately by prefix.)
+_HIDDEN_STACKS = {
+    "cdktoolkit",
+    "syssecopscloudtrailstack",
+    "syssecopsopsloopstack",
+}
+
 
 def list_cfn_stacks() -> tuple[list[str], str]:
-    """Names of active CloudFormation stacks in the configured region."""
+    """Names of active CloudFormation stacks in the configured region.
+
+    Auxiliary stacks that are not user-deployed workloads are hidden:
+    ``ApplicationInsights-*`` (CloudWatch Application Insights helpers) and the
+    infrastructure/bootstrap stacks in :data:`_HIDDEN_STACKS` (CDKToolkit,
+    SysSecOpsCloudTrailStack, SysSecOpsLoopStack).
+    """
     client, error = _client("cloudformation")
     if client is None:
         return [], error
@@ -151,8 +169,60 @@ def list_cfn_stacks() -> tuple[list[str], str]:
             for summary in page.get("StackSummaries", []):
                 if summary.get("ParentId"):
                     continue  # skip nested stacks
-                names.append(summary["StackName"])
+                name = summary["StackName"]
+                if name.startswith("ApplicationInsights-"):
+                    continue  # AWS-managed monitoring helper stack
+                if name.lower() in _HIDDEN_STACKS:
+                    continue  # bootstrap / shared infrastructure stack
+                names.append(name)
         return sorted(set(names)), ""
+    except Exception as exc:  # noqa: BLE001
+        return [], _short(exc)
+
+
+def list_monitoring_apps() -> tuple[list[dict[str, Any]], str]:
+    """CloudWatch Application Insights apps mapped to the stack they monitor.
+
+    The pipeline registers each deployed stack under resource group
+    ``syssecops-<stack>``, so the monitored stack is recoverable from the
+    group name.
+
+    Application Insights apps are independent AWS resources: deleting a stack
+    outside the app's cascade delete leaves them orphaned. To avoid showing
+    stale entries, apps are cross-referenced against the live stack list — only
+    apps whose monitored stack still exists (and isn't a hidden infra stack)
+    are returned.
+    """
+    client, error = _client("application-insights")
+    if client is None:
+        return [], error
+
+    live_stacks, _ = list_cfn_stacks()
+    live_lower = {s.lower() for s in live_stacks}
+    try:
+        rows: list[dict[str, Any]] = []
+        next_token: str | None = None
+        while True:
+            kwargs = {"NextToken": next_token} if next_token else {}
+            page = client.list_applications(**kwargs)
+            for app in page.get("ApplicationInfoList", []):
+                group = app.get("ResourceGroupName", "")
+                monitored = group[len("syssecops-"):] if group.startswith("syssecops-") else "—"
+                # Hide orphaned apps whose stack was deleted, hidden infra
+                # stacks, and any app not tied to a live syssecops-<stack>.
+                if monitored == "—" or monitored.lower() not in live_lower:
+                    continue
+                rows.append({
+                    "resource_group": group,
+                    "monitored_stack": monitored,
+                    "lifecycle": app.get("LifeCycle", "—"),
+                    "auto_config": app.get("AutoConfigEnabled", False),
+                })
+            next_token = page.get("NextToken")
+            if not next_token:
+                break
+        rows.sort(key=lambda r: r["monitored_stack"])
+        return rows, ""
     except Exception as exc:  # noqa: BLE001
         return [], _short(exc)
 
@@ -210,8 +280,9 @@ def get_metric_series(
     dimension_value: str,
     stat: str = "Average",
     hours: int = 24,
+    period: int = 3600,
 ) -> tuple[list[dict[str, Any]], str]:
-    """Hourly datapoints for one metric, oldest first: [{time, value}]."""
+    """Datapoints for one metric, oldest first: [{time, value}]."""
     client, error = _client("cloudwatch")
     if client is None:
         return [], error
@@ -227,7 +298,7 @@ def get_metric_series(
             Dimensions=[{"Name": dimension_name, "Value": dimension_value}],
             StartTime=start,
             EndTime=end,
-            Period=3600,
+            Period=period,
             Statistics=[stat],
         )
         points = sorted(response.get("Datapoints", []), key=lambda p: p["Timestamp"])
@@ -239,13 +310,68 @@ def get_metric_series(
         return [], _short(exc)
 
 
+# Gate dashboard metrics (mirrors the SysSecOpsGate CloudWatch dashboard).
+# Statistic + period match the deployed dashboard (Monitor/ops_loop_stack.py) so
+# in-app values line up with the CloudWatch console.
+GATE_DASHBOARD_METRICS: list[tuple[str, str, str]] = [
+    ("GateScore", "Maximum", "score"),
+    ("GateDecision", "Maximum", "0=pass 1=review 2=reject"),
+    ("CriticalFindings", "Sum", "count"),
+    ("HighFindings", "Sum", "count"),
+    ("MLRiskScore", "Maximum", "points"),
+]
+
+# EC2 network-flow metrics (mirrors the SysSecOps-Hybrid dashboard panels).
+NETWORK_FLOW_METRICS: list[tuple[str, str, str]] = [
+    ("NetworkPacketsIn", "Sum", "packets"),
+    ("NetworkPacketsOut", "Sum", "packets"),
+]
+
+
+def get_gate_metric_series(
+    stack_name: str,
+    metric_name: str,
+    stat: str = "Average",
+    hours: int = 168,
+) -> tuple[list[dict[str, Any]], str]:
+    """Datapoints of a SysSecOps/Gate metric for one stack (StackName dim).
+
+    Uses a 5-minute period to match the deployed SysSecOpsGate dashboard.
+    """
+    return get_metric_series(
+        config.CLOUDWATCH_NAMESPACE,
+        metric_name,
+        "StackName",
+        stack_name,
+        stat=stat,
+        hours=hours,
+        period=300,
+    )
+
+
 # --- Console deep links -------------------------------------------------------
 def cloudwatch_dashboard_url(name: str) -> str:
     region = _region()
     return (
         f"https://{region}.console.aws.amazon.com/cloudwatch/home"
-        f"?region={region}#dashboards:name={name}"
+        f"?region={region}#dashboards/dashboard/{name}"
     )
+
+
+def dashboard_exists(name: str) -> bool:
+    """True if a CloudWatch dashboard with this exact name exists."""
+    client, error = _client("cloudwatch")
+    if client is None:
+        return False
+    try:
+        paginator = client.get_paginator("list_dashboards")
+        for page in paginator.paginate():
+            for entry in page.get("DashboardEntries", []):
+                if entry.get("DashboardName") == name:
+                    return True
+        return False
+    except Exception:  # noqa: BLE001
+        return False
 
 
 def cloudwatch_automatic_dashboards_url() -> str:
@@ -262,6 +388,51 @@ def cloudformation_stack_url(stack_name: str) -> str:
         f"https://{region}.console.aws.amazon.com/cloudformation/home"
         f"?region={region}#/stacks?filteringText={stack_name}"
     )
+
+
+# --- Stack deletion (cascade) ---------------------------------------------------
+def destroy_stack(stack_name: str) -> tuple[dict[str, Any], str]:
+    """Delete a stack AND every related monitoring artifact.
+
+    Order matters: monitoring artifacts (alarms, metric filters, Application
+    Insights app + its auto-created helper stack, resource group, gate log
+    group, SSM parameters) are removed first, then CloudFormation stack
+    deletion is initiated (asynchronous — the stack transitions to
+    DELETE_IN_PROGRESS).
+
+    Returns ``(summary, error)``; ``error`` is non-empty only when the
+    CloudFormation deletion itself could not be started.
+    """
+    from Monitor.stack_monitor import teardown_stack_monitoring
+
+    summary = teardown_stack_monitoring(stack_name)
+
+    client, error = _client("cloudformation")
+    if client is None:
+        summary["stack_delete_started"] = False
+        return summary, error
+    try:
+        client.delete_stack(StackName=stack_name)
+        summary["stack_delete_started"] = True
+        return summary, ""
+    except Exception as exc:  # noqa: BLE001
+        summary["stack_delete_started"] = False
+        return summary, _short(exc)
+
+
+def get_stack_status(stack_name: str) -> tuple[str, str]:
+    """Current CloudFormation status of a stack ('' when it no longer exists)."""
+    client, error = _client("cloudformation")
+    if client is None:
+        return "", error
+    try:
+        response = client.describe_stacks(StackName=stack_name)
+        stacks = response.get("Stacks", [])
+        return (stacks[0]["StackStatus"] if stacks else ""), ""
+    except Exception as exc:  # noqa: BLE001
+        if "does not exist" in str(exc):
+            return "", ""
+        return "", _short(exc)
 
 
 # --- On-prem / hybrid mesh status ---------------------------------------------
