@@ -168,7 +168,7 @@ bash demo.sh add-feature
 
 Under the hood, `add-feature`:
 1. installs the `feature/` code into the live project,
-2. syncs `ONPREM_DB_PASSWORD` from Secrets Manager (never printed),
+<!-- 2. syncs `ONPREM_DB_PASSWORD` from Secrets Manager (never printed),
 3. runs `run_hybrid_pipeline.py --deploy --manual-approve`:
    - **CDK:** `Manual review approved.` → `cdk deploy --all`. CloudFormation
      computes a **changeset** that only *adds* the `{id}/like` resource, method,
@@ -176,9 +176,18 @@ Under the hood, `add-feature`:
      the DB secret value, and existing rows are all preserved.
    - **Ansible:** `Risk gate passed.` → playbook runs, applying the idempotent
      `ALTER TABLE … ADD COLUMN IF NOT EXISTS likes …` and re-running the GRANT.
-4. approves the Tailscale route (no-op if already approved),
-5. uploads the updated frontend (`aws s3 sync` + CloudFront invalidation),
-6. curls the API to confirm HTTP 200.
+4. approves the Tailscale route (no-op if already approved), -->
+
+3. Go through hybrid pipeline: gate → manual approval → deploy (CDK + Ansible)
+4. uploads the updated frontend (`aws s3 sync` + CloudFront invalidation),
+
+```
+   aws s3 sync ../frontend "s3://hybridwebappstack-frontendbucketefe2e19c-w4jxyowcfedj"
+   aws cloudfront create-invalidation \
+     --distribution-id E1C3PJK1G3O0C5 --paths '/*'
+```
+
+<!-- 5. curls the API to confirm HTTP 200. -->
 
 Approval/gate/run artifacts land in `logs/approvals/`, `logs/gate_reports/`,
 and `logs/hybrid_<timestamp>.json`.
