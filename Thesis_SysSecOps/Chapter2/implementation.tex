@@ -1,0 +1,252 @@
+\section{Implementation}
+\label{sec:implementation}
+
+This section describes how the proposed methodology is realised in software. The system
+is implemented in Python and is exposed both as a set of command-line entry points and as
+a browser-based operator console. The implementation follows the module boundaries
+introduced in Section~\ref{sec:architecture}: generation, evaluation, execution,
+orchestration, monitoring, and the user interface.
+
+\subsection{Technology stack and repository layout}
+\label{subsec:impl-stack}
+
+The public side is defined with the AWS Cloud Development Kit for Python and synthesized
+to CloudFormation; the private side is defined with Ansible playbooks. Static analysis
+relies on established open-source scanners, cost estimation on a cost-analysis tool, and
+live compliance on the cloud provider's configuration service. The operator console is
+built with Streamlit. Table~\ref{tab:repo} lists the directories that implement each
+concern.
+
+\begin{table}[ht]
+\centering
+\caption{Repository layout and the concern each directory implements.}
+\label{tab:repo}
+\begin{tabular}{|L{3.3cm}|L{8.7cm}|}
+\hline
+\textbf{Directory} & \textbf{Contents} \\
+\hline
+\texttt{AIgen/} & Provider backends and the CDK regeneration loop
+(\texttt{run\_cdk\_regen.py}). \\
+\hline
+\texttt{Eval/} & The gate (\texttt{iac\_security\_gate.py}) and the scanner adapters
+under \texttt{Eval/scanners/}. \\
+\hline
+\texttt{ExecComponent/} & The subprocess execution helper
+(\texttt{exec\_code.py}). \\
+\hline
+\texttt{pipeline/} & Orchestration, credentials, and Phase~4 emitters. \\
+\hline
+\texttt{Monitor/} & CloudTrail, dashboards, the operational-loop function, and SSM
+registration. \\
+\hline
+\texttt{scripts/} & \texttt{run\_cdk\_pipeline.py} and \texttt{run\_hybrid\_pipeline.py}. \\
+\hline
+\texttt{ui/} & The Streamlit console and the multi-project registry. \\
+\hline
+\texttt{RiskScoringCitation/} & Dataset preparation and model training. \\
+\hline
+\end{tabular}
+\end{table}
+
+Figure~\ref{fig:impl-modules} shows how these directories depend on one another at
+runtime. The command-line entry points in \texttt{scripts/} sit at the top; they call
+into \texttt{pipeline/} for orchestration, which in turn drives generation
+(\texttt{AIgen/}), evaluation (\texttt{Eval/}), and monitoring (\texttt{Monitor/}). Every
+directory that runs an external process funnels through the single execution helper in
+\texttt{ExecComponent/}, and the operator console in \texttt{ui/} reuses the same entry
+points rather than duplicating logic.
+
+\begin{figure}[ht]
+\centering
+\begin{tikzpicture}[node distance=8mm and 10mm]
+\node[proc] (ui) {\texttt{ui/}};
+\node[proc, right=of ui] (scripts) {\texttt{scripts/}};
+\node[proc, below=of scripts] (pipe) {\texttt{pipeline/}};
+\node[proc, below left=of pipe] (aigen) {\texttt{AIgen/}};
+\node[proc, below=14mm of pipe] (eval) {\texttt{Eval/}};
+\node[proc, below right=of pipe] (mon) {\texttt{Monitor/}};
+\node[proc, below=26mm of pipe] (exec) {\texttt{ExecComponent/}};
+\draw[flow] (ui) -- (scripts);
+\draw[flow] (scripts) -- (pipe);
+\draw[flow] (pipe) -- (aigen);
+\draw[flow] (pipe) -- (eval);
+\draw[flow] (pipe) -- (mon);
+\draw[flow] (aigen) -- (exec);
+\draw[flow] (eval) -- (exec);
+\draw[flow] (pipe.west) to[out=180,in=90] (exec.north);
+\end{tikzpicture}
+\caption{Runtime module dependencies. Entry points drive orchestration, which drives
+generation, evaluation, and monitoring; all external processes pass through the single
+execution helper.}
+\label{fig:impl-modules}
+\end{figure}
+
+\subsection{Generation layer}
+\label{subsec:impl-generation}
+
+Two interchangeable backends implement the generation contract behind a common
+interface, so that the choice of provider is a configuration flag rather than a code
+change. Both expose the same functions to call the model, extract the code from the
+response, and save the result, and both centralise their default model identifiers while
+allowing an explicit override. Provider-specific error handling (for example, quota and
+throttling detection) is isolated behind the provider boundary, and credentials are read
+from explicit arguments first and then from the environment. The regeneration loop
+described in Algorithm~\ref{alg:regen} orchestrates these backends and persists the
+per-attempt artifacts.
+
+\subsection{Security gate and scanner adapters}
+\label{subsec:impl-gate}
+
+The gate is implemented in \texttt{iac\_security\_gate.py}, which collects the
+synthesized templates, runs the heuristic checks and the scanner adapters, deduplicates
+the findings, computes the score of Equation~\ref{eq:score}, applies the decision
+function of Equation~\ref{eq:decision}, and writes the gate report. Each scanner lives in
+its own adapter and returns a dictionary with at least a status and a message; no adapter
+ever raises, so a missing tool degrades to a well-defined status while the gate proceeds.
+Table~\ref{tab:adapters} lists the adapters.
+
+\begin{table}[ht]
+\centering
+\caption{Scanner adapters and the signal each contributes.}
+\label{tab:adapters}
+\begin{tabular}{|L{4.2cm}|L{7.8cm}|}
+\hline
+\textbf{Adapter} & \textbf{Signal} \\
+\hline
+\texttt{checkov\_adapter.py} & Policy-as-code findings on the synthesized templates. \\
+\hline
+\texttt{cfn\_lint\_adapter.py} & CloudFormation best-practice and validity findings. \\
+\hline
+\texttt{infracost\_adapter.py} & Estimated monthly cost, used as the cost dimension. \\
+\hline
+\texttt{aws\_config\_adapter.py} & Count of non-compliant live-compliance rules. \\
+\hline
+\texttt{ansible\_lint\_adapter.py} & Findings on the on-premises playbooks. \\
+\hline
+\texttt{secret\_scan\_adapter.py} & Regular-expression secret detection (no external
+tool). \\
+\hline
+\texttt{ml\_risk\_adapter.py} & Logistic-regression probability of insecurity, converted
+to points. \\
+\hline
+\end{tabular}
+\end{table}
+
+An abbreviated gate report is shown in Listing~\ref{lst:report}. The
+\texttt{components} object exposes the per-dimension contribution to the score, which
+makes the decision explainable, and the \texttt{scanner\_status} object records which
+tools ran.
+
+\begin{lstlisting}[language=Python,caption={Abbreviated gate report.},label={lst:report}]
+{
+  "run_id": "cdk_20260614T093934Z",
+  "timestamp": "2026-06-14T09:39:42+00:00",
+  "score": 50,
+  "decision": "review",
+  "message": "Manual review required before deployment.",
+  "components": {"severity": 30, "cost": 10, "aws_config": 10, "ml_risk": 0},
+  "findings": [
+    {"severity": "high", "source": "checkov", "category": "sg_ssh_open",
+     "resource_id": "MySG", "template": "App.template.json",
+     "message": "Security group allows ingress on port 22 from 0.0.0.0/0"}
+  ],
+  "scanner_status": {"checkov": "ok", "cfn_lint": "ok",
+                     "infracost": "ok", "aws_config": "ok", "ml_risk": "ok"}
+}
+\end{lstlisting}
+
+\subsection{Orchestration and governance}
+\label{subsec:impl-orchestration}
+
+Two command-line entry points drive the pipeline. The CDK-only entry point,
+\texttt{run\_cdk\_pipeline.py}, orchestrates bootstrap, synthesis, gating, diff, and
+deployment for the public side, and can optionally invoke the regeneration loop on a
+reject. The hybrid entry point, \texttt{run\_hybrid\_pipeline.py}, runs the same
+gate, risk-scoring, deployment, and observability workflow over both a bring-your-own CDK
+directory and a bring-your-own Ansible directory --- with no code-generation step ---
+gating each side independently with the same engine and writing a combined report. The
+orchestration routes all external commands through the execution backbone and honours the
+deployment-governance rules of Section~\ref{subsec:method-governance}. Listing
+\ref{lst:cli} shows representative invocations.
+
+\begin{lstlisting}[language=bash,caption={Representative pipeline invocations.},label={lst:cli}]
+# CDK-only: synth, gate, and deploy if the gate allows
+python scripts/run_cdk_pipeline.py --project-dir GeneratedCDK --deploy
+
+# Hybrid: gate both sides; scope the Ansible scan to files changed since HEAD~1
+python scripts/run_hybrid_pipeline.py \
+    --cdk-path examples/hybrid-demo/cdk \
+    --ansible-path examples/hybrid-demo/ansible \
+    --base-ref HEAD~1
+
+# Read-only status of every gated target
+python scripts/run_hybrid_pipeline.py --query-status
+\end{lstlisting}
+
+On the hybrid side, the Ansible scan can be scoped to the files changed since a given git
+reference, which limits analysis to the modified plays. The decision returned by each
+entry point is surfaced as a distinct process return code, so that both the console and
+any external continuous-integration system can react to \emph{pass}, \emph{review}, and
+\emph{reject} without parsing free text.
+
+Figure~\ref{fig:impl-sequence} traces the hybrid pipeline as a sequence of interactions
+between the orchestrator, the gate, the cloud and on-premises targets, and the monitoring
+layer, showing where the decision gates the deployment step on each side independently.
+
+\begin{figure}[ht]
+\centering
+\begin{tikzpicture}[node distance=6mm and 8mm, font=\small]
+\node[proc] (orch) {Orchestrator\\\texttt{run\_hybrid}};
+\node[proc, right=of orch] (gate) {Gate\\\texttt{Eval/}};
+\node[proc, right=of gate] (cdk) {AWS\\(CDK)};
+\node[proc, right=of cdk] (ans) {On-prem\\(Ansible)};
+\node[proc, below=16mm of gate] (emit) {Emit\\(SSM/EventBridge/CW)};
+\draw[flow] (orch) -- node[above,font=\scriptsize]{templates} (gate);
+\draw[flowback] (gate) -- node[below,font=\scriptsize]{report} (orch);
+\draw[flow] (orch.north) to[out=30,in=150] node[above,font=\scriptsize]{deploy if pass} (cdk.north);
+\draw[flow] (orch.north) to[out=20,in=160] node[above,font=\scriptsize,pos=0.6]{deploy if pass} (ans.north);
+\draw[flow] (gate) -- (emit);
+\draw[flow] (cdk.south) |- (emit.east);
+\draw[flow] (ans.south) |- ($(emit.east)+(0,-3mm)$);
+\end{tikzpicture}
+\caption{Hybrid pipeline interaction sequence. The orchestrator gates both sides with the
+same engine, deploys each side only on an accepting decision, and emits telemetry.}
+\label{fig:impl-sequence}
+\end{figure}
+
+\subsection{Execution backbone}
+\label{subsec:impl-exec}
+
+All external commands (CDK, Ansible, and the scanners) run through a single subprocess
+helper in \texttt{exec\_code.py}. The helper merges standard output and standard error to
+preserve the ordering of events, optionally streams output line by line for live
+rendering in the console, and returns the stable \texttt{\{return\_code, output\}}
+contract that every caller relies on. Concentrating process execution in one place keeps
+the output-capture and error-propagation behaviour consistent across the whole system.
+
+\subsection{Phase 4 observability}
+\label{subsec:impl-monitor}
+
+The monitoring layer implements three complementary observability concerns. Gate metrics
+(score, decision, and the component breakdown) are published to a custom CloudWatch
+namespace; compliance drift is watched by the configuration service and reacted to by an
+event-driven function; and an audit trail of API activity is captured by CloudTrail. A
+dashboard presents the risk score and the decision per target for both the public and the
+private side, and the operational-loop function reacts to drift and rollback events to
+enable automated remediation. The event shapes and parameter layout emitted by the
+orchestration layer are consumed unchanged by this layer, which keeps the two decoupled.
+
+\subsection{Operator console and multi-project registry}
+\label{subsec:impl-ui}
+
+The Streamlit console is a thin orchestration layer over the command-line entry points:
+every privileged action is delegated to a subprocess with credentials injected through
+the environment, never as command-line arguments. The console presents the workflow as a
+sequence of tabs --- settings, generation, gate review, plan/diff, deploy, and monitor
+--- and renders the gate report, the decision, and the live monitoring reads. A
+multi-project registry allows several independent projects to coexist: the default
+project keeps a flat log layout for backward compatibility, while any other project owns
+a separate artifact directory so that gate reports, approvals, rejections, and monitoring
+history never mix between projects. The active project's log directory is exported to the
+subprocesses through an environment variable, which is how per-project isolation is
+enforced end to end.

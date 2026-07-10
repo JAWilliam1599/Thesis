@@ -10,7 +10,8 @@ optional auto-regen loop, and Phase 4 observability (SSM, EventBridge, SNS, Clou
 
 | File | Role |
 |---|---|
-| `run_cdk_pipeline.py` | CLI orchestrator that wires together `pipeline/`, `Eval/`, `Monitor/`, and `AIgen/` |
+| `run_cdk_pipeline.py` | CDK-only CLI orchestrator that wires together `pipeline/`, `Eval/`, `Monitor/`, and `AIgen/` (includes the optional code-generation / regen loop) |
+| `run_hybrid_pipeline.py` | Hybrid CLI orchestrator: gates and deploys a bring-your-own **CDK + on-prem Ansible** project with the *same* risk engine — **no code generation** |
 
 ```mermaid
 flowchart LR
@@ -95,6 +96,59 @@ python scripts/run_cdk_pipeline.py --query-status
 | `22` | Rejected (regen attempted or no prompt provided) |
 
 These codes are surfaced verbatim by the Streamlit UI via `ui/config.py::RETURN_CODE_MEANING`.
+
+## Hybrid Pipeline (`run_hybrid_pipeline.py`)
+
+The hybrid entry point runs the identical `gate → risk-score → deploy → observability`
+workflow over **both sides of a hybrid project the user already wrote** — an AWS CDK app and
+an on-prem Ansible project — with **no code-generation step**. Each branch is gated
+independently with the same severity weights and thresholds; a combined report is written to
+`logs/hybrid_<run_id>.json`. Infracost / AWS Config / ML-risk apply to the CDK branch only;
+`ansible-lint` + Checkov (`--framework ansible`) + a regex secret scan feed the Ansible branch.
+
+```bash
+# Gate both sides; scope the Ansible scan to files changed since HEAD~1
+python scripts/run_hybrid_pipeline.py \
+  --cdk-path examples/hybrid-demo/cdk \
+  --ansible-path examples/hybrid-demo/ansible \
+  --base-ref HEAD~1
+
+# On-prem only; deploy to a Tailscale-connected node if the gate allows
+python scripts/run_hybrid_pipeline.py \
+  --ansible-path examples/hybrid-demo/ansible \
+  --target-host 100.101.102.103 --deploy
+
+# Read-only status
+python scripts/run_hybrid_pipeline.py --query-status     # gate score/decision per target
+python scripts/run_hybrid_pipeline.py --hybrid-status    # SSM nodes + compliance + Tailscale mesh
+```
+
+### Key CLI flags
+
+| Flag | Default | Description |
+|---|---|---|
+| `--cdk-path` | — | CDK app directory (omit to skip the CDK branch) |
+| `--ansible-path` | — | Ansible project directory (omit to skip the Ansible branch) |
+| `--base-ref` | scan all | Git ref for changed-file scoping of the Ansible scan (e.g. `HEAD~1`) |
+| `--playbook` / `--inventory` | auto-detect | Playbook / inventory file relative to the Ansible path |
+| `--target-host` | — | Tailscale host/IP used as an inline inventory when no inventory file is given |
+| `--manual-approve` | off | Approve review-band (21–80) decisions for deploy |
+| `--deploy` | off | Deploy each branch the gate allows |
+| `--bootstrap` | off | Run `cdk bootstrap` before synth (CDK branch) |
+| `--no-checkov` / `--no-cfn-lint` / `--no-infracost` / `--no-ml-risk` / `--no-aws-config` | off | Skip scanners on the CDK branch (Checkov applies to both) |
+| `--no-ansible-lint` / `--no-secret-scan` | off | Skip scanners on the Ansible branch |
+| `--pass-max` / `--review-max` | `20` / `80` | Override decision thresholds |
+| `--query-status` | off | Print last gate result per target from SSM and exit |
+| `--hybrid-status` | off | Print on-prem mesh status (SSM nodes, compliance, Tailscale) and exit |
+| `--run-id` / `--log-file` / `--verbose` | auto | Run-ID / log-path overrides and stderr echo |
+
+### Return codes
+
+| Code | Meaning |
+|---|---|
+| `0` | All attempted branches passed / deployed successfully |
+| `1` | At least one branch errored, was rejected, or failed to deploy |
+| `2` | No target provided (`--cdk-path` / `--ansible-path` / `--query-status` all absent) |
 
 ## Side Effects
 

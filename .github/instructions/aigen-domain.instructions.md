@@ -5,48 +5,40 @@ applyTo: "AIgen/**/*.py"
 
 # AIgen Domain Instructions
 
-Scope
-- This file governs code in `AIgen/**` only.
-- Keep orchestration contracts with `Eval/main.py` stable when modifying generation flow.
-
-Conventions
-- Preserve provider abstraction between Bedrock and OpenRouter. Add provider-specific behavior behind provider flags, not branch-specific one-offs.
-- Keep model defaults centralized and allow explicit CLI override (`--model-id`).
-- Handle missing credentials and service errors with clear user-facing messages and non-zero exits.
-- Preserve runtime artifact layout under `ExecCode/run_<timestamp>/` including prompt snapshot and pass/fail outputs.
-
-Contracts
-- Generated output paths and report snapshot semantics should remain compatible with UI readers and pipeline consumers.
-- Regeneration prompts should be deterministic and include evaluation feedback as machine-readable JSON where possible.
-
-Do Not
-- Do not couple AIgen logic directly to UI rendering concerns.
-- Do not duplicate risk scoring logic from `Eval/**`; call evaluator interfaces instead.---
-description: "Use when editing AIgen generation logic, provider selection, model handling, and generation-to-evaluation handoff."
-applyTo: "AIgen/**/*.py"
----
-
-# AIgen Domain Guidance
-
 ## Scope
-- This file covers code in AIgen only.
-- Do not duplicate Eval scoring rules here.
-- Do not add guidance for generated artifacts under ExecCode.
+- This file governs code in `AIgen/**` only.
+- Keep the handoff contract with the security gate (`Eval/iac_security_gate.py`) stable when
+  modifying generation flow — the regen loop consumes the gate report JSON verbatim.
+- Do not duplicate risk-scoring logic from `Eval/**`; call the evaluator via the pipeline
+  instead.
 
 ## Generation Contracts
+- Preserve the provider abstraction between Bedrock and OpenRouter. Add provider-specific
+  behavior behind provider flags, not branch-specific one-offs, so the two implementations
+  stay swappable.
+- Keep model defaults centralized and allow explicit CLI override (`--model-id`).
 - Keep generation output deterministic for the same prompt and provider inputs where possible.
-- Preserve provider abstraction boundaries so Bedrock and OpenRouter implementations stay swappable.
 - Keep return shapes stable for pipeline callers.
 
 ## Runtime and Artifacts
-- Preserve runtime-id based run folder behavior used by orchestrator entrypoints.
-- Keep prompt snapshot and run artifact paths consistent with existing run history layout.
+- Preserve the CDK regen run-folder layout under
+  `logs/cdk_regen/<run_id>/attempt_<N>/` (prompt snapshot, generated code, synth output, and
+  gate report) plus the `logs/cdk_regen/<run_id>/passed/` promotion folder on success.
+- Keep prompt snapshots and artifact paths consistent with existing run history so UI readers
+  and pipeline consumers keep working.
+- Regeneration prompts should be deterministic and inject the gate findings as machine-readable
+  JSON so the loop converges within the attempt budget.
 
 ## Provider and Credential Handling
-- Bedrock-specific behavior should stay isolated from OpenRouter-specific behavior.
+- Keep Bedrock-specific behavior isolated from OpenRouter-specific behavior.
 - Read API keys and region from explicit arguments first, then environment variables.
-- Keep model-id override behavior explicit and validated when validation options are enabled.
+- Keep the model-id override explicit and validated when validation options are enabled.
 
 ## Error Handling
-- Handle provider/API exceptions with actionable logs.
+- Handle missing credentials and provider/API exceptions with clear, actionable, user-facing
+  messages and non-zero exits.
 - Do not suppress quota, throttling, or auth errors; surface enough detail for retry decisions.
+
+## Do Not
+- Do not couple AIgen logic directly to UI rendering concerns.
+- Do not duplicate risk-scoring logic from `Eval/**`; call evaluator interfaces instead.

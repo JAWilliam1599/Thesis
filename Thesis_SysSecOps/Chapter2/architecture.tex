@@ -1,0 +1,290 @@
+\section{System Architecture}
+\label{sec:architecture}
+
+This section presents the architecture of the proposed SysSecOps system for a hybrid
+cloud environment. The design places a quantitative, multi-scanner \emph{security gate}
+between the synthesis and the deployment of Infrastructure-as-Code (IaC), so that no
+change is applied to either the public-cloud or the on-premises side until it has been
+statically analysed, costed, checked against live compliance state, and assigned a
+single risk score. The same engine governs both sides of the hybrid environment, which
+gives the process a uniform and reproducible security behaviour.
+
+\subsection{Design goals}
+\label{subsec:arch-goals}
+
+The architecture is driven by the research objectives stated in Chapter~\ref{Chapter1}
+and refined into the following concrete design goals:
+
+\begin{itemize}
+    \item \textbf{Gate before deploy.} Security evaluation must occur on the
+    \emph{synthesized} artifact (the CloudFormation template or the resolved Ansible
+    play), not merely on the higher-level source, because the synthesized artifact is
+    the last representation before any resource is provisioned.
+    \item \textbf{One engine for the whole hybrid.} The AWS (public) side and the
+    on-premises (private) side must be scored with identical severity weights,
+    deduplication rules, and decision thresholds, so that decisions are comparable
+    across the trust boundary.
+    \item \textbf{Graceful degradation.} A missing scanner binary or absent cloud
+    credentials must never crash the pipeline; the affected component degrades to a
+    well-defined ``skipped'' status while the gate still produces a decision.
+    \item \textbf{Auditability.} Every decision (\emph{pass}, \emph{review},
+    \emph{reject}) is persisted as an immutable record together with the acting
+    identity, enabling post-hoc review.
+    \item \textbf{Feedback-driven remediation.} When code is generated, gate findings
+    are injected back into the generation prompt so that unsafe code is automatically
+    regenerated rather than merely blocked.
+    \item \textbf{Observability.} Every deployed target is continuously monitored and
+    every gate decision is published as telemetry for dashboards and automated
+    remediation.
+\end{itemize}
+
+\subsection{Three-zone reference architecture}
+\label{subsec:arch-zones}
+
+The system is organised into three cooperating zones, summarised in
+Table~\ref{tab:zones}. Zone~1 produces IaC; Zone~2 evaluates and gates it; Zone~3
+provisions the hybrid infrastructure and continuously observes it. The risk-scoring
+engine sits at the boundary of Zone~1 and Zone~2: it consumes scanner output and emits
+the decision that governs whether code advances to deployment or returns to Zone~1 for
+regeneration.
+
+\begin{table}[ht]
+\centering
+\caption{The three zones of the proposed architecture.}
+\label{tab:zones}
+\begin{tabular}{|C{1.6cm}|L{3.3cm}|L{7.0cm}|}
+\hline
+\textbf{Zone} & \textbf{Name} & \textbf{Responsibility} \\
+\hline
+Zone~1 & AI + IaC local development & Generate IaC from a natural-language prompt;
+local validation (\texttt{cdk synth}, \texttt{cdk diff}). \\
+\hline
+Zone~2 & IaC security gate & Multi-scanner analysis, cross-source deduplication, risk
+scoring, and the deploy decision. \\
+\hline
+Zone~3 & Hybrid infrastructure and operations monitoring & Provision AWS and on-premises
+resources; publish telemetry; run the drift/remediation operational loop. \\
+\hline
+\end{tabular}
+\end{table}
+
+Figure~\ref{fig:arch-overview} shows the three zones and the principal flow of control
+between them. The solid arrows denote the forward path of a change from prompt to
+deployed and monitored infrastructure; the dashed arrow denotes the remediation feedback
+that returns rejected generated code to Zone~1.
+
+\begin{figure}[ht]
+\centering
+\begin{tikzpicture}[node distance=6mm]
+% Zone 1
+\node[proc] (ui) {UI / CLI};
+\node[proc, right=14mm of ui] (gen) {AI generation\\(Bedrock / OpenRouter)};
+\node[io, right=14mm of gen] (app) {IaC\\(CDK / Ansible)};
+\begin{scope}[on background layer]
+  \node[zone, fit=(ui)(gen)(app), label=above:{\footnotesize\textbf{Zone~1 --- Generation}}] (z1) {};
+\end{scope}
+% Zone 2
+\node[proc, below=16mm of ui] (synth) {Synthesize\\(\texttt{cdk synth})};
+\node[proc, right=12mm of synth] (gate) {Multi-scanner\\gate};
+\node[dec, right=12mm of gate] (dec) {score?};
+\begin{scope}[on background layer]
+  \node[zone, fit=(synth)(gate)(dec), label=above:{\footnotesize\textbf{Zone~2 --- Security gate}}] (z2) {};
+\end{scope}
+% Zone 3
+\node[proc, below=16mm of synth] (deploy) {Deploy\\(AWS + on-prem)};
+\node[proc, right=12mm of deploy] (mon) {Monitor\\(Phase~4 loop)};
+\node[store, right=14mm of mon] (audit) {Audit\\\& metrics};
+\begin{scope}[on background layer]
+  \node[zone, fit=(deploy)(mon)(audit), label=above:{\footnotesize\textbf{Zone~3 --- Hybrid infra \& ops}}] (z3) {};
+\end{scope}
+% Edges
+\draw[flow] (ui) -- (gen);
+\draw[flow] (gen) -- (app);
+\draw[flow] (app.south) |- (synth.east) node[pos=0.75,above,font=\scriptsize]{templates};
+\draw[flow] (synth) -- (gate);
+\draw[flow] (gate) -- (dec);
+\draw[flow] (dec.south) |- (deploy.east) node[pos=0.75,above,font=\scriptsize]{pass / approved};
+\draw[flow] (deploy) -- (mon);
+\draw[flow] (mon) -- (audit);
+\draw[flowback] (dec.north) -- ++(0,5mm) -| (gen.south)
+      node[pos=0.25,above,font=\scriptsize]{reject: inject findings};
+\end{tikzpicture}
+\caption{High-level three-zone architecture and end-to-end flow. Solid arrows are the
+forward path; the dashed arrow is the regeneration feedback loop.}
+\label{fig:arch-overview}
+\end{figure}
+
+The three zones are intentionally loosely coupled. Zone~1 knows nothing about the
+internal scoring rules of Zone~2 --- it only consumes the machine-readable findings that
+Zone~2 emits. Zone~3 knows nothing about how a decision was reached --- it only consumes
+the decision event. This decoupling is what allows the generation backend, the set of
+scanners, and the monitoring stack to evolve independently, and it is the reason the same
+gate can serve both the public and the private side without modification.
+
+\subsection{End-to-end data flow}
+\label{subsec:arch-flow}
+
+A single request flows through the system as an evolving chain of artifacts:
+
+\begin{enumerate}
+    \item A natural-language prompt (or an existing, ``bring-your-own'' project) enters
+    the system through the command-line interface or the operator console.
+    \item Zone~1 produces IaC: a synthesizable AWS Cloud Development Kit (CDK) Python
+    application and/or a set of Ansible playbooks.
+    \item The IaC is synthesized: \texttt{cdk synth} emits CloudFormation templates,
+    while \texttt{ansible-playbook -{}-syntax-check} validates the playbooks.
+    \item Zone~2 evaluates the synthesized artifact with several independent scanners,
+    normalises their outputs into a common finding schema, deduplicates across sources,
+    and computes a risk score.
+    \item The decision function maps the score to \emph{pass}, \emph{review}, or
+    \emph{reject}. The full gate report is persisted, and an approval or rejection
+    record is written.
+    \item On \emph{pass} (or an approved \emph{review}), the change is deployed; on
+    \emph{reject}, generated code is optionally regenerated with the findings injected
+    back into the prompt.
+    \item Zone~3 records the outcome, publishes metrics and events, and attaches
+    post-deployment security monitoring.
+\end{enumerate}
+
+Figure~\ref{fig:arch-dataflow} traces the same request as a chain of artifacts, making
+explicit how each stage transforms its input into a more concrete representation. The
+important property is that the security decision is taken on the \emph{synthesized
+template}, not on the prompt or the high-level source: this is the last artifact before
+provisioning and therefore the earliest point at which the exact resources, their
+properties, and their relationships are fully known.
+
+\begin{figure}[ht]
+\centering
+\begin{tikzpicture}[node distance=7mm and 9mm]
+\node[io] (prompt) {Prompt /\\project};
+\node[proc, right=of prompt] (code) {Generated\\code};
+\node[proc, right=of code] (tmpl) {Synthesized\\template};
+\node[proc, right=of tmpl] (find) {Normalized\\findings};
+\node[dec, below=10mm of find] (score) {score \&\\decision};
+\node[store, left=of score] (report) {Gate\\report};
+\node[proc, left=of report] (deployN) {Deploy};
+\node[store, left=of deployN] (tele) {Telemetry};
+\draw[flow] (prompt) -- (code);
+\draw[flow] (code) -- (tmpl);
+\draw[flow] (tmpl) -- (find);
+\draw[flow] (find) -- (score);
+\draw[flow] (score) -- (report);
+\draw[flow] (report) -- (deployN) node[pos=0.5,above,font=\scriptsize]{pass};
+\draw[flow] (deployN) -- (tele);
+\draw[flowback] (score.east) -- ++(6mm,0) |- (code.east)
+      node[pos=0.25,right,font=\scriptsize]{reject};
+\end{tikzpicture}
+\caption{Artifact lifecycle of a single request. The decision is computed on the
+synthesized template; a rejection feeds findings back into generation.}
+\label{fig:arch-dataflow}
+\end{figure}
+
+\subsection{Hybrid deployment topology}
+\label{subsec:arch-topology}
+
+The public side is provisioned on Amazon Web Services (AWS) through CDK-synthesized
+CloudFormation. The private side consists of on-premises Linux nodes managed by Ansible.
+The two sides are connected through an encrypted mesh overlay (a WireGuard-based virtual
+private network), and the on-premises nodes are registered as AWS Systems Manager (SSM)
+managed instances so that their compliance state is visible to the same operational loop
+that watches the cloud side. No public inbound administrative access is required: the
+control plane traverses the encrypted tunnel, which keeps the hybrid trust boundary
+small and observable. Figure~\ref{fig:arch-topology} depicts the topology.
+
+\begin{figure}[ht]
+\centering
+\begin{tikzpicture}[node distance=8mm]
+% AWS side
+\node[proc] (vpc) {VPC / EC2 / S3 / RDS};
+\node[proc, below=of vpc] (ssm) {SSM + EventBridge\\+ CloudWatch};
+\begin{scope}[on background layer]
+  \node[zone, fit=(vpc)(ssm), label=above:{\footnotesize\textbf{AWS (public)}}] (aws) {};
+\end{scope}
+% On-prem side
+\node[proc, right=42mm of vpc] (node) {On-prem Linux\\node (Ansible)};
+\node[proc, below=of node] (agent) {SSM agent +\\mesh VPN client};
+\begin{scope}[on background layer]
+  \node[zone, fill=orange!5, fit=(node)(agent), label=above:{\footnotesize\textbf{On-premises (private)}}] (onprem) {};
+\end{scope}
+% Tunnel
+\draw[{Stealth[length=2.4mm]}-{Stealth[length=2.4mm]}, very thick, dashed]
+     (aws.east) -- (onprem.west)
+     node[midway, above, font=\scriptsize, align=center]{encrypted\\mesh tunnel};
+\draw[flow] (agent.south) |- ($(ssm.south)+(0,-6mm)$) -| (ssm.south)
+     node[pos=0.25,below,font=\scriptsize]{compliance events};
+\end{tikzpicture}
+\caption{Hybrid deployment topology: AWS resources and on-premises nodes joined by an
+encrypted mesh, with on-premises nodes registered as SSM managed instances.}
+\label{fig:arch-topology}
+\end{figure}
+
+\subsection{Component map and interfaces}
+\label{subsec:arch-components}
+
+Table~\ref{tab:modules} lists the top-level software modules and their responsibilities.
+The modules communicate through stable contracts rather than shared internal state, which
+keeps the generation, evaluation, orchestration, and monitoring concerns decoupled.
+
+\begin{table}[ht]
+\centering
+\caption{Top-level modules and their responsibilities.}
+\label{tab:modules}
+\begin{tabular}{|L{3.0cm}|L{9.0cm}|}
+\hline
+\textbf{Module} & \textbf{Responsibility} \\
+\hline
+\texttt{AIgen/} & Zone~1 generation: provider-abstracted code generation
+(Bedrock~/~OpenRouter) and the CDK regeneration loop. \\
+\hline
+\texttt{Eval/} & Zone~2 gate: template and playbook analysis, scanner adapters,
+deduplication, risk scoring, and report assembly. \\
+\hline
+\texttt{ExecComponent/} & Subprocess execution backbone with a stable result contract. \\
+\hline
+\texttt{pipeline/} & Orchestration and governance: synth--gate--diff--deploy, the approval
+audit trail, credentials, and the Phase~4 emitters. \\
+\hline
+\texttt{Monitor/} & Phase~4 observability: CloudTrail, CloudWatch metrics and
+dashboards, the operational-loop Lambda, and on-premises SSM registration. \\
+\hline
+\texttt{scripts/} & Command-line entry points for the CDK-only and the hybrid flows. \\
+\hline
+\texttt{ui/} & Streamlit operator console and the multi-project registry. \\
+\hline
+\texttt{RiskScoringCitation/} & Training and evaluation code for the machine-learning
+code-risk model consumed by the gate. \\
+\hline
+\end{tabular}
+\end{table}
+
+\subsection{Key data contracts}
+\label{subsec:arch-contracts}
+
+Three contracts hold the system together and are deliberately kept stable so that
+independent consumers (the CLI, the console, the dashboards) do not break:
+
+\begin{itemize}
+    \item \textbf{Gate report.} A JSON document containing the run identifier,
+    timestamp, numeric \texttt{score}, \texttt{decision}, human-readable
+    \texttt{message}, a per-component \texttt{components} breakdown, the deduplicated
+    \texttt{findings}, and a \texttt{scanner\_status} map that records whether each
+    scanner ran, was skipped, or was unavailable.
+    \item \textbf{Execution result.} Every external command returns exactly
+    \texttt{\{return\_code, output\}}, with standard output and standard error merged to
+    preserve event ordering for the console and the logs.
+    \item \textbf{Gate-decision event.} A compact event (target name, score, decision,
+    timestamp) is persisted to SSM Parameter Store and published to Amazon EventBridge,
+    keyed by the target name (a stack name for CDK, or \texttt{ansible-<node>} for the
+    on-premises side) so that the two sides never collide.
+\end{itemize}
+
+\subsection{Security and trust model}
+\label{subsec:arch-trust}
+
+Credentials are never passed as command-line arguments; they are resolved through the
+standard provider chains and injected into subprocesses through the environment. AWS
+access follows the default credential chain with a single-sign-on fallback, and
+generation-provider keys are read from the environment. Deployed workloads follow the
+principle of least privilege, and each privileged action is recorded in an append-only
+audit trail. The uniform graceful-degradation contract guarantees that the absence of a
+tool or a credential weakens visibility but never silently disables the gate.

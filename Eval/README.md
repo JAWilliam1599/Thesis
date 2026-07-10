@@ -3,16 +3,16 @@
 ## Purpose
 
 `Eval/` implements **Zone 2** in the SysSecOps model: it gates CDK deployments by analyzing
-the synthesized CloudFormation templates, aggregating findings from four independent
-scanners, deduplicating across sources, and producing a single **scored risk decision**
-(`pass` / `review` / `reject`).
+the synthesized CloudFormation templates, aggregating findings from multiple independent
+scanners, deduplicating across sources, adding an ML-based code-risk signal, and producing a
+single **scored risk decision** (`pass` / `review` / `reject`).
 
 ## Files
 
 | File | Role |
 |---|---|
 | `iac_security_gate.py` | CDK synth template analyzer + Ansible playbook analyzer + deployment gate scorer |
-| `scanners/` | Pluggable scanner adapters (Checkov, cfn-lint, Infracost, AWS Config, ansible-lint, secret-scan) |
+| `scanners/` | Pluggable scanner adapters (Checkov, cfn-lint, Infracost, AWS Config, ansible-lint, secret-scan, ml-risk) |
 | `dependency-check/` | Bundled OWASP Dependency-Check distribution (optional SCA tooling) |
 
 > **Hybrid (on-prem) path:** `IaCSecurityGate.evaluate_ansible()` scores Ansible
@@ -46,6 +46,12 @@ flowchart TB
 | `aws_config_adapter.py` | AWS Config (boto3) | Phase 2 | `not_installed`, `no_credentials`, `not_configured`, `error` |
 | `ansible_lint_adapter.py` | ansible-lint | Hybrid | `not_installed`, `error`, `skipped` |
 | `secret_scan_adapter.py` | regex secret scan (no external tool) | Hybrid | `skipped` |
+| `ml_risk_adapter.py` | logistic-regression code-risk model (bandit + semgrep → P(insecure)) | Risk scoring | `not_installed`, `model_missing`, `no_python_files`, `skipped`, `error` |
+
+The `ml_risk_adapter.py` adapter reuses the model trained in `RiskScoringCitation/`; it scans
+generated `*.py` code, predicts a per-file probability of insecurity, and contributes
+`round(p * ML_MAX_POINTS)` points (max 20) to the gate score. It degrades to a `skipped`
+status when the `.pkl` model artifacts or bandit/semgrep binaries are unavailable.
 
 All adapters return a dict with at minimum `{status, message}` plus adapter-specific fields,
 and never raise — a missing tool degrades to a `skipped`/`not_installed` status while the

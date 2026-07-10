@@ -29,7 +29,8 @@ credentials injected as environment variables (never as CLI arguments).
 | `credentials.py` | Load / test / save AWS (`~/.aws`) + OpenRouter (`.env`) credentials |
 | `sidebar.py` | Provider/model/region/scanner settings panel → settings dict |
 | `helpers.py` | Gate-report + approval/rejection discovery and loading |
-| `pipeline_runner.py` | Subprocess orchestration for generate / synth-gate / deploy |
+| `projects.py` | Multi-project / multi-workflow registry persisted in `logs/projects.json`; isolates each project's artifacts under `logs/projects/<id>/` and selects the `cdk` or `hybrid` workflow |
+| `pipeline_runner.py` | Subprocess orchestration for generate / synth-gate / deploy (exports the active project's log dir via `SYSSECOPS_LOG_DIR`) |
 | `monitoring.py` | AWS-backed reads: SSM gate state, CloudWatch alarms, metric averages |
 | `reports.py` | Renders gate report + decision banner |
 | `tabs.py` | All six tabs and the four Pipeline sub-tabs |

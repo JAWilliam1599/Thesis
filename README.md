@@ -364,13 +364,13 @@ Artifacts: `logs/cdk_regen/<run_id>/attempt_<N>/` (prompt, code, gate report, sy
 ## Documentation Index
 
 - [`THESIS_REPORT.md`](THESIS_REPORT.md) — comprehensive thesis report (architecture, methodology, evaluation)
+- [`SysSecOps-hybrid-with-RiskScringEngine-integrated-to-IaCSecurityGate.md`](SysSecOps-hybrid-with-RiskScringEngine-integrated-to-IaCSecurityGate.md) — the SysSecOps hybrid model and zone alignment
+- [`riskScoring.md`](riskScoring.md) — the risk-scoring model (multi-factor formulation + implemented additive scoring)
 - [`AIgen/README.md`](AIgen/README.md) — generation providers and the CDK regen loop
 - [`Eval/README.md`](Eval/README.md) — gate scoring, scanner adapters, report structure
 - [`pipeline/README.md`](pipeline/README.md) — CDK orchestration + Phase 4 governance
 - [`Monitor/README.md`](Monitor/README.md) — ops loop, alarms, dashboards, 3-layer monitoring
 - [`ExecComponent/README.md`](ExecComponent/README.md) — subprocess execution helpers
-- [`scripts/README.md`](scripts/README.md) — pipeline CLI flags and return codes
+- [`scripts/README.md`](scripts/README.md) — pipeline CLI flags and return codes (CDK + hybrid)
 - [`ui/README.md`](ui/README.md) — Streamlit operator console
 - [`GeneratedCDK/README.md`](GeneratedCDK/README.md) — the CDK deployment target
-- [`PHASE4_REPORT.md`](PHASE4_REPORT.md) — detailed Phase 4 implementation report
-- [`CDK-ONLY-NEXT-STEPS.md`](CDK-ONLY-NEXT-STEPS.md) — implementation roadmap (Phases 1–4)
