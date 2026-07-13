@@ -1,0 +1,330 @@
+% $ biblatex auxiliary file $
+% $ biblatex bbl format version 3.3 $
+% Do not modify the above lines!
+%
+% This is an auxiliary file used by the 'biblatex' package.
+% This file may safely be deleted. It will be recreated by
+% biber as required.
+%
+\begingroup
+\makeatletter
+\@ifundefined{ver@biblatex.sty}
+  {\@latex@error
+     {Missing 'biblatex' package}
+     {The bibliography requires the 'biblatex' package.}
+      \aftergroup\endinput}
+  {}
+\endgroup
+
+
+\refsection{0}
+  \datalist[entry]{none/global//global/global/global}
+    \entry{Listings}{online}{}{}
+      \name{author}{1}{}{%
+        {{hash=54f664c70c22054ea0d8d26fc3997ce7}{%
+           family={Online},
+           familyi={O\bibinitperiod}}}%
+      }
+      \strng{namehash}{54f664c70c22054ea0d8d26fc3997ce7}
+      \strng{fullhash}{54f664c70c22054ea0d8d26fc3997ce7}
+      \strng{fullhashraw}{54f664c70c22054ea0d8d26fc3997ce7}
+      \strng{bibnamehash}{54f664c70c22054ea0d8d26fc3997ce7}
+      \strng{authorbibnamehash}{54f664c70c22054ea0d8d26fc3997ce7}
+      \strng{authornamehash}{54f664c70c22054ea0d8d26fc3997ce7}
+      \strng{authorfullhash}{54f664c70c22054ea0d8d26fc3997ce7}
+      \strng{authorfullhashraw}{54f664c70c22054ea0d8d26fc3997ce7}
+      \field{extraname}{1}
+      \field{sortinit}{1}
+      \field{sortinithash}{4f6aaa89bab872aa0999fec09ff8e98a}
+      \field{labelnamesource}{author}
+      \field{labeltitlesource}{title}
+      \field{title}{LaTeX/Source Code Listings}
+      \field{urlday}{6}
+      \field{urlmonth}{6}
+      \field{urlyear}{2015}
+      \field{urldateera}{ce}
+      \verb{urlraw}
+      \verb http://en.wikibooks.org/wiki/LaTeX/Source_Code_Listings
+      \endverb
+      \verb{url}
+      \verb http://en.wikibooks.org/wiki/LaTeX/Source_Code_Listings
+      \endverb
+    \endentry
+    \entry{HDLVThS}{online}{}{}
+      \name{author}{1}{}{%
+        {{hash=a143a70026d07e1af21143c4c0ab1611}{%
+           family={Trường\bibnamedelimb Đại\bibnamedelimb học\bibnamedelimb Khoa\bibnamedelimb học\bibnamedelimb Tự\bibnamedelima nhiên},
+           familyi={T\bibinitperiod\bibinitdelim Đ\bibinitperiod\bibinitdelim h\bibinitperiod\bibinitdelim K\bibinitperiod\bibinitdelim h\bibinitperiod\bibinitdelim T\bibinitperiod\bibinitdelim n\bibinitperiod},
+           given={ĐHQG-HCM},
+           giveni={Đ\bibinithyphendelim H\bibinitperiod}}}%
+      }
+      \strng{namehash}{a143a70026d07e1af21143c4c0ab1611}
+      \strng{fullhash}{a143a70026d07e1af21143c4c0ab1611}
+      \strng{fullhashraw}{a143a70026d07e1af21143c4c0ab1611}
+      \strng{bibnamehash}{a143a70026d07e1af21143c4c0ab1611}
+      \strng{authorbibnamehash}{a143a70026d07e1af21143c4c0ab1611}
+      \strng{authornamehash}{a143a70026d07e1af21143c4c0ab1611}
+      \strng{authorfullhash}{a143a70026d07e1af21143c4c0ab1611}
+      \strng{authorfullhashraw}{a143a70026d07e1af21143c4c0ab1611}
+      \field{sortinit}{1}
+      \field{sortinithash}{4f6aaa89bab872aa0999fec09ff8e98a}
+      \field{labelnamesource}{author}
+      \field{labeltitlesource}{title}
+      \field{title}{Quy định và hướng dẫn thực hiện luận văn thạc sĩ}
+      \field{urlday}{6}
+      \field{urlmonth}{6}
+      \field{urlyear}{2015}
+      \field{year}{2011}
+      \field{urldateera}{ce}
+      \verb{urlraw}
+      \verb http://www.hcmus.edu.vn/index.php?option=com_content&task=blogcategory&id=142&Itemid=506
+      \endverb
+      \verb{url}
+      \verb http://www.hcmus.edu.vn/index.php?option=com_content&task=blogcategory&id=142&Itemid=506
+      \endverb
+      \keyw{Viet}
+    \endentry
+    \entry{1994-Cavnar}{inproceedings}{}{}
+      \name{author}{2}{}{%
+        {{hash=08351c225d04a227689eeeb9e4edd6fc}{%
+           family={Cavnar},
+           familyi={C\bibinitperiod},
+           given={William\bibnamedelima B.},
+           giveni={W\bibinitperiod\bibinitdelim B\bibinitperiod}}}%
+        {{hash=062aa87440eec6cffcd92f8131c1a3e9}{%
+           family={Trenkle},
+           familyi={T\bibinitperiod},
+           given={John\bibnamedelima M.},
+           giveni={J\bibinitperiod\bibinitdelim M\bibinitperiod}}}%
+      }
+      \strng{namehash}{84bc725fc97ecdbd655ec1207fad6883}
+      \strng{fullhash}{84bc725fc97ecdbd655ec1207fad6883}
+      \strng{fullhashraw}{84bc725fc97ecdbd655ec1207fad6883}
+      \strng{bibnamehash}{84bc725fc97ecdbd655ec1207fad6883}
+      \strng{authorbibnamehash}{84bc725fc97ecdbd655ec1207fad6883}
+      \strng{authornamehash}{84bc725fc97ecdbd655ec1207fad6883}
+      \strng{authorfullhash}{84bc725fc97ecdbd655ec1207fad6883}
+      \strng{authorfullhashraw}{84bc725fc97ecdbd655ec1207fad6883}
+      \field{sortinit}{2}
+      \field{sortinithash}{8b555b3791beccb63322c22f3320aa9a}
+      \field{labelnamesource}{author}
+      \field{labeltitlesource}{title}
+      \field{booktitle}{In Proceedings of SDAIR-94, 3rd Annual Symposium on Document Analysis and Information Retrieval}
+      \field{title}{N-Gram-Based Text Categorization}
+      \field{year}{1994}
+      \field{pages}{161\bibrangedash 175}
+      \range{pages}{15}
+    \endentry
+    \entry{1984-TeX-Knuth}{book}{}{}
+      \name{author}{1}{}{%
+        {{hash=ec08e6f01da5f3814f28a70c89c64656}{%
+           family={Knuth},
+           familyi={K\bibinitperiod},
+           given={Donald\bibnamedelima E.},
+           giveni={D\bibinitperiod\bibinitdelim E\bibinitperiod}}}%
+      }
+      \list{publisher}{1}{%
+        {Addison-Wesley}%
+      }
+      \strng{namehash}{ec08e6f01da5f3814f28a70c89c64656}
+      \strng{fullhash}{ec08e6f01da5f3814f28a70c89c64656}
+      \strng{fullhashraw}{ec08e6f01da5f3814f28a70c89c64656}
+      \strng{bibnamehash}{ec08e6f01da5f3814f28a70c89c64656}
+      \strng{authorbibnamehash}{ec08e6f01da5f3814f28a70c89c64656}
+      \strng{authornamehash}{ec08e6f01da5f3814f28a70c89c64656}
+      \strng{authorfullhash}{ec08e6f01da5f3814f28a70c89c64656}
+      \strng{authorfullhashraw}{ec08e6f01da5f3814f28a70c89c64656}
+      \field{sortinit}{3}
+      \field{sortinithash}{ad6fe7482ffbd7b9f99c9e8b5dccd3d7}
+      \field{labelnamesource}{author}
+      \field{labeltitlesource}{title}
+      \field{title}{The {{\TeX}book}}
+      \field{year}{1984}
+    \endentry
+    \entry{2006-DDien}{book}{}{}
+      \name{author}{1}{}{%
+        {{hash=43ee43fb9422832b1510749408dbbfea}{%
+           family={Điền},
+           familyi={Đ\bibinitperiod},
+           given={Đinh},
+           giveni={Đ\bibinitperiod}}}%
+      }
+      \list{publisher}{1}{%
+        {Nhà xuất bản Đại học Quốc gia TP.HCM}%
+      }
+      \strng{namehash}{43ee43fb9422832b1510749408dbbfea}
+      \strng{fullhash}{43ee43fb9422832b1510749408dbbfea}
+      \strng{fullhashraw}{43ee43fb9422832b1510749408dbbfea}
+      \strng{bibnamehash}{43ee43fb9422832b1510749408dbbfea}
+      \strng{authorbibnamehash}{43ee43fb9422832b1510749408dbbfea}
+      \strng{authornamehash}{43ee43fb9422832b1510749408dbbfea}
+      \strng{authorfullhash}{43ee43fb9422832b1510749408dbbfea}
+      \strng{authorfullhashraw}{43ee43fb9422832b1510749408dbbfea}
+      \field{sortinit}{3}
+      \field{sortinithash}{ad6fe7482ffbd7b9f99c9e8b5dccd3d7}
+      \field{labelnamesource}{author}
+      \field{labeltitlesource}{title}
+      \field{title}{Xử lý ngôn ngữ tự nhiên}
+      \field{year}{2006}
+      \keyw{Viet}
+    \endentry
+    \entry{2006-NPTV}{book}{}{}
+      \name{author}{2}{}{%
+        {{hash=7962d83e59c12666462cf066997accbb}{%
+           family={Ban},
+           familyi={B\bibinitperiod},
+           given={Diệp\bibnamedelima Quang},
+           giveni={D\bibinitperiod\bibinitdelim Q\bibinitperiod}}}%
+        {{hash=78cbe5597d95e3ec72b02c444a3afd77}{%
+           family={Thung},
+           familyi={T\bibinitperiod},
+           given={Hoàng\bibnamedelima Van},
+           giveni={H\bibinitperiod\bibinitdelim V\bibinitperiod}}}%
+      }
+      \list{publisher}{1}{%
+        {Nhà xuất bản Giáo dục Việt Nam}%
+      }
+      \strng{namehash}{0d6787f92ec295d9fbee70eb813054f5}
+      \strng{fullhash}{0d6787f92ec295d9fbee70eb813054f5}
+      \strng{fullhashraw}{0d6787f92ec295d9fbee70eb813054f5}
+      \strng{bibnamehash}{0d6787f92ec295d9fbee70eb813054f5}
+      \strng{authorbibnamehash}{0d6787f92ec295d9fbee70eb813054f5}
+      \strng{authornamehash}{0d6787f92ec295d9fbee70eb813054f5}
+      \strng{authorfullhash}{0d6787f92ec295d9fbee70eb813054f5}
+      \strng{authorfullhashraw}{0d6787f92ec295d9fbee70eb813054f5}
+      \field{sortinit}{3}
+      \field{sortinithash}{ad6fe7482ffbd7b9f99c9e8b5dccd3d7}
+      \field{labelnamesource}{author}
+      \field{labeltitlesource}{title}
+      \field{title}{Ngữ pháp tiếng Việt}
+      \field{year}{2006}
+      \keyw{Viet}
+    \endentry
+    \entry{1989-TED}{article}{}{}
+      \name{author}{2}{}{%
+        {{hash=548307cf679cc9bfe8ae9b0ae96e4ee0}{%
+           family={Zhang},
+           familyi={Z\bibinitperiod},
+           given={Kaizhong},
+           giveni={K\bibinitperiod}}}%
+        {{hash=dccd92ea94cc6ef2ed9f4a7ca59cbdc0}{%
+           family={Shasha},
+           familyi={S\bibinitperiod},
+           given={Dennis},
+           giveni={D\bibinitperiod}}}%
+      }
+      \strng{namehash}{345f030fcbdb35eaf8adbeeba1803d76}
+      \strng{fullhash}{345f030fcbdb35eaf8adbeeba1803d76}
+      \strng{fullhashraw}{345f030fcbdb35eaf8adbeeba1803d76}
+      \strng{bibnamehash}{345f030fcbdb35eaf8adbeeba1803d76}
+      \strng{authorbibnamehash}{345f030fcbdb35eaf8adbeeba1803d76}
+      \strng{authornamehash}{345f030fcbdb35eaf8adbeeba1803d76}
+      \strng{authorfullhash}{345f030fcbdb35eaf8adbeeba1803d76}
+      \strng{authorfullhashraw}{345f030fcbdb35eaf8adbeeba1803d76}
+      \field{sortinit}{4}
+      \field{sortinithash}{9381316451d1b9788675a07e972a12a7}
+      \field{labelnamesource}{author}
+      \field{labeltitlesource}{title}
+      \field{journaltitle}{SIAM Journal on Computing, Volume 18 Issue 6}
+      \field{title}{{Simple fast algorithms for the editing distance between trees and related problems}}
+      \field{year}{1989}
+      \field{pages}{1245\bibrangedash 1262}
+      \range{pages}{18}
+    \endentry
+    \entry{Algorithm}{online}{}{}
+      \name{author}{1}{}{%
+        {{hash=54f664c70c22054ea0d8d26fc3997ce7}{%
+           family={Online},
+           familyi={O\bibinitperiod}}}%
+      }
+      \strng{namehash}{54f664c70c22054ea0d8d26fc3997ce7}
+      \strng{fullhash}{54f664c70c22054ea0d8d26fc3997ce7}
+      \strng{fullhashraw}{54f664c70c22054ea0d8d26fc3997ce7}
+      \strng{bibnamehash}{54f664c70c22054ea0d8d26fc3997ce7}
+      \strng{authorbibnamehash}{54f664c70c22054ea0d8d26fc3997ce7}
+      \strng{authornamehash}{54f664c70c22054ea0d8d26fc3997ce7}
+      \strng{authorfullhash}{54f664c70c22054ea0d8d26fc3997ce7}
+      \strng{authorfullhashraw}{54f664c70c22054ea0d8d26fc3997ce7}
+      \field{extraname}{2}
+      \field{sortinit}{1}
+      \field{sortinithash}{4f6aaa89bab872aa0999fec09ff8e98a}
+      \field{labelnamesource}{author}
+      \field{labeltitlesource}{title}
+      \field{title}{LaTeX/Algorithms}
+      \field{urlday}{6}
+      \field{urlmonth}{6}
+      \field{urlyear}{2015}
+      \field{urldateera}{ce}
+      \verb{urlraw}
+      \verb http://en.wikibooks.org/wiki/LaTeX/Algorithms
+      \endverb
+      \verb{url}
+      \verb http://en.wikibooks.org/wiki/LaTeX/Algorithms
+      \endverb
+    \endentry
+    \entry{Figures}{online}{}{}
+      \name{author}{1}{}{%
+        {{hash=54f664c70c22054ea0d8d26fc3997ce7}{%
+           family={Online},
+           familyi={O\bibinitperiod}}}%
+      }
+      \strng{namehash}{54f664c70c22054ea0d8d26fc3997ce7}
+      \strng{fullhash}{54f664c70c22054ea0d8d26fc3997ce7}
+      \strng{fullhashraw}{54f664c70c22054ea0d8d26fc3997ce7}
+      \strng{bibnamehash}{54f664c70c22054ea0d8d26fc3997ce7}
+      \strng{authorbibnamehash}{54f664c70c22054ea0d8d26fc3997ce7}
+      \strng{authornamehash}{54f664c70c22054ea0d8d26fc3997ce7}
+      \strng{authorfullhash}{54f664c70c22054ea0d8d26fc3997ce7}
+      \strng{authorfullhashraw}{54f664c70c22054ea0d8d26fc3997ce7}
+      \field{extraname}{3}
+      \field{sortinit}{1}
+      \field{sortinithash}{4f6aaa89bab872aa0999fec09ff8e98a}
+      \field{labelnamesource}{author}
+      \field{labeltitlesource}{title}
+      \field{title}{LaTeX/Floats, Figures and Captions}
+      \field{urlday}{6}
+      \field{urlmonth}{6}
+      \field{urlyear}{2015}
+      \field{urldateera}{ce}
+      \verb{urlraw}
+      \verb http://en.wikibooks.org/wiki/LaTeX/Floats,_Figures_and_Captions
+      \endverb
+      \verb{url}
+      \verb http://en.wikibooks.org/wiki/LaTeX/Floats,_Figures_and_Captions
+      \endverb
+    \endentry
+    \entry{Tables}{online}{}{}
+      \name{author}{1}{}{%
+        {{hash=54f664c70c22054ea0d8d26fc3997ce7}{%
+           family={Online},
+           familyi={O\bibinitperiod}}}%
+      }
+      \strng{namehash}{54f664c70c22054ea0d8d26fc3997ce7}
+      \strng{fullhash}{54f664c70c22054ea0d8d26fc3997ce7}
+      \strng{fullhashraw}{54f664c70c22054ea0d8d26fc3997ce7}
+      \strng{bibnamehash}{54f664c70c22054ea0d8d26fc3997ce7}
+      \strng{authorbibnamehash}{54f664c70c22054ea0d8d26fc3997ce7}
+      \strng{authornamehash}{54f664c70c22054ea0d8d26fc3997ce7}
+      \strng{authorfullhash}{54f664c70c22054ea0d8d26fc3997ce7}
+      \strng{authorfullhashraw}{54f664c70c22054ea0d8d26fc3997ce7}
+      \field{extraname}{4}
+      \field{sortinit}{1}
+      \field{sortinithash}{4f6aaa89bab872aa0999fec09ff8e98a}
+      \field{labelnamesource}{author}
+      \field{labeltitlesource}{title}
+      \field{title}{LaTeX/Tables}
+      \field{urlday}{6}
+      \field{urlmonth}{6}
+      \field{urlyear}{2015}
+      \field{urldateera}{ce}
+      \verb{urlraw}
+      \verb http://en.wikibooks.org/wiki/LaTeX/Tables
+      \endverb
+      \verb{url}
+      \verb http://en.wikibooks.org/wiki/LaTeX/Tables
+      \endverb
+    \endentry
+  \enddatalist
+\endrefsection
+\endinput
+

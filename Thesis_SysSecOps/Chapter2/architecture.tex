@@ -78,36 +78,36 @@ that returns rejected generated code to Zone~1.
 \begin{tikzpicture}[node distance=6mm]
 % Zone 1
 \node[proc] (ui) {UI / CLI};
-\node[proc, right=14mm of ui] (gen) {AI generation\\(Bedrock / OpenRouter)};
-\node[io, right=14mm of gen] (app) {IaC\\(CDK / Ansible)};
+\node[proc, below=14mm of ui] (gen) {AI generation\\(Bedrock / OpenRouter)};
+\node[io, below=14mm of gen] (app) {IaC\\(CDK / Ansible)};
 \begin{scope}[on background layer]
-  \node[zone, fit=(ui)(gen)(app), label=above:{\footnotesize\textbf{Zone~1 --- Generation}}] (z1) {};
+  \node[zone, fit=(ui)(gen)(app), label=above:{\footnotesize\textbf{Generation}}] (z1) {};
 \end{scope}
 % Zone 2
-\node[proc, below=16mm of ui] (synth) {Synthesize\\(\texttt{cdk synth})};
-\node[proc, right=12mm of synth] (gate) {Multi-scanner\\gate};
-\node[dec, right=12mm of gate] (dec) {score?};
+\node[proc, right=36mm of ui] (synth) {Synthesize\\(\texttt{cdk synth})};
+\node[proc, below=12mm of synth] (gate) {Multi-scanner\\gate};
+\node[dec, below=12mm of gate] (dec) {score?};
 \begin{scope}[on background layer]
-  \node[zone, fit=(synth)(gate)(dec), label=above:{\footnotesize\textbf{Zone~2 --- Security gate}}] (z2) {};
+  \node[zone, fit=(synth)(gate)(dec), label=above:{\footnotesize\textbf{Security gate}}] (z2) {};
 \end{scope}
 % Zone 3
-\node[proc, below=16mm of synth] (deploy) {Deploy\\(AWS + on-prem)};
-\node[proc, right=12mm of deploy] (mon) {Monitor\\(Phase~4 loop)};
-\node[store, right=14mm of mon] (audit) {Audit\\\& metrics};
+\node[proc, right=24mm of synth] (deploy) {Deploy\\(AWS + on-prem)};
+\node[proc, below=12mm of deploy] (mon) {Monitor\\(Phase~4 loop)};
+\node[store, below=14mm of mon] (audit) {Audit\\\& metrics};
 \begin{scope}[on background layer]
-  \node[zone, fit=(deploy)(mon)(audit), label=above:{\footnotesize\textbf{Zone~3 --- Hybrid infra \& ops}}] (z3) {};
+  \node[zone, fit=(deploy)(mon)(audit), label=above:{\footnotesize\textbf{Hybrid infra \& ops}}] (z3) {};
 \end{scope}
 % Edges
 \draw[flow] (ui) -- (gen);
 \draw[flow] (gen) -- (app);
-\draw[flow] (app.south) |- (synth.east) node[pos=0.75,above,font=\scriptsize]{templates};
+\draw[flow] (app.east) -| (3,0) |- (synth.west) node[pos=0.7,above, font=\scriptsize]{templates};
 \draw[flow] (synth) -- (gate);
 \draw[flow] (gate) -- (dec);
-\draw[flow] (dec.south) |- (deploy.east) node[pos=0.75,above,font=\scriptsize]{pass / approved};
+\draw[flow] (dec.east) -| (8.6,0) |- (deploy.west) node[pos=0.75,left,font=\scriptsize,rotate=90]{pass / approved};
 \draw[flow] (deploy) -- (mon);
 \draw[flow] (mon) -- (audit);
-\draw[flowback] (dec.north) -- ++(0,5mm) -| (gen.south)
-      node[pos=0.25,above,font=\scriptsize]{reject: inject findings};
+\draw[flowback] (dec.west) -| (3.5,-3) |- (gen.east)
+      node[pos=0.25,below,rotate=90,font=\scriptsize]{reject: inject findings};
 \end{tikzpicture}
 \caption{High-level three-zone architecture and end-to-end flow. Solid arrows are the
 forward path; the dashed arrow is the regeneration feedback loop.}
@@ -171,8 +171,8 @@ properties, and their relationships are fully known.
 \draw[flow] (score) -- (report);
 \draw[flow] (report) -- (deployN) node[pos=0.5,above,font=\scriptsize]{pass};
 \draw[flow] (deployN) -- (tele);
-\draw[flowback] (score.east) -- ++(6mm,0) |- (code.east)
-      node[pos=0.25,right,font=\scriptsize]{reject};
+\draw[flowback] (score.east) -| ++(6mm,4) -| (code.north)
+      node[pos=0.25,below,font=\scriptsize]{reject};
 \end{tikzpicture}
 \caption{Artifact lifecycle of a single request. The decision is computed on the
 synthesized template; a rejection feeds findings back into generation.}

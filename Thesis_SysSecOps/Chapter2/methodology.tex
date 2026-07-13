@@ -96,7 +96,7 @@ failure that surfaces to the operator.
 \node[proc] (gen) {Generate\\code};
 \node[proc, right=of gen] (syn) {\texttt{cdk synth}};
 \node[dec, right=of syn] (ok) {synth\\ok?};
-\node[proc, below=10mm of ok] (gate) {Gate\\(score)};
+\node[proc, below=30mm of ok] (gate) {Gate\\(score)};
 \node[dec, left=of gate] (rej) {reject?};
 \node[proc, left=of rej] (done) {Return\\gated app};
 \node[dec, below=10mm of gen] (budget) {$i<N$?};
@@ -105,11 +105,11 @@ failure that surfaces to the operator.
 \draw[flow] (ok) -- node[right,font=\scriptsize]{yes} (gate);
 \draw[flow] (gate) -- (rej);
 \draw[flow] (rej) -- node[above,font=\scriptsize]{no} (done);
-\draw[flow] (rej.south) |- (budget.east) node[pos=0.25,right,font=\scriptsize]{yes: inject findings};
-\draw[flow] (ok.south) -- ++(0,-4mm) -| (budget.north) node[pos=0.25,below,font=\scriptsize]{no: synth error};
-\draw[flow] (budget) -- node[above,font=\scriptsize]{yes} (gen);
-\node[proc, below=8mm of budget] (fail) {Fail};
-\draw[flow] (budget) -- node[right,font=\scriptsize]{no} (fail);
+\draw[flow] (rej) |- (0,-3.5) -| (budget.south) node[pos=0.75,right,font=\scriptsize]{yes: inject findings};
+\draw[flow] (ok.south) |- (budget.east) node[pos=0.6,above,font=\scriptsize]{no: synth error};
+\draw[flow] (budget) -- node[right,font=\scriptsize]{yes} (gen);
+\node[proc, left=8mm of budget] (fail) {Fail};
+\draw[flow] (budget) -- node[above,font=\scriptsize]{no} (fail);
 \end{tikzpicture}
 \caption{Regeneration loop as a flowchart. The loop exits on an accepting decision or
 when the attempt budget $N$ is exhausted.}
@@ -148,12 +148,12 @@ deduplicated, and passed to the risk-scoring engine.
 \begin{tikzpicture}[node distance=5mm and 10mm]
 \node[io] (tmpl) {Synthesized\\artifact};
 % scanners stacked
-\node[proc, right=14mm of tmpl, yshift=15mm] (s1) {Static / policy\\scanners};
+\node[proc, right=10mm of tmpl, yshift=15mm] (s1) {Static / policy\\scanners};
 \node[proc, below=of s1] (s2) {Cost \& live\\compliance};
 \node[proc, below=of s2] (s3) {ML code-risk\\model};
-\node[proc, right=14mm of s2] (norm) {Normalize\\to schema};
-\node[proc, right=of norm] (dedup) {Deduplicate\\(\emph{res,tmpl,cat})};
-\node[dec, right=of dedup] (engine) {Risk\\engine};
+\node[proc, right=5mm of s2] (norm) {Normalize\\to schema};
+\node[proc, right=5mm of norm] (dedup) {Deduplicate\\(\emph{res,tmpl,cat})};
+\node[dec, right=5 mm of dedup] (engine) {Risk\\engine};
 \draw[flow] (tmpl.east) -- ++(6mm,0) |- (s1.west);
 \draw[flow] (tmpl.east) -- ++(6mm,0) |- (s2.west);
 \draw[flow] (tmpl.east) -- ++(6mm,0) |- (s3.west);

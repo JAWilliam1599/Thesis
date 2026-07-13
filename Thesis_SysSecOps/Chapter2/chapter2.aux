@@ -1,0 +1,257 @@
+\relax 
+\providecommand\hyper@newdestlabel[2]{}
+\@writefile{toc}{\contentsline {chapter}{\numberline {2}Proposed System: Architecture, Methodology, and Implementation}{2}{chapter.2}\protected@file@percent }
+\@writefile{lof}{\addvspace {10\p@ }}
+\@writefile{lot}{\addvspace {10\p@ }}
+\newlabel{Chapter2}{{2}{2}{Proposed System: Architecture, Methodology, and Implementation}{chapter.2}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {2.1}System Architecture}{2}{section.2.1}\protected@file@percent }
+\newlabel{sec:architecture}{{2.1}{2}{System Architecture}{section.2.1}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.1.1}Design goals}{3}{subsection.2.1.1}\protected@file@percent }
+\newlabel{subsec:arch-goals}{{2.1.1}{3}{Design goals}{subsection.2.1.1}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.1.2}Three-zone reference architecture}{4}{subsection.2.1.2}\protected@file@percent }
+\newlabel{subsec:arch-zones}{{2.1.2}{4}{Three-zone reference architecture}{subsection.2.1.2}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {2.1}{\ignorespaces The three zones of the proposed architecture.}}{4}{table.2.1}\protected@file@percent }
+\newlabel{tab:zones}{{2.1}{4}{The three zones of the proposed architecture}{table.2.1}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {2.1}{\ignorespaces High-level three-zone architecture and end-to-end flow. Solid arrows are the forward path; the dashed arrow is the regeneration feedback loop.}}{5}{figure.2.1}\protected@file@percent }
+\newlabel{fig:arch-overview}{{2.1}{5}{High-level three-zone architecture and end-to-end flow. Solid arrows are the forward path; the dashed arrow is the regeneration feedback loop}{figure.2.1}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.1.3}End-to-end data flow}{5}{subsection.2.1.3}\protected@file@percent }
+\newlabel{subsec:arch-flow}{{2.1.3}{5}{End-to-end data flow}{subsection.2.1.3}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {2.2}{\ignorespaces Artifact lifecycle of a single request. The decision is computed on the synthesized template; a rejection feeds findings back into generation.}}{6}{figure.2.2}\protected@file@percent }
+\newlabel{fig:arch-dataflow}{{2.2}{6}{Artifact lifecycle of a single request. The decision is computed on the synthesized template; a rejection feeds findings back into generation}{figure.2.2}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.1.4}Hybrid deployment topology}{7}{subsection.2.1.4}\protected@file@percent }
+\newlabel{subsec:arch-topology}{{2.1.4}{7}{Hybrid deployment topology}{subsection.2.1.4}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {2.3}{\ignorespaces Hybrid deployment topology: AWS resources and on-premises nodes joined by an encrypted mesh, with on-premises nodes registered as SSM managed instances.}}{7}{figure.2.3}\protected@file@percent }
+\newlabel{fig:arch-topology}{{2.3}{7}{Hybrid deployment topology: AWS resources and on-premises nodes joined by an encrypted mesh, with on-premises nodes registered as SSM managed instances}{figure.2.3}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.1.5}Component map and interfaces}{7}{subsection.2.1.5}\protected@file@percent }
+\newlabel{subsec:arch-components}{{2.1.5}{7}{Component map and interfaces}{subsection.2.1.5}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {2.2}{\ignorespaces Top-level modules and their responsibilities.}}{8}{table.2.2}\protected@file@percent }
+\newlabel{tab:modules}{{2.2}{8}{Top-level modules and their responsibilities}{table.2.2}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.1.6}Key data contracts}{8}{subsection.2.1.6}\protected@file@percent }
+\newlabel{subsec:arch-contracts}{{2.1.6}{8}{Key data contracts}{subsection.2.1.6}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.1.7}Security and trust model}{9}{subsection.2.1.7}\protected@file@percent }
+\newlabel{subsec:arch-trust}{{2.1.7}{9}{Security and trust model}{subsection.2.1.7}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {2.2}Proposed Methodology}{9}{section.2.2}\protected@file@percent }
+\newlabel{sec:methodology}{{2.2}{9}{Proposed Methodology}{section.2.2}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.2.1}Approach overview}{10}{subsection.2.2.1}\protected@file@percent }
+\newlabel{subsec:method-overview}{{2.2.1}{10}{Approach overview}{subsection.2.2.1}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {2.3}{\ignorespaces Mapping from hybrid-cloud challenges to solution modules.}}{10}{table.2.3}\protected@file@percent }
+\newlabel{tab:problem-module}{{2.3}{10}{Mapping from hybrid-cloud challenges to solution modules}{table.2.3}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.2.2}AI-assisted generation and the regeneration loop}{10}{subsection.2.2.2}\protected@file@percent }
+\newlabel{subsec:method-generation}{{2.2.2}{10}{AI-assisted generation and the regeneration loop}{subsection.2.2.2}{}}
+\@writefile{loa}{\contentsline {algorithm}{\numberline {1}{\ignorespaces Generate--synthesize--gate--regenerate loop}}{11}{algorithm.1}\protected@file@percent }
+\newlabel{alg:regen}{{1}{11}{AI-assisted generation and the regeneration loop}{algorithm.1}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {2.4}{\ignorespaces Regeneration loop as a flowchart. The loop exits on an accepting decision or when the attempt budget $N$ is exhausted.}}{12}{figure.2.4}\protected@file@percent }
+\newlabel{fig:method-regen}{{2.4}{12}{Regeneration loop as a flowchart. The loop exits on an accepting decision or when the attempt budget $N$ is exhausted}{figure.2.4}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.2.3}Pre-validation}{12}{subsection.2.2.3}\protected@file@percent }
+\newlabel{subsec:method-prevalidation}{{2.2.3}{12}{Pre-validation}{subsection.2.2.3}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.2.4}Security evaluation and cross-source deduplication}{12}{subsection.2.2.4}\protected@file@percent }
+\newlabel{subsec:method-evaluation}{{2.2.4}{12}{Security evaluation and cross-source deduplication}{subsection.2.2.4}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {2.5}{\ignorespaces Security-evaluation pipeline: parallel scanners, normalization to a common schema, cross-source deduplication, and aggregation by the risk-scoring engine.}}{13}{figure.2.5}\protected@file@percent }
+\newlabel{fig:method-gate}{{2.5}{13}{Security-evaluation pipeline: parallel scanners, normalization to a common schema, cross-source deduplication, and aggregation by the risk-scoring engine}{figure.2.5}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.2.5}Risk-scoring engine (overview)}{13}{subsection.2.2.5}\protected@file@percent }
+\newlabel{subsec:method-scoring}{{2.2.5}{13}{Risk-scoring engine (overview)}{subsection.2.2.5}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.2.6}Deployment governance}{14}{subsection.2.2.6}\protected@file@percent }
+\newlabel{subsec:method-governance}{{2.2.6}{14}{Deployment governance}{subsection.2.2.6}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.2.7}Monitoring and the operational loop}{14}{subsection.2.2.7}\protected@file@percent }
+\newlabel{subsec:method-monitoring}{{2.2.7}{14}{Monitoring and the operational loop}{subsection.2.2.7}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {2.3}Risk-Scoring Engine}{14}{section.2.3}\protected@file@percent }
+\newlabel{sec:risk-scoring}{{2.3}{14}{Risk-Scoring Engine}{section.2.3}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.3.1}Motivation and limitations of severity-only scoring}{15}{subsection.2.3.1}\protected@file@percent }
+\newlabel{subsec:rs-motivation}{{2.3.1}{15}{Motivation and limitations of severity-only scoring}{subsection.2.3.1}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.3.2}Multi-factor formulation}{15}{subsection.2.3.2}\protected@file@percent }
+\newlabel{subsec:rs-formulation}{{2.3.2}{15}{Multi-factor formulation}{subsection.2.3.2}{}}
+\newlabel{eq:multifactor}{{2.1}{16}{Multi-factor formulation}{equation.2.1}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.3.3}Implemented additive scoring}{16}{subsection.2.3.3}\protected@file@percent }
+\newlabel{subsec:rs-additive}{{2.3.3}{16}{Implemented additive scoring}{subsection.2.3.3}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {2.4}{\ignorespaces Severity-to-points mapping used by the gate.}}{17}{table.2.4}\protected@file@percent }
+\newlabel{tab:severity}{{2.4}{17}{Severity-to-points mapping used by the gate}{table.2.4}{}}
+\newlabel{eq:score}{{2.2}{17}{Implemented additive scoring}{equation.2.2}{}}
+\newlabel{eq:decision}{{2.3}{17}{Implemented additive scoring}{equation.2.3}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {2.5}{\ignorespaces Decision thresholds and their operational meaning.}}{18}{table.2.5}\protected@file@percent }
+\newlabel{tab:thresholds}{{2.5}{18}{Decision thresholds and their operational meaning}{table.2.5}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {2.6}{\ignorespaces The additive risk-scoring engine: four orthogonal sub-scores are summed and the total is compared against two fixed thresholds to yield the decision.}}{18}{figure.2.6}\protected@file@percent }
+\newlabel{fig:rs-pipeline}{{2.6}{18}{The additive risk-scoring engine: four orthogonal sub-scores are summed and the total is compared against two fixed thresholds to yield the decision}{figure.2.6}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.3.4}Machine-learning code-risk model}{18}{subsection.2.3.4}\protected@file@percent }
+\newlabel{subsec:rs-ml}{{2.3.4}{18}{Machine-learning code-risk model}{subsection.2.3.4}{}}
+\newlabel{eq:ml}{{2.4}{19}{Machine-learning code-risk model}{equation.2.4}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.3.5}Deduplication and explainability}{19}{subsection.2.3.5}\protected@file@percent }
+\newlabel{subsec:rs-explain}{{2.3.5}{19}{Deduplication and explainability}{subsection.2.3.5}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.3.6}Worked example}{20}{subsection.2.3.6}\protected@file@percent }
+\newlabel{subsec:rs-example}{{2.3.6}{20}{Worked example}{subsection.2.3.6}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {2.4}Implementation}{20}{section.2.4}\protected@file@percent }
+\newlabel{sec:implementation}{{2.4}{20}{Implementation}{section.2.4}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.4.1}Technology stack and repository layout}{21}{subsection.2.4.1}\protected@file@percent }
+\newlabel{subsec:impl-stack}{{2.4.1}{21}{Technology stack and repository layout}{subsection.2.4.1}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {2.6}{\ignorespaces Repository layout and the concern each directory implements.}}{21}{table.2.6}\protected@file@percent }
+\newlabel{tab:repo}{{2.6}{21}{Repository layout and the concern each directory implements}{table.2.6}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {2.7}{\ignorespaces Runtime module dependencies. Entry points drive orchestration, which drives generation, evaluation, and monitoring; all external processes pass through the single execution helper.}}{22}{figure.2.7}\protected@file@percent }
+\newlabel{fig:impl-modules}{{2.7}{22}{Runtime module dependencies. Entry points drive orchestration, which drives generation, evaluation, and monitoring; all external processes pass through the single execution helper}{figure.2.7}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.4.2}Generation layer}{22}{subsection.2.4.2}\protected@file@percent }
+\newlabel{subsec:impl-generation}{{2.4.2}{22}{Generation layer}{subsection.2.4.2}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.4.3}Security gate and scanner adapters}{22}{subsection.2.4.3}\protected@file@percent }
+\newlabel{subsec:impl-gate}{{2.4.3}{22}{Security gate and scanner adapters}{subsection.2.4.3}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {2.7}{\ignorespaces Scanner adapters and the signal each contributes.}}{23}{table.2.7}\protected@file@percent }
+\newlabel{tab:adapters}{{2.7}{23}{Scanner adapters and the signal each contributes}{table.2.7}{}}
+\newlabel{lst:report}{{2.1}{23}{Abbreviated gate report}{lstlisting.2.1}{}}
+\@writefile{lol}{\contentsline {lstlisting}{\numberline {2.1}Abbreviated gate report.}{23}{lstlisting.2.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.4.4}Orchestration and governance}{24}{subsection.2.4.4}\protected@file@percent }
+\newlabel{subsec:impl-orchestration}{{2.4.4}{24}{Orchestration and governance}{subsection.2.4.4}{}}
+\newlabel{lst:cli}{{2.2}{24}{Representative pipeline invocations}{lstlisting.2.2}{}}
+\@writefile{lol}{\contentsline {lstlisting}{\numberline {2.2}Representative pipeline invocations.}{24}{lstlisting.2.2}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {2.8}{\ignorespaces Hybrid pipeline interaction sequence. The orchestrator gates both sides with the same engine, deploys each side only on an accepting decision, and emits telemetry.}}{25}{figure.2.8}\protected@file@percent }
+\newlabel{fig:impl-sequence}{{2.8}{25}{Hybrid pipeline interaction sequence. The orchestrator gates both sides with the same engine, deploys each side only on an accepting decision, and emits telemetry}{figure.2.8}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.4.5}Execution backbone}{25}{subsection.2.4.5}\protected@file@percent }
+\newlabel{subsec:impl-exec}{{2.4.5}{25}{Execution backbone}{subsection.2.4.5}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.4.6}Phase 4 observability}{26}{subsection.2.4.6}\protected@file@percent }
+\newlabel{subsec:impl-monitor}{{2.4.6}{26}{Phase 4 observability}{subsection.2.4.6}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.4.7}Operator console and multi-project registry}{26}{subsection.2.4.7}\protected@file@percent }
+\newlabel{subsec:impl-ui}{{2.4.7}{26}{Operator console and multi-project registry}{subsection.2.4.7}{}}
+\@setckpt{Chapter2/chapter2}{
+\setcounter{page}{27}
+\setcounter{equation}{4}
+\setcounter{enumi}{7}
+\setcounter{enumii}{0}
+\setcounter{enumiii}{0}
+\setcounter{enumiv}{0}
+\setcounter{footnote}{0}
+\setcounter{mpfootnote}{0}
+\setcounter{part}{0}
+\setcounter{chapter}{2}
+\setcounter{section}{4}
+\setcounter{subsection}{7}
+\setcounter{subsubsection}{0}
+\setcounter{paragraph}{0}
+\setcounter{subparagraph}{0}
+\setcounter{figure}{8}
+\setcounter{table}{7}
+\setcounter{tabx@nest}{0}
+\setcounter{listtotal}{0}
+\setcounter{listcount}{0}
+\setcounter{liststart}{0}
+\setcounter{liststop}{0}
+\setcounter{citecount}{0}
+\setcounter{citetotal}{0}
+\setcounter{multicitecount}{0}
+\setcounter{multicitetotal}{0}
+\setcounter{instcount}{0}
+\setcounter{maxnames}{2}
+\setcounter{minnames}{1}
+\setcounter{maxitems}{3}
+\setcounter{minitems}{1}
+\setcounter{citecounter}{0}
+\setcounter{maxcitecounter}{0}
+\setcounter{savedcitecounter}{0}
+\setcounter{uniquelist}{0}
+\setcounter{uniquename}{0}
+\setcounter{refsection}{0}
+\setcounter{refsegment}{0}
+\setcounter{maxextratitle}{0}
+\setcounter{maxextratitleyear}{0}
+\setcounter{maxextraname}{4}
+\setcounter{maxextradate}{0}
+\setcounter{maxextraalpha}{0}
+\setcounter{abbrvpenalty}{50}
+\setcounter{highnamepenalty}{50}
+\setcounter{lownamepenalty}{25}
+\setcounter{maxparens}{3}
+\setcounter{parenlevel}{0}
+\setcounter{blx@maxsection}{0}
+\setcounter{mincomprange}{10}
+\setcounter{maxcomprange}{100000}
+\setcounter{mincompwidth}{1}
+\setcounter{afterword}{0}
+\setcounter{savedafterword}{0}
+\setcounter{annotator}{0}
+\setcounter{savedannotator}{0}
+\setcounter{author}{0}
+\setcounter{savedauthor}{0}
+\setcounter{bookauthor}{0}
+\setcounter{savedbookauthor}{0}
+\setcounter{commentator}{0}
+\setcounter{savedcommentator}{0}
+\setcounter{editor}{0}
+\setcounter{savededitor}{0}
+\setcounter{editora}{0}
+\setcounter{savededitora}{0}
+\setcounter{editorb}{0}
+\setcounter{savededitorb}{0}
+\setcounter{editorc}{0}
+\setcounter{savededitorc}{0}
+\setcounter{foreword}{0}
+\setcounter{savedforeword}{0}
+\setcounter{holder}{0}
+\setcounter{savedholder}{0}
+\setcounter{introduction}{0}
+\setcounter{savedintroduction}{0}
+\setcounter{namea}{0}
+\setcounter{savednamea}{0}
+\setcounter{nameb}{0}
+\setcounter{savednameb}{0}
+\setcounter{namec}{0}
+\setcounter{savednamec}{0}
+\setcounter{translator}{0}
+\setcounter{savedtranslator}{0}
+\setcounter{shortauthor}{0}
+\setcounter{savedshortauthor}{0}
+\setcounter{shorteditor}{0}
+\setcounter{savedshorteditor}{0}
+\setcounter{labelname}{0}
+\setcounter{savedlabelname}{0}
+\setcounter{institution}{0}
+\setcounter{savedinstitution}{0}
+\setcounter{lista}{0}
+\setcounter{savedlista}{0}
+\setcounter{listb}{0}
+\setcounter{savedlistb}{0}
+\setcounter{listc}{0}
+\setcounter{savedlistc}{0}
+\setcounter{listd}{0}
+\setcounter{savedlistd}{0}
+\setcounter{liste}{0}
+\setcounter{savedliste}{0}
+\setcounter{listf}{0}
+\setcounter{savedlistf}{0}
+\setcounter{location}{0}
+\setcounter{savedlocation}{0}
+\setcounter{organization}{0}
+\setcounter{savedorganization}{0}
+\setcounter{origlocation}{0}
+\setcounter{savedoriglocation}{0}
+\setcounter{origpublisher}{0}
+\setcounter{savedorigpublisher}{0}
+\setcounter{publisher}{0}
+\setcounter{savedpublisher}{0}
+\setcounter{language}{0}
+\setcounter{savedlanguage}{0}
+\setcounter{origlanguage}{0}
+\setcounter{savedoriglanguage}{0}
+\setcounter{pageref}{0}
+\setcounter{savedpageref}{0}
+\setcounter{textcitecount}{0}
+\setcounter{textcitetotal}{0}
+\setcounter{textcitemaxnames}{0}
+\setcounter{biburlbigbreakpenalty}{100}
+\setcounter{biburlbreakpenalty}{200}
+\setcounter{biburlnumpenalty}{0}
+\setcounter{biburlucpenalty}{0}
+\setcounter{biburllcpenalty}{0}
+\setcounter{smartand}{1}
+\setcounter{bbx:relatedcount}{0}
+\setcounter{bbx:relatedtotal}{0}
+\setcounter{section@level}{0}
+\setcounter{Item}{12}
+\setcounter{Hfootnote}{0}
+\setcounter{bookmark@seq@number}{42}
+\setcounter{lstnumber}{12}
+\setcounter{parentequation}{0}
+\setcounter{float@type}{16}
+\setcounter{algorithm}{1}
+\setcounter{ALG@line}{13}
+\setcounter{ALG@rem}{0}
+\setcounter{ALG@nested}{0}
+\setcounter{ALG@Lnr}{2}
+\setcounter{ALG@blocknr}{10}
+\setcounter{ALG@storecount}{0}
+\setcounter{ALG@tmpcounter}{0}
+\setcounter{lstlisting}{2}
+}

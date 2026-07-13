@@ -65,7 +65,7 @@ points rather than duplicating logic.
 \node[proc, below left=of pipe] (aigen) {\texttt{AIgen/}};
 \node[proc, below=14mm of pipe] (eval) {\texttt{Eval/}};
 \node[proc, below right=of pipe] (mon) {\texttt{Monitor/}};
-\node[proc, below=26mm of pipe] (exec) {\texttt{ExecComponent/}};
+\node[proc, below=16mm of aigen] (exec) {\texttt{ExecComponent/}};
 \draw[flow] (ui) -- (scripts);
 \draw[flow] (scripts) -- (pipe);
 \draw[flow] (pipe) -- (aigen);
@@ -73,7 +73,7 @@ points rather than duplicating logic.
 \draw[flow] (pipe) -- (mon);
 \draw[flow] (aigen) -- (exec);
 \draw[flow] (eval) -- (exec);
-\draw[flow] (pipe.west) to[out=180,in=90] (exec.north);
+\draw[flow] (pipe.south) to[out=-90,in=90] (exec.north);
 \end{tikzpicture}
 \caption{Runtime module dependencies. Entry points drive orchestration, which drives
 generation, evaluation, and monitoring; all external processes pass through the single
@@ -197,7 +197,7 @@ layer, showing where the decision gates the deployment step on each side indepen
 \centering
 \begin{tikzpicture}[node distance=6mm and 8mm, font=\small]
 \node[proc] (orch) {Orchestrator\\\texttt{run\_hybrid}};
-\node[proc, right=of orch] (gate) {Gate\\\texttt{Eval/}};
+\node[proc, right=20mm of orch] (gate) {Gate\\\texttt{Eval/}};
 \node[proc, right=of gate] (cdk) {AWS\\(CDK)};
 \node[proc, right=of cdk] (ans) {On-prem\\(Ansible)};
 \node[proc, below=16mm of gate] (emit) {Emit\\(SSM/EventBridge/CW)};
