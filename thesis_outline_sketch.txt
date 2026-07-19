@@ -389,3 +389,17 @@
 \end{itemize}
 
 \end{document}
+
+mô tả 3 zone chi tiết cho từng zone
+
+
+security gate: làm rõ, risk scoring 
+
+zone3: tools, nói rõ các tools. liệt kê cách kết nối giữa public & on premise. 
+
+chapter4: mô hình hiện tại, cách kết nối hiện tại
+
+risk scoring: chưa mô tả training, tập dữ liệu. nói rõ phần gate
+
+thiếu hướng phát triển & hạn chế
+
