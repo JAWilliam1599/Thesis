@@ -119,7 +119,166 @@ internal scoring rules of Zone~2 --- it only consumes the machine-readable findi
 Zone~2 emits. Zone~3 knows nothing about how a decision was reached --- it only consumes
 the decision event. This decoupling is what allows the generation backend, the set of
 scanners, and the monitoring stack to evolve independently, and it is the reason the same
-gate can serve both the public and the private side without modification.
+gate can serve both the public and the private side without modification. The remainder
+of this subsection describes each zone, and the tools it uses, in turn.
+
+\subsubsection{Zone~1 --- AI-assisted generation and local validation}
+\label{subsubsec:zone1}
+
+Zone~1 is where Infrastructure-as-Code originates. It exposes two entry surfaces --- a
+command-line interface and a Streamlit operator console --- and turns a natural-language
+prompt into synthesizable IaC. Code generation is delegated to a large-language-model
+backend behind a provider abstraction, so that the concrete model is a configuration
+choice rather than a code dependency; the reference implementation supports Amazon
+Bedrock and OpenRouter. The generated artifact is an AWS Cloud Development Kit (CDK)
+Python application for the public side and/or a set of Ansible playbooks for the private
+side.
+
+Before any artifact leaves Zone~1, it is validated locally so that only well-formed input
+reaches the gate. For the public side, \texttt{cdk synth} synthesizes the CloudFormation
+template and \texttt{cdk diff} summarises the change against the currently deployed stack;
+for the private side, \texttt{ansible-playbook -{}-syntax-check} (and an optional
+\texttt{-{}-check} dry run) validates the plays. Zone~1 also closes the
+\emph{generate~$\rightarrow$~synth~$\rightarrow$~gate~$\rightarrow$~regenerate} feedback
+loop: when the gate rejects generated code, the findings are serialised back into the
+next prompt so that the model remediates its own output within a bounded attempt budget.
+Table~\ref{tab:zone1-tools} lists the tools used in this zone.
+
+\begin{table}[ht]
+\centering
+\caption{Tools used in Zone~1 (generation and local validation).}
+\label{tab:zone1-tools}
+\begin{tabular}{|L{4.6cm}|L{9.6cm}|}
+\hline
+\textbf{Tool} & \textbf{Role in Zone~1} \\
+\hline
+Amazon Bedrock / OpenRouter & Interchangeable LLM backends that generate CDK or Ansible
+code from a prompt. \\
+\hline
+AWS CDK (Python) & Expresses public-cloud infrastructure as code and synthesizes it to
+CloudFormation. \\
+\hline
+\texttt{cdk synth} / \texttt{cdk diff} & Produces the CloudFormation template and the
+change summary used for local validation. \\
+\hline
+Ansible & Expresses on-premises configuration as playbooks. \\
+\hline
+\texttt{ansible-playbook -{}-syntax-check} & Validates playbook syntax (and, optionally,
+a dry-run \texttt{-{}-check}) before gating. \\
+\hline
+\end{tabular}
+\end{table}
+
+\subsubsection{Zone~2 --- the multi-scanner security gate}
+\label{subsubsec:zone2}
+
+Zone~2 is the core contribution of the architecture: a quantitative security gate that
+consumes the synthesized artifact and emits a single decision. It runs a set of
+independent, best-of-breed scanners, normalises their heterogeneous outputs into a common
+finding schema, deduplicates findings that several tools report for the same
+resource/template/category, aggregates the surviving findings into a numeric risk score,
+and maps that score to \emph{pass}, \emph{review}, or \emph{reject}. Each scanner is
+wrapped in an adapter that never raises: a missing binary or an absent credential
+degrades to a well-defined \emph{skipped} status, and the gate still produces a decision
+(the graceful-degradation contract).
+
+The tools are deliberately complementary and cover four dimensions of risk ---
+\emph{misconfiguration}, \emph{cost}, \emph{live compliance}, and \emph{code-level
+insecurity}. Static policy-as-code analysis (Checkov) and CloudFormation validation
+(\texttt{cfn-lint}) inspect the public-side template; \texttt{ansible-lint} inspects the
+private-side plays; a built-in regular-expression scanner detects hard-coded secrets;
+Infracost supplies the estimated monthly cost that drives the cost dimension; AWS Config
+supplies the count of live non-compliant rules; and a machine-learning code-risk model
+(trained on Bandit and Semgrep features, see Section~\ref{sec:risk-scoring}) contributes a
+probability of insecurity. Table~\ref{tab:zone2-tools} lists these tools and the signal
+each contributes.
+
+\begin{table}[ht]
+\centering
+\caption{Tools used in Zone~2 (the security gate) and the signal each contributes.}
+\label{tab:zone2-tools}
+\begin{tabular}{|L{3.7cm}|L{7.0cm}|L{3.1cm}|}
+\hline
+\textbf{Tool} & \textbf{Signal} & \textbf{Dimension} \\
+\hline
+AWS CDK (\texttt{cdk synth}) & Emits the CloudFormation template that is the analysed
+artifact. & pre-validation \\
+\hline
+\texttt{cfn-lint} & CloudFormation validity and best-practice findings. & misconfig. \\
+\hline
+Checkov & Policy-as-code misconfiguration findings on the templates. & misconfig. \\
+\hline
+\texttt{ansible-lint} & Best-practice and security findings on the on-premises plays. &
+misconfig. \\
+\hline
+Regex secret scanner (built-in) & Hard-coded credentials and secrets. & misconfig. \\
+\hline
+Infracost & Estimated monthly cost / cost delta of the change. & cost \\
+\hline
+AWS Config & Count of non-compliant live-compliance rules. & compliance \\
+\hline
+ML code-risk model \newline (Bandit + Semgrep $\rightarrow$ logistic regression) &
+Probability that the generated code is insecure, converted to points. & code risk \\
+\hline
+\end{tabular}
+\end{table}
+
+\subsubsection{Zone~3 --- hybrid infrastructure and operations}
+\label{subsubsec:zone3}
+
+Zone~3 provisions the hybrid infrastructure that survived the gate and continuously
+observes it. The public side is provisioned on Amazon Web Services (AWS) by deploying the
+CDK-synthesized CloudFormation; the private side consists of on-premises Linux nodes
+configured by Ansible. After a successful deployment, a three-layer monitoring mesh is
+attached to the public resources and the on-premises nodes are registered so that both
+sides are watched by a single operational loop.
+
+On the public side, AWS Systems Manager (SSM) provides Run Command, State Manager,
+Patch Manager, Inventory, and Parameter Store; Amazon EventBridge carries compliance and
+stack-rollback events; Amazon CloudWatch stores the gate metrics, alarms, dashboards, and
+Application Insights views; AWS CloudTrail records the API audit trail; an AWS Lambda
+function implements the event-driven operational loop (drift reaction and pipeline
+re-trigger); and Amazon SNS delivers operator notifications. On the private side, the SSM
+Agent together with an SSM \emph{hybrid activation} registers each on-premises node as a
+managed instance (\texttt{mi-*}), so the same Run Command, drift-detection, patch, and
+compliance machinery used for EC2 also covers the on-premises fleet without a separate
+agent stack. Table~\ref{tab:zone3-tools} summarises the tooling.
+
+\begin{table}[ht]
+\centering
+\caption{Tools used in Zone~3 (hybrid infrastructure and operations).}
+\label{tab:zone3-tools}
+\begin{tabular}{|C{1.9cm}|L{4.0cm}|L{7.6cm}|}
+\hline
+\textbf{Side} & \textbf{Tool / service} & \textbf{Role} \\
+\hline
+Public & AWS CDK / CloudFormation & Provisions and updates the public-cloud resources. \\
+\hline
+Public & EC2, S3, RDS, VPC & The workload substrate that the CDK app declares. \\
+\hline
+Public & AWS Systems Manager & Run Command, State Manager, Patch, Inventory, and
+Parameter Store (the gate-decision store). \\
+\hline
+Public & Amazon EventBridge & Event bus for compliance-change and stack-rollback events. \\
+\hline
+Public & Amazon CloudWatch & Gate metrics, alarms, dashboards, and Application Insights. \\
+\hline
+Public & AWS CloudTrail & Multi-region API audit trail feeding CloudWatch Logs. \\
+\hline
+Public & AWS Lambda & The ops-loop function: drift reaction and pipeline re-trigger. \\
+\hline
+Public & Amazon SNS & Operator notifications for alarms and rollbacks. \\
+\hline
+Private & Ansible & Configuration management of the on-premises Linux nodes. \\
+\hline
+Private & SSM Agent + hybrid activation & Registers each node as an \texttt{mi-*} managed
+instance so it joins the same operational loop. \\
+\hline
+Shared & Secure connectivity link & Joins the two sides through one of several options
+(see Section~\ref{subsubsec:arch-connectivity}). \\
+\hline
+\end{tabular}
+\end{table}
 
 \subsection{End-to-end data flow}
 \label{subsec:arch-flow}
@@ -184,12 +343,15 @@ synthesized template; a rejection feeds findings back into generation.}
 
 The public side is provisioned on Amazon Web Services (AWS) through CDK-synthesized
 CloudFormation. The private side consists of on-premises Linux nodes managed by Ansible.
-The two sides are connected through an encrypted mesh overlay (a WireGuard-based virtual
-private network), and the on-premises nodes are registered as AWS Systems Manager (SSM)
-managed instances so that their compliance state is visible to the same operational loop
-that watches the cloud side. No public inbound administrative access is required: the
-control plane traverses the encrypted tunnel, which keeps the hybrid trust boundary
-small and observable. Figure~\ref{fig:arch-topology} depicts the topology.
+The two sides are joined by an encrypted link, and the architecture deliberately treats
+\emph{how} that link is established as a pluggable concern:
+Section~\ref{subsubsec:arch-connectivity} surveys the available connectivity options. The
+on-premises nodes are registered as AWS Systems Manager (SSM) managed instances so that
+their compliance state is visible to the same operational loop that watches the cloud
+side. No public inbound administrative access is required: the control plane traverses the
+encrypted link, which keeps the hybrid trust boundary small and observable.
+Figure~\ref{fig:arch-topology} depicts the topology with the connectivity method shown as
+an abstract secure channel.
 
 \begin{figure}[ht]
 \centering
@@ -202,21 +364,78 @@ small and observable. Figure~\ref{fig:arch-topology} depicts the topology.
 \end{scope}
 % On-prem side
 \node[proc, right=42mm of vpc] (node) {On-prem Linux\\node (Ansible)};
-\node[proc, below=of node] (agent) {SSM agent +\\mesh VPN client};
+\node[proc, below=of node] (agent) {SSM agent +\\VPN client};
 \begin{scope}[on background layer]
   \node[zone, fill=orange!5, fit=(node)(agent), label=above:{\footnotesize\textbf{On-premises (private)}}] (onprem) {};
 \end{scope}
 % Tunnel
 \draw[{Stealth[length=2.4mm]}-{Stealth[length=2.4mm]}, very thick, dashed]
      (aws.east) -- (onprem.west)
-     node[midway, above, font=\scriptsize, align=center]{encrypted\\mesh tunnel};
+     node[midway, above, font=\scriptsize, align=center]{secure\\channel};
 \draw[flow] (agent.south) |- ($(ssm.south)+(0,-6mm)$) -| (ssm.south)
      node[pos=0.25,below,font=\scriptsize]{compliance events};
 \end{tikzpicture}
-\caption{Hybrid deployment topology: AWS resources and on-premises nodes joined by an
-encrypted mesh, with on-premises nodes registered as SSM managed instances.}
+\caption{Hybrid deployment topology: AWS resources and on-premises nodes joined by a
+secure channel (any of the options in Table~\ref{tab:connectivity}), with on-premises
+nodes registered as SSM managed instances.}
 \label{fig:arch-topology}
 \end{figure}
+
+\subsubsection{Connectivity options between the public and private sides}
+\label{subsubsec:arch-connectivity}
+
+Joining the public and private sides is a design choice with several viable options rather
+than a single fixed mechanism. The architecture treats connectivity as a pluggable
+concern: the gate, the SSM registration, and the operational loop are indifferent to
+\emph{how} the link is established, as long as the on-premises nodes can reach the regional
+AWS endpoints and the two sides can exchange traffic securely. Table~\ref{tab:connectivity}
+compares the practical options, ordered from the lightest-weight software overlay to a
+dedicated physical link, so that a deployment can select the method that matches its
+latency, bandwidth, cost, and compliance requirements.
+
+\begin{table}[ht]
+\centering
+\caption{Options for connecting the public (AWS) and private (on-premises) sides.}
+\label{tab:connectivity}
+\begin{tabular}{|L{3.5cm}|L{5.6cm}|L{4.9cm}|}
+\hline
+\textbf{Method} & \textbf{Mechanism} & \textbf{Trade-offs} \\
+\hline
+Mesh overlay VPN \newline (Tailscale~/~WireGuard) &
+Userspace WireGuard tunnels with automatic NAT traversal and identity-based access
+control lists; each node runs a lightweight agent. & Fast to set up, no public inbound
+ports, per-node identity; depends on a software agent and a coordination service. \\
+\hline
+AWS Site-to-Site VPN \newline (IPsec) & Managed IPsec tunnels between an on-premises
+customer gateway device and an AWS virtual private gateway or transit gateway. &
+Standards-based and fully encrypted over the public Internet; needs a compatible gateway
+device and is bandwidth-limited per tunnel. \\
+\hline
+AWS Direct Connect & A dedicated private physical circuit from the on-premises data
+centre into AWS, bypassing the public Internet. & Consistent low latency and high, stable
+bandwidth; higher cost and provisioning lead time, and usually paired with a VPN for
+encryption. \\
+\hline
+AWS Transit Gateway~/ \newline VPN CloudHub & A managed routing hub that interconnects
+many VPCs and multiple on-premises sites in a hub-and-spoke topology. & Centralises and
+scales routing across sites; adds a managed routing tier and its associated cost. \\
+\hline
+SSM hybrid activations \newline over public endpoints & No network tunnel: the SSM Agent
+reaches the regional Systems Manager endpoints directly over TLS~443. & Simplest option
+for management-plane reach only; provides no private data-plane connectivity between
+workloads. \\
+\hline
+\end{tabular}
+\end{table}
+
+These options are not mutually exclusive: a lightweight mesh overlay can carry workload
+and control traffic while an SSM hybrid activation provides the operational loop with
+management-plane reach, and the heavier options (IPsec Site-to-Site VPN, Direct Connect,
+or a Transit Gateway hub) can be substituted where standards-based encryption, dedicated
+bandwidth, or multi-site routing is required. Crucially, the choice of connectivity is
+orthogonal to the rest of the pipeline: none of these methods changes the gate, the risk
+scoring, or the deployment-governance behaviour, which is what allows the architecture to
+remain portable across different hybrid networking substrates.
 
 \subsection{Component map and interfaces}
 \label{subsec:arch-components}
@@ -233,25 +452,25 @@ keeps the generation, evaluation, orchestration, and monitoring concerns decoupl
 \hline
 \textbf{Module} & \textbf{Responsibility} \\
 \hline
-\texttt{AIgen/} & Zone~1 generation: provider-abstracted code generation
+\texttt{generation/} & Zone~1 generation: provider-abstracted code generation
 (Bedrock~/~OpenRouter) and the CDK regeneration loop. \\
 \hline
-\texttt{Eval/} & Zone~2 gate: template and playbook analysis, scanner adapters,
+\texttt{security\_gate/} & Zone~2 gate: template and playbook analysis, scanner adapters,
 deduplication, risk scoring, and report assembly. \\
 \hline
-\texttt{ExecComponent/} & Subprocess execution backbone with a stable result contract. \\
+\texttt{execution/} & Subprocess execution backbone with a stable result contract. \\
 \hline
 \texttt{pipeline/} & Orchestration and governance: synth--gate--diff--deploy, the approval
 audit trail, credentials, and the Phase~4 emitters. \\
 \hline
-\texttt{Monitor/} & Phase~4 observability: CloudTrail, CloudWatch metrics and
+\texttt{monitoring/} & Phase~4 observability: CloudTrail, CloudWatch metrics and
 dashboards, the operational-loop Lambda, and on-premises SSM registration. \\
 \hline
 \texttt{scripts/} & Command-line entry points for the CDK-only and the hybrid flows. \\
 \hline
 \texttt{ui/} & Streamlit operator console and the multi-project registry. \\
 \hline
-\texttt{RiskScoringCitation/} & Training and evaluation code for the machine-learning
+\texttt{risk\_scoring/} & Training and evaluation code for the machine-learning
 code-risk model consumed by the gate. \\
 \hline
 \end{tabular}

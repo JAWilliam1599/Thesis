@@ -5,7 +5,7 @@
 `ui/` is a modular Streamlit application that drives the full pipeline end-to-end from a
 browser: **Login → Generate + Gate → Review & Edit → Decision → Deploy → Monitor**. It is a
 thin orchestration layer — every privileged action is delegated to the CLI scripts
-(`AIgen/run_cdk_regen.py`, `scripts/run_cdk_pipeline.py`) launched as subprocesses with
+(`generation/run_cdk_regen.py`, `scripts/run_cdk_pipeline.py`) launched as subprocesses with
 credentials injected as environment variables (never as CLI arguments).
 
 ## Run
@@ -44,7 +44,7 @@ flowchart TD
     T --> RP[reports.py]
     T --> MON[monitoring.py]
     T --> H[helpers.py]
-    PR -->|subprocess + env creds| CLI[AIgen/run_cdk_regen.py<br/>scripts/run_cdk_pipeline.py]
+    PR -->|subprocess + env creds| CLI[generation/run_cdk_regen.py<br/>scripts/run_cdk_pipeline.py]
     MON -->|boto3| AWS[(SSM / CloudWatch)]
     H --> LOGS[(logs/*.json)]
     CR[credentials.py] --> PR
@@ -91,7 +91,7 @@ default chain.
 |---|---|
 | `make_run_id()` | Generates `cdk_<ISO8601>Z` |
 | `stream_subprocess(args, on_line)` | Runs from repo root, merges stdout/stderr, streams per line |
-| `run_generate_stage(settings, prompt, on_line)` | `AIgen/run_cdk_regen.py --prompt … --provider … --max-attempts … --run-id …` |
+| `run_generate_stage(settings, prompt, on_line)` | `generation/run_cdk_regen.py --prompt … --provider … --max-attempts … --run-id …` |
 | `run_synth_gate_stage(settings, on_line)` | `scripts/run_cdk_pipeline.py --project-dir … --run-id … [--no-*]` (no deploy) |
 | `run_deploy_stage(approve_run_id, manual_approve, on_line)` | `scripts/run_cdk_pipeline.py --approve-run-id … --deploy [--manual-approve]` |
 
@@ -123,7 +123,7 @@ Six top tabs:
 1. **🔑 Login** — enter/validate/store AWS + OpenRouter credentials.
 2. **🚀 Pipeline** — four sub-tabs:
    1. *Generate + Gate* — prompt → `run_generate_stage`.
-   2. *Review & Edit* — edit `GeneratedCDK/app.py`, re-run synth+gate (`run_synth_gate_stage`).
+   2. *Review & Edit* — edit `generated_cdk/app.py`, re-run synth+gate (`run_synth_gate_stage`).
    3. *Decision* — render PASS/REVIEW/REJECT banner + findings.
    4. *Deploy* — approve (review band needs a confirm checkbox) → `run_deploy_stage`.
    A shared *active run bar* shows run_id/decision/score, a Reset button, and a "load existing

@@ -25,25 +25,25 @@ concern.
 \hline
 \textbf{Directory} & \textbf{Contents} \\
 \hline
-\texttt{AIgen/} & Provider backends and the CDK regeneration loop
+\texttt{generation/} & Provider backends and the CDK regeneration loop
 (\texttt{run\_cdk\_regen.py}). \\
 \hline
-\texttt{Eval/} & The gate (\texttt{iac\_security\_gate.py}) and the scanner adapters
-under \texttt{Eval/scanners/}. \\
+\texttt{security\_gate/} & The gate (\texttt{iac\_security\_gate.py}) and the scanner adapters
+under \texttt{security\_gate/scanners/}. \\
 \hline
-\texttt{ExecComponent/} & The subprocess execution helper
+\texttt{execution/} & The subprocess execution helper
 (\texttt{exec\_code.py}). \\
 \hline
 \texttt{pipeline/} & Orchestration, credentials, and Phase~4 emitters. \\
 \hline
-\texttt{Monitor/} & CloudTrail, dashboards, the operational-loop function, and SSM
+\texttt{monitoring/} & CloudTrail, dashboards, the operational-loop function, and SSM
 registration. \\
 \hline
 \texttt{scripts/} & \texttt{run\_cdk\_pipeline.py} and \texttt{run\_hybrid\_pipeline.py}. \\
 \hline
 \texttt{ui/} & The Streamlit console and the multi-project registry. \\
 \hline
-\texttt{RiskScoringCitation/} & Dataset preparation and model training. \\
+\texttt{risk\_scoring/} & Dataset preparation and model training. \\
 \hline
 \end{tabular}
 \end{table}
@@ -51,9 +51,9 @@ registration. \\
 Figure~\ref{fig:impl-modules} shows how these directories depend on one another at
 runtime. The command-line entry points in \texttt{scripts/} sit at the top; they call
 into \texttt{pipeline/} for orchestration, which in turn drives generation
-(\texttt{AIgen/}), evaluation (\texttt{Eval/}), and monitoring (\texttt{Monitor/}). Every
+(\texttt{generation/}), evaluation (\texttt{security\_gate/}), and monitoring (\texttt{monitoring/}). Every
 directory that runs an external process funnels through the single execution helper in
-\texttt{ExecComponent/}, and the operator console in \texttt{ui/} reuses the same entry
+\texttt{execution/}, and the operator console in \texttt{ui/} reuses the same entry
 points rather than duplicating logic.
 
 \begin{figure}[ht]
@@ -62,10 +62,10 @@ points rather than duplicating logic.
 \node[proc] (ui) {\texttt{ui/}};
 \node[proc, right=of ui] (scripts) {\texttt{scripts/}};
 \node[proc, below=of scripts] (pipe) {\texttt{pipeline/}};
-\node[proc, below left=of pipe] (aigen) {\texttt{AIgen/}};
-\node[proc, below=14mm of pipe] (eval) {\texttt{Eval/}};
-\node[proc, below right=of pipe] (mon) {\texttt{Monitor/}};
-\node[proc, below=16mm of aigen] (exec) {\texttt{ExecComponent/}};
+\node[proc, below left=of pipe] (aigen) {\texttt{generation/}};
+\node[proc, below=14mm of pipe] (eval) {\texttt{security\_gate/}};
+\node[proc, below right=of pipe] (mon) {\texttt{monitoring/}};
+\node[proc, below=16mm of aigen] (exec) {\texttt{execution/}};
 \draw[flow] (ui) -- (scripts);
 \draw[flow] (scripts) -- (pipe);
 \draw[flow] (pipe) -- (aigen);
@@ -171,7 +171,7 @@ deployment-governance rules of Section~\ref{subsec:method-governance}. Listing
 
 \begin{lstlisting}[language=bash,caption={Representative pipeline invocations.},label={lst:cli}]
 # CDK-only: synth, gate, and deploy if the gate allows
-python scripts/run_cdk_pipeline.py --project-dir GeneratedCDK --deploy
+python scripts/run_cdk_pipeline.py --project-dir generated_cdk --deploy
 
 # Hybrid: gate both sides; scope the Ansible scan to files changed since HEAD~1
 python scripts/run_hybrid_pipeline.py \
@@ -197,7 +197,7 @@ layer, showing where the decision gates the deployment step on each side indepen
 \centering
 \begin{tikzpicture}[node distance=6mm and 8mm, font=\small]
 \node[proc] (orch) {Orchestrator\\\texttt{run\_hybrid}};
-\node[proc, right=20mm of orch] (gate) {Gate\\\texttt{Eval/}};
+\node[proc, right=20mm of orch] (gate) {Gate\\\texttt{security\_gate/}};
 \node[proc, right=of gate] (cdk) {AWS\\(CDK)};
 \node[proc, right=of cdk] (ans) {On-prem\\(Ansible)};
 \node[proc, below=16mm of gate] (emit) {Emit\\(SSM/EventBridge/CW)};

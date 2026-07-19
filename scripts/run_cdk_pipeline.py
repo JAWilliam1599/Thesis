@@ -62,17 +62,17 @@ from pipeline.cdk_pipeline import (
 )
 from pipeline.aws_credentials import get_session
 from pipeline.notifier import get_notifier
-from Eval.iac_security_gate import THRESHOLDS, COST_BANDS
-from Eval.scanners.ml_risk_adapter import ML_MAX_POINTS
+from security_gate.iac_security_gate import THRESHOLDS, COST_BANDS
+from security_gate.scanners.ml_risk_adapter import ML_MAX_POINTS
 from pipeline.ssm_store import list_monitored_stacks, read_gate_result, write_gate_result
 from pipeline.eventbridge_trigger import publish_gate_event
-from Monitor.cloudwatch_publisher import publish_gate_metrics, put_log_event
-from Monitor.stack_monitor import setup_stack_monitoring
+from monitoring.cloudwatch_publisher import publish_gate_metrics, put_log_event
+from monitoring.stack_monitor import setup_stack_monitoring
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run CDK pipeline with IaC risk gate.")
-    parser.add_argument("--project-dir", default="GeneratedCDK", help="CDK project directory.")
+    parser.add_argument("--project-dir", default="generated_cdk", help="CDK project directory.")
     parser.add_argument("--run-id", default=None, help="Override auto-generated run ID (used for gate report filename).")
     parser.add_argument("--approve-run-id", default=None, metavar="RUN_ID",
                         help="Skip synth+gate and approve an existing review-band report by run_id. Use with --deploy.")
@@ -346,7 +346,7 @@ def main() -> int:
                 pass
 
         if args.regen_on_reject and args.prompt:
-            from AIgen.run_cdk_regen import run_cdk_regen_loop
+            from generation.run_cdk_regen import run_cdk_regen_loop
             print(json.dumps({"stage": "regen", "status": "starting", "max_attempts": args.max_regen_attempts}, indent=2))
             logger.info("stage=regen status=starting max_attempts=%d", args.max_regen_attempts)
             regen_result = run_cdk_regen_loop(

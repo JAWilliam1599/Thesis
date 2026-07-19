@@ -20,8 +20,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from ExecComponent.exec_code import exec_code
-from Eval.iac_security_gate import IaCSecurityGate, THRESHOLDS, COST_BANDS
+from execution.exec_code import exec_code
+from security_gate.iac_security_gate import IaCSecurityGate, THRESHOLDS, COST_BANDS
 from pipeline.git_changes import changed_files
 
 _YAML_EXTS = (".yml", ".yaml")

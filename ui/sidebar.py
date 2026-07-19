@@ -65,7 +65,7 @@ def _render_project_section() -> dict[str, Any]:
         )
         if workflow == "cdk":
             cdk_path = st.text_input(
-                "CDK project dir", value="GeneratedCDK", key="new_project_cdk_path"
+                "CDK project dir", value="generated_cdk", key="new_project_cdk_path"
             )
             ansible_path = playbook = inventory = target_host = ""
         else:

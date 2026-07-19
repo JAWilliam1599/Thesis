@@ -6,7 +6,7 @@ from pathlib import Path
 # --- Core paths -------------------------------------------------------------
 ROOT_DIR = Path(__file__).resolve().parents[1]
 
-GENERATED_CDK_DIR = ROOT_DIR / "GeneratedCDK"
+GENERATED_CDK_DIR = ROOT_DIR / "generated_cdk"
 GENERATED_CDK_APP = GENERATED_CDK_DIR / "app.py"
 
 LOGS_DIR = ROOT_DIR / "logs"
@@ -24,7 +24,7 @@ AWS_CONFIG_PATH = AWS_DIR / "config"
 ENV_FILE = ROOT_DIR / ".env"
 
 # --- Subprocess targets -----------------------------------------------------
-REGEN_SCRIPT = ROOT_DIR / "AIgen" / "run_cdk_regen.py"
+REGEN_SCRIPT = ROOT_DIR / "generation" / "run_cdk_regen.py"
 PIPELINE_SCRIPT = ROOT_DIR / "scripts" / "run_cdk_pipeline.py"
 HYBRID_SCRIPT = ROOT_DIR / "scripts" / "run_hybrid_pipeline.py"
 
@@ -34,16 +34,16 @@ DEFAULT_BEDROCK_MODEL = "anthropic.claude-3-5-sonnet-20240620-v1:0"
 DEFAULT_OPENROUTER_MODEL = "deepseek/deepseek-v4-flash"
 PROVIDERS = ["bedrock", "openrouter"]
 
-# --- Gate thresholds (mirrors Eval/iac_security_gate.py) --------------------
+# --- Gate thresholds (mirrors security_gate/iac_security_gate.py) --------------------
 GATE_PASS_MAX = 20
 GATE_REVIEW_MAX = 80
 
-# --- Gate scoring weights (mirrors Eval/iac_security_gate.py COST_BANDS) -----
+# --- Gate scoring weights (mirrors security_gate/iac_security_gate.py COST_BANDS) -----
 GATE_COST_HIGH_USD = 50.0
 GATE_COST_HIGH_POINTS = 10
 GATE_COST_MED_USD = 10.0
 GATE_COST_MED_POINTS = 5
-# Mirrors Eval/scanners/ml_risk_adapter.py ML_MAX_POINTS
+# Mirrors security_gate/scanners/ml_risk_adapter.py ML_MAX_POINTS
 GATE_ML_MAX_POINTS = 20
 
 # --- Presentation maps ------------------------------------------------------

@@ -1,14 +1,14 @@
 ---
 description: "Use when editing the risk-scoring model training/citation code: dataset assembly, feature extraction (bandit/semgrep), logistic-regression training, and gate handoff."
-applyTo: "RiskScoringCitation/**/*.py"
+applyTo: "risk_scoring/**/*.py"
 ---
 
 # Risk Scoring Model Guidance
 
 ## Scope
-- This file covers the ML risk-scoring research/training code in `RiskScoringCitation/` only.
+- This file covers the ML risk-scoring research/training code in `risk_scoring/` only.
 - This code trains and evaluates the model consumed at gate time by
-  `Eval/scanners/ml_risk_adapter.py`; keep the two in lockstep.
+  `security_gate/scanners/ml_risk_adapter.py`; keep the two in lockstep.
 
 ## Feature and Training Consistency
 - Keep feature extraction (tools used, severity mapping, per-file scanning) identical between

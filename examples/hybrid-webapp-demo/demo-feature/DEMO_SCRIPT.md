@@ -228,7 +228,7 @@ preserved. Ansible is idempotent (`ADD COLUMN IF NOT EXISTS`, GRANT is naturally
 idempotent), and existing rows keep their data with `likes` defaulting to 0.
 
 **"Was any of this AI-generated?"**
-No. AI generation lives in a *separate* tool (`AIgen/`). The hybrid pipeline is
+No. AI generation lives in a *separate* tool (`generation/`). The hybrid pipeline is
 "bring your own code": you point it at already-written IaC with `--cdk-path` /
 `--ansible-path`, and it gates each half independently.
 

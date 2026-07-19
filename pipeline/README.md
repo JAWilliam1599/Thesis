@@ -8,14 +8,14 @@ IaC security gate decision, persists approval/rejection audit records, and drive
 Phase 4 ops-loop (SSM persistence, EventBridge events, SNS notifications, drift/rollback
 automation).
 
-It sits between **Zone 1** (generation, `AIgen/`) and **Zone 2** (risk evaluation, `Eval/`),
+It sits between **Zone 1** (generation, `generation/`) and **Zone 2** (risk evaluation, `security_gate/`),
 and is the module that actually executes AWS CDK commands and AWS API calls.
 
 ```mermaid
 flowchart LR
     A[scripts/run_cdk_pipeline.py] --> B[cdk_pipeline.py]
-    B -->|run_cdk_command| C[ExecComponent.exec_code]
-    B -->|run_iac_gate| D[Eval.iac_security_gate]
+    B -->|run_cdk_command| C[execution.exec_code]
+    B -->|run_iac_gate| D[security_gate.iac_security_gate]
     B -->|credentials| E[aws_credentials.py]
     A --> F[ssm_store.py]
     A --> G[eventbridge_trigger.py]
@@ -65,7 +65,7 @@ default boto3 chain.
 - **Writes:** `os.environ` (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN`).
 - **Region fallback:** `AWS_DEFAULT_REGION` → `AWS_REGION` → `CDK_DEFAULT_REGION` → `us-east-1`.
 - Consumed by every AWS-touching module (`ssm_store`, `eventbridge_trigger`,
-  `Monitor/cloudwatch_publisher`, `Monitor/stack_monitor`).
+  `monitoring/cloudwatch_publisher`, `monitoring/stack_monitor`).
 
 ---
 
@@ -78,7 +78,7 @@ default boto3 chain.
 | `run_bootstrap(project_dir, env=None)` | Runs `cdk bootstrap` → `{command, command_name, return_code, output}` |
 | `run_cdk_command(project_dir, name, env=None)` | Runs `synth`/`diff`/`deploy` and returns the same result dict |
 | `clear_cdk_out(project_dir)` | Removes stale `*.template.json`, `manifest.json`, `tree.json` before synth |
-| `run_iac_gate(project_dir, ...)` | Calls `Eval.iac_security_gate.evaluate()`; returns full gate report |
+| `run_iac_gate(project_dir, ...)` | Calls `security_gate.iac_security_gate.evaluate()`; returns full gate report |
 | `can_deploy(gate_report, *, manual_review_approved)` | Deploy decision → `(bool, reason)` |
 | `extract_stack_name(gate_report)` | Derives stack name from template filenames (fallback: run_id) |
 | `load_gate_report(run_id, log_dir=None)` | Loads `logs/gate_reports/gate_<run_id>.json` |
@@ -91,8 +91,8 @@ default boto3 chain.
 - `decision == "review"` and `manual_review_approved` → deploy allowed.
 - otherwise → blocked.
 
-**Dependencies:** `ExecComponent.exec_code` (CDK CLI execution),
-`Eval.iac_security_gate` (risk evaluation).
+**Dependencies:** `execution.exec_code` (CDK CLI execution),
+`security_gate.iac_security_gate` (risk evaluation).
 
 ---
 
@@ -146,7 +146,7 @@ Disable with `SSM_ENABLED=false`.
 
 ## `lambda_handler.py` — Ops-Loop Lambda (Phase 4)
 
-Deployed by `Monitor/ops_loop_stack.py` as the `syssecops-ops-loop` function. Routes two
+Deployed by `monitoring/ops_loop_stack.py` as the `syssecops-ops-loop` function. Routes two
 EventBridge patterns and reacts.
 
 | Function | Purpose |

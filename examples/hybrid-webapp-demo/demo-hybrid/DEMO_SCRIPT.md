@@ -271,7 +271,7 @@ logged."*
 ## 7. Q&A talking points (the two questions this demo answers)
 
 **"Does the pipeline run start-to-end without code generation?"**
-Yes. AI generation lives in a *separate* tool (`AIgen/`). The hybrid pipeline is
+Yes. AI generation lives in a *separate* tool (`generation/`). The hybrid pipeline is
 explicitly "bring your own code": `synth → security gate → diff → deploy` for
 CDK, and `syntax-check → gate → check → deploy` for Ansible. You point it at
 already-written code with `--cdk-path` / `--ansible-path`.

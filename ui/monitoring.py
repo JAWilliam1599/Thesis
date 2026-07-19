@@ -311,7 +311,7 @@ def get_metric_series(
 
 
 # Gate dashboard metrics (mirrors the SysSecOpsGate CloudWatch dashboard).
-# Statistic + period match the deployed dashboard (Monitor/ops_loop_stack.py) so
+# Statistic + period match the deployed dashboard (monitoring/ops_loop_stack.py) so
 # in-app values line up with the CloudWatch console.
 GATE_DASHBOARD_METRICS: list[tuple[str, str, str]] = [
     ("GateScore", "Maximum", "score"),
@@ -403,7 +403,7 @@ def destroy_stack(stack_name: str) -> tuple[dict[str, Any], str]:
     Returns ``(summary, error)``; ``error`` is non-empty only when the
     CloudFormation deletion itself could not be started.
     """
-    from Monitor.stack_monitor import teardown_stack_monitoring
+    from monitoring.stack_monitor import teardown_stack_monitoring
 
     summary = teardown_stack_monitoring(stack_name)
 

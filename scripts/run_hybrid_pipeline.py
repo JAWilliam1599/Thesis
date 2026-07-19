@@ -63,12 +63,12 @@ from pipeline.ansible_pipeline import (
 )
 from pipeline.aws_credentials import get_session
 from pipeline.notifier import get_notifier
-from Eval.iac_security_gate import THRESHOLDS, COST_BANDS
-from Eval.scanners.ml_risk_adapter import ML_MAX_POINTS
+from security_gate.iac_security_gate import THRESHOLDS, COST_BANDS
+from security_gate.scanners.ml_risk_adapter import ML_MAX_POINTS
 from pipeline.ssm_store import list_monitored_stacks, read_gate_result, write_gate_result
 from pipeline.eventbridge_trigger import publish_gate_event
-from Monitor.cloudwatch_publisher import publish_gate_metrics, put_log_event
-from Monitor.stack_monitor import setup_stack_monitoring
+from monitoring.cloudwatch_publisher import publish_gate_metrics, put_log_event
+from monitoring.stack_monitor import setup_stack_monitoring
 
 logger = logging.getLogger("hybrid_pipeline")
 

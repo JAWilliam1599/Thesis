@@ -8,7 +8,7 @@ rejections, and monitoring history never mix between projects:
 - any other project    -> ``logs/projects/<id>/``
 
 Workflows:
-- ``cdk``    — code generation + regen loop + gate + deploy (GeneratedCDK).
+- ``cdk``    — code generation + regen loop + gate + deploy (generated_cdk).
 - ``hybrid`` — bring-your-own CDK + Ansible dirs; gate + deploy per branch,
   no code generation.
 
@@ -32,7 +32,7 @@ _DEFAULT_PROJECT: dict[str, Any] = {
     "id": DEFAULT_PROJECT_ID,
     "name": "Default (CDK)",
     "workflow": "cdk",
-    "cdk_path": "GeneratedCDK",
+    "cdk_path": "generated_cdk",
     "ansible_path": "",
     "playbook": "",
     "inventory": "",

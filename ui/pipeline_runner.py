@@ -168,7 +168,7 @@ def run_generate_stage(
     on_line: Callable[[str], None] | None = None,
     logs_root: Path | None = None,
 ) -> dict[str, Any]:
-    """Generate CDK code and run the gate via AIgen/run_cdk_regen.py."""
+    """Generate CDK code and run the gate via generation/run_cdk_regen.py."""
     run_id = make_run_id()
     args = [
         sys.executable,
@@ -207,7 +207,7 @@ def run_synth_gate_stage(
     on_line: Callable[[str], None] | None = None,
     logs_root: Path | None = None,
 ) -> dict[str, Any]:
-    """Re-run synth + gate on the current GeneratedCDK/app.py (no deploy)."""
+    """Re-run synth + gate on the current generated_cdk/app.py (no deploy)."""
     run_id = make_run_id()
     args = [
         sys.executable,

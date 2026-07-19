@@ -191,20 +191,20 @@ cdk.out/
 cdk.context.json
 
 # CDK synth outputs (can be large and are regenerated on each run)
-GeneratedCDK/cdk.out/
+generated_cdk/cdk.out/
 
-# GeneratedCDK runtime outputs
-GeneratedCDK/command_logs/
-GeneratedCDK/gate_reports/
-GeneratedCDK/approvals/
-GeneratedCDK/rejections/
-GeneratedCDK/cdk_regen/
+# generated_cdk runtime outputs
+generated_cdk/command_logs/
+generated_cdk/gate_reports/
+generated_cdk/approvals/
+generated_cdk/rejections/
+generated_cdk/cdk_regen/
 
 # OWASP Dependency-Check binary tool (installed separately)
-Eval/dependency-check/bin/
-Eval/dependency-check/lib/
-Eval/dependency-check/data/
-Eval/dependency-check/plugins/
+security_gate/dependency-check/bin/
+security_gate/dependency-check/lib/
+security_gate/dependency-check/data/
+security_gate/dependency-check/plugins/
 
 # Downloaded archives
 dependency-check-*.zip

@@ -7,9 +7,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from ExecComponent.exec_code import exec_code
-from Eval.iac_security_gate import IaCSecurityGate, THRESHOLDS, COST_BANDS
-from Eval.scanners.ml_risk_adapter import ML_MAX_POINTS
+from execution.exec_code import exec_code
+from security_gate.iac_security_gate import IaCSecurityGate, THRESHOLDS, COST_BANDS
+from security_gate.scanners.ml_risk_adapter import ML_MAX_POINTS
 
 
 def resolve_cdk_env() -> dict[str, str]:

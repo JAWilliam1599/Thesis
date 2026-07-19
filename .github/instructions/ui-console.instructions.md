@@ -9,7 +9,7 @@ applyTo: "ui/**/*.py"
 - This file covers the Streamlit app in `ui/` only. Keep it a thin orchestration layer over
   the CLI scripts and read-only AWS queries.
 - Do not embed generation, scanning, scoring, or deploy logic in the UI; delegate to
-  `AIgen/`, `Eval/`, and `pipeline/`/`scripts/` via subprocesses.
+  `generation/`, `security_gate/`, and `pipeline/`/`scripts/` via subprocesses.
 
 ## Orchestration Contracts
 - Launch privileged actions (generate, synth-gate, deploy) as subprocesses of the CLI scripts;

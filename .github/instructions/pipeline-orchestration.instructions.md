@@ -8,8 +8,8 @@ applyTo: "pipeline/**/*.py"
 ## Scope
 - This file covers the orchestration layer in `pipeline/` only (CDK + Ansible flow,
   governance, Phase 4 emitters).
-- Do not embed code-generation logic (keep it in `AIgen/`) or scanner/scoring logic
-  (keep it in `Eval/`); call those interfaces instead.
+- Do not embed code-generation logic (keep it in `generation/`) or scanner/scoring logic
+  (keep it in `security_gate/`); call those interfaces instead.
 
 ## Deploy Decision and Governance
 - Preserve the gate-driven decision: `pass` auto-deploys, `review` requires an explicit
@@ -20,7 +20,7 @@ applyTo: "pipeline/**/*.py"
   identity, run ID, score, and decision under `logs/approvals/` and `logs/rejections/`.
 
 ## Execution Contracts
-- Route external commands through `ExecComponent` subprocess helpers; preserve the
+- Route external commands through `execution` subprocess helpers; preserve the
   `{return_code, output}` contract and stdout/stderr ordering.
 - Mirror the `synth → diff → deploy` (CDK) and `syntax-check → --check → deploy` (Ansible)
   staging; do not skip the dry-run stage.
@@ -29,7 +29,7 @@ applyTo: "pipeline/**/*.py"
 ## Phase 4 Observability
 - Keep observability emitters (SSM persist, EventBridge `GateDecision` event, CloudWatch
   metrics/logs, SNS) best-effort: missing AWS credentials must skip silently, never crash.
-- Keep SSM parameter layout and EventBridge event shape stable for `Monitor/` and UI readers.
+- Keep SSM parameter layout and EventBridge event shape stable for `monitoring/` and UI readers.
 
 ## Credentials
 - Resolve credentials through `aws_credentials.py` (boto3 chain + SSO export); never accept

@@ -228,13 +228,13 @@ instances for compliance/patch visibility.
 
 1. On the **control machine** (needs AWS creds), create an activation:
    ```bash
-   .venv/bin/python Monitor/ssm_hybrid.py --create --name onprem-node
+   .venv/bin/python monitoring/ssm_hybrid.py --create --name onprem-node
    ```
    This prints an install+register snippet (SSM agent download + `-register`).
 2. Copy that snippet and run it **inside the VM** (it's reachable over Tailscale).
 3. Build the AWS↔on-prem dashboard:
    ```bash
-   .venv/bin/python Monitor/hybrid_dashboard.py --create --targets onprem-node
+   .venv/bin/python monitoring/hybrid_dashboard.py --create --targets onprem-node
    ```
 
 ---

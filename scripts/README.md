@@ -10,7 +10,7 @@ optional auto-regen loop, and Phase 4 observability (SSM, EventBridge, SNS, Clou
 
 | File | Role |
 |---|---|
-| `run_cdk_pipeline.py` | CDK-only CLI orchestrator that wires together `pipeline/`, `Eval/`, `Monitor/`, and `AIgen/` (includes the optional code-generation / regen loop) |
+| `run_cdk_pipeline.py` | CDK-only CLI orchestrator that wires together `pipeline/`, `security_gate/`, `monitoring/`, and `generation/` (includes the optional code-generation / regen loop) |
 | `run_hybrid_pipeline.py` | Hybrid CLI orchestrator: gates and deploys a bring-your-own **CDK + on-prem Ansible** project with the *same* risk engine — **no code generation** |
 
 ```mermaid
@@ -20,28 +20,28 @@ flowchart LR
     CLI --> N[pipeline.notifier]
     CLI --> S[pipeline.ssm_store]
     CLI --> EB[pipeline.eventbridge_trigger]
-    CLI --> CWP[Monitor.cloudwatch_publisher]
-    CLI --> SM[Monitor.stack_monitor]
-    CLI -.on reject.-> RG[AIgen.run_cdk_regen]
+    CLI --> CWP[monitoring.cloudwatch_publisher]
+    CLI --> SM[monitoring.stack_monitor]
+    CLI -.on reject.-> RG[generation.run_cdk_regen]
 ```
 
 ## Usage
 
 ```bash
 # Full run — all scanners auto-enabled
-python scripts/run_cdk_pipeline.py --project-dir GeneratedCDK
+python scripts/run_cdk_pipeline.py --project-dir generated_cdk
 
 # Fast run — skip external scanners
-python scripts/run_cdk_pipeline.py --project-dir GeneratedCDK --no-checkov --no-cfn-lint
+python scripts/run_cdk_pipeline.py --project-dir generated_cdk --no-checkov --no-cfn-lint
 
 # Manual-approve a review-band score and deploy
-python scripts/run_cdk_pipeline.py --project-dir GeneratedCDK --manual-approve --deploy
+python scripts/run_cdk_pipeline.py --project-dir generated_cdk --manual-approve --deploy
 
 # Approve an existing review-band gate report by run ID, then deploy
 python scripts/run_cdk_pipeline.py --approve-run-id cdk_20260617T122700Z --deploy
 
 # Auto-regenerate on reject
-python scripts/run_cdk_pipeline.py --project-dir GeneratedCDK \
+python scripts/run_cdk_pipeline.py --project-dir generated_cdk \
   --regen-on-reject --max-regen-attempts 3 \
   --prompt "Create an S3 bucket with versioning and encryption"
 
@@ -62,7 +62,7 @@ python scripts/run_cdk_pipeline.py --query-status
 
 | Flag | Default | Description |
 |---|---|---|
-| `--project-dir` | `GeneratedCDK` | CDK project directory |
+| `--project-dir` | `generated_cdk` | CDK project directory |
 | `--run-id` | auto | Override gate-report filename |
 | `--approve-run-id RUN_ID` | — | Skip synth+gate; approve an existing review-band report |
 | `--cost-delta-usd` | auto (Infracost) | Override monthly cost delta (USD) |

@@ -134,9 +134,9 @@ which organises the system into three zones:
 
 | Zone | Name | Responsibility | Implemented here |
 |---|---|---|---|
-| **Zone 1** | AI + IaC Local Dev | Generate IaC, local validate (`cdk synth`/`diff`) | `AIgen/`, `GeneratedCDK/` |
-| **Zone 2** | IaC Security Gate | Scan → score → gate → deploy | `Eval/`, `pipeline/`, `scripts/` |
-| **Zone 3** | Hybrid Infra & Ops Monitoring | SSM, EventBridge, CloudWatch, drift feedback | `Monitor/`, `pipeline/` (Phase 4) |
+| **Zone 1** | AI + IaC Local Dev | Generate IaC, local validate (`cdk synth`/`diff`) | `generation/`, `generated_cdk/` |
+| **Zone 2** | IaC Security Gate | Scan → score → gate → deploy | `security_gate/`, `pipeline/`, `scripts/` |
+| **Zone 3** | Hybrid Infra & Ops Monitoring | SSM, EventBridge, CloudWatch, drift feedback | `monitoring/`, `pipeline/` (Phase 4) |
 
 The risk-scoring engine sits at the boundary of Zone 1 and Zone 2: it consumes scanner output
 and emits the pass/review/reject decision that governs whether code proceeds to deployment or
@@ -152,12 +152,12 @@ returns to Zone 1 for regeneration.
 flowchart TB
     subgraph Z1[Zone 1 — Generation]
         UI[Streamlit UI / CLI]
-        GEN[AIgen: Bedrock / OpenRouter]
-        APP[GeneratedCDK/app.py]
+        GEN[generation: Bedrock / OpenRouter]
+        APP[generated_cdk/app.py]
     end
     subgraph Z2[Zone 2 — Security Gate]
         SYNTH[cdk synth → cdk.out]
-        GATE[Eval.iac_security_gate]
+        GATE[security_gate.iac_security_gate]
         DEC{decision}
         DEPLOY[cdk deploy]
         AUDIT[(logs: gate_reports / approvals / rejections)]
@@ -193,15 +193,15 @@ flowchart LR
     end
     CLI --> PIPE[pipeline/cdk_pipeline.py]
     GUI -->|subprocess| CLI
-    GUI -->|subprocess| REGEN[AIgen/run_cdk_regen.py]
+    GUI -->|subprocess| REGEN[generation/run_cdk_regen.py]
     REGEN --> PIPE
-    PIPE --> EXEC[ExecComponent/exec_code.py]
-    PIPE --> EVAL[Eval/iac_security_gate.py]
-    EVAL --> SC[Eval/scanners/*]
+    PIPE --> EXEC[execution/exec_code.py]
+    PIPE --> EVAL[security_gate/iac_security_gate.py]
+    EVAL --> SC[security_gate/scanners/*]
     CLI --> CRED[pipeline/aws_credentials.py]
     CLI --> OBS[pipeline/ssm_store + eventbridge_trigger + notifier]
-    CLI --> MON[Monitor/cloudwatch_publisher + stack_monitor]
-    MON --> STK[Monitor/ops_loop_stack + cloudtrail_stack]
+    CLI --> MON[monitoring/cloudwatch_publisher + stack_monitor]
+    MON --> STK[monitoring/ops_loop_stack + cloudtrail_stack]
 ```
 
 ### 3.3 End-to-End Sequence
@@ -210,7 +210,7 @@ flowchart LR
 sequenceDiagram
     participant U as User
     participant UI as UI / CLI
-    participant G as AIgen
+    participant G as generation
     participant C as CDK CLI
     participant E as Gate (Eval)
     participant O as Phase 4 (SSM/EB/CW)
@@ -253,7 +253,7 @@ sequenceDiagram
 ### 4.1 The Generate → Synth → Gate → Remediate Loop
 
 The core engineering method is a closed feedback loop implemented in
-[`AIgen/run_cdk_regen.py`](AIgen/run_cdk_regen.py):
+[`generation/run_cdk_regen.py`](generation/run_cdk_regen.py):
 
 1. **Generate** — the selected provider (Bedrock or OpenRouter) produces a single-stack CDK app
    under a system prompt that enforces least-privilege IAM, default encryption, no public
@@ -261,7 +261,7 @@ The core engineering method is a closed feedback loop implemented in
 2. **Synth** — stale templates are cleared, then `cdk synth` runs. On failure, the cleaned
    synth error (jsii/node noise stripped) plus the failing code are injected into the next
    prompt.
-3. **Gate** — [`Eval/iac_security_gate.py`](Eval/iac_security_gate.py) scores the templates.
+3. **Gate** — [`security_gate/iac_security_gate.py`](security_gate/iac_security_gate.py) scores the templates.
 4. **Decide** — `pass`/`review` exits the loop successfully; `reject` injects the findings into
    the next prompt and retries up to `--max-attempts`.
 
@@ -301,7 +301,7 @@ review and non-repudiation.
 Each top-level module has its own README with per-file detail. This section summarises their
 roles and contracts; see the linked module READMEs for signatures and field-level schemas.
 
-### 5.1 `AIgen/` — Generation (Zone 1)
+### 5.1 `generation/` — Generation (Zone 1)
 
 | File | Role |
 |---|---|
@@ -311,13 +311,13 @@ roles and contracts; see the linked module READMEs for signatures and field-leve
 
 Both backends share an identical contract: plain-Python output prefixed with an
 `# INSTRUCTIONS … # END INSTRUCTIONS` block, saved alongside a `.instructions.txt` file. See
-[`AIgen/README.md`](AIgen/README.md).
+[`generation/README.md`](generation/README.md).
 
-### 5.2 `Eval/` — Security Gate (Zone 2)
+### 5.2 `security_gate/` — Security Gate (Zone 2)
 
-The gate ([`Eval/iac_security_gate.py`](Eval/iac_security_gate.py)) orchestrates four pluggable
-scanner adapters in `Eval/scanners/` plus an internal heuristic analyser, deduplicates findings,
-scores them, and persists a report. See [`Eval/README.md`](Eval/README.md).
+The gate ([`security_gate/iac_security_gate.py`](security_gate/iac_security_gate.py)) orchestrates four pluggable
+scanner adapters in `security_gate/scanners/` plus an internal heuristic analyser, deduplicates findings,
+scores them, and persists a report. See [`security_gate/README.md`](security_gate/README.md).
 
 | Adapter | Signal | Degradation |
 |---|---|---|
@@ -332,18 +332,18 @@ Wraps the CDK lifecycle, the deploy decision (`can_deploy`), audit records, and 
 publishers (`ssm_store`, `eventbridge_trigger`, `notifier`) plus the ops-loop Lambda
 (`lambda_handler`). See [`pipeline/README.md`](pipeline/README.md).
 
-### 5.4 `ExecComponent/` — Execution Backbone
+### 5.4 `execution/` — Execution Backbone
 
-[`ExecComponent/exec_code.py`](ExecComponent/exec_code.py) runs all CDK CLI commands and
+[`execution/exec_code.py`](execution/exec_code.py) runs all CDK CLI commands and
 captures merged, line-buffered stdout/stderr, returning `{return_code, output}`. The return
 code is the signal that drives gate and deploy decisions. See
-[`ExecComponent/README.md`](ExecComponent/README.md).
+[`execution/README.md`](execution/README.md).
 
-### 5.5 `Monitor/` — Phase 4 Observability
+### 5.5 `monitoring/` — Phase 4 Observability
 
 Two CDK stacks (ops-loop + CloudTrail) and two runtime helpers (`cloudwatch_publisher`,
 `stack_monitor`) implement real-time gate metrics and three-layer post-deploy security
-monitoring. See [`Monitor/README.md`](Monitor/README.md).
+monitoring. See [`monitoring/README.md`](monitoring/README.md).
 
 ### 5.6 `scripts/` — CLI Entry Point
 
@@ -357,10 +357,10 @@ A modular Streamlit app with six tabs that drives the full pipeline via subproce
 credential injection, live log streaming, gate-report rendering, and AWS-backed monitoring. See
 [`ui/README.md`](ui/README.md).
 
-### 5.8 `GeneratedCDK/` — Deployment Target
+### 5.8 `generated_cdk/` — Deployment Target
 
 The working CDK project whose `app.py` is rewritten by the generator each run. See
-[`GeneratedCDK/README.md`](GeneratedCDK/README.md).
+[`generated_cdk/README.md`](generated_cdk/README.md).
 
 ---
 
@@ -467,7 +467,7 @@ Cost and compliance inputs follow a strict priority: explicit caller value → a
 }
 ```
 
-The full field reference is in [`Eval/README.md`](Eval/README.md).
+The full field reference is in [`security_gate/README.md`](security_gate/README.md).
 
 ---
 
@@ -513,7 +513,7 @@ pipeline to remediate.
 
 ### 8.3 Three-Layer Post-Deploy Monitoring
 
-[`Monitor/stack_monitor.py`](Monitor/stack_monitor.py) attaches monitoring to each deployed stack:
+[`monitoring/stack_monitor.py`](monitoring/stack_monitor.py) attaches monitoring to each deployed stack:
 
 - **Layer 1 — Application Insights:** auto-discovery of EC2/Lambda/RDS/ECS.
 - **Layer 2 — Per-resource alarms:** operational (CPU, errors, storage) *and* security
@@ -572,13 +572,13 @@ under `logs/` provide a concrete record of behaviour:
 
 | Objective | Status | Evidence |
 |---|---|---|
-| O1 Generate CDK | ✅ | `AIgen/` Bedrock + OpenRouter backends |
-| O2 Multi-scanner eval | ✅ | 4 adapters + heuristics in `Eval/` |
+| O1 Generate CDK | ✅ | `generation/` Bedrock + OpenRouter backends |
+| O2 Multi-scanner eval | ✅ | 4 adapters + heuristics in `security_gate/` |
 | O3 Risk score + decision | ✅ | Additive model, `pass`/`review`/`reject` |
 | O4 Deploy gating | ✅ | `can_deploy()` chokepoint |
 | O5 Feedback loop | ✅ | `run_cdk_regen.py` injects findings |
 | O6 Audit trail | ✅ | `logs/approvals` + `logs/rejections` with ARN |
-| O7 Ops loop / monitoring | ✅ | Phase 4 (`Monitor/`, `pipeline/`) |
+| O7 Ops loop / monitoring | ✅ | Phase 4 (`monitoring/`, `pipeline/`) |
 | O8 Graceful degradation | ✅ | Status flags across all adapters |
 | O9 CLI + GUI | ✅ | `scripts/` + `ui/` |
 
@@ -653,14 +653,14 @@ CDK path.
 | Document | Scope |
 |---|---|
 | [`README.md`](README.md) | Repository overview & quick start |
-| [`AIgen/README.md`](AIgen/README.md) | Generation backends + regen loop |
-| [`Eval/README.md`](Eval/README.md) | Gate scoring, scanners, report schema |
+| [`generation/README.md`](generation/README.md) | Generation backends + regen loop |
+| [`security_gate/README.md`](security_gate/README.md) | Gate scoring, scanners, report schema |
 | [`pipeline/README.md`](pipeline/README.md) | Orchestration + Phase 4 governance |
-| [`Monitor/README.md`](Monitor/README.md) | Ops loop, alarms, 3-layer monitoring |
-| [`ExecComponent/README.md`](ExecComponent/README.md) | Subprocess execution helpers |
+| [`monitoring/README.md`](monitoring/README.md) | Ops loop, alarms, 3-layer monitoring |
+| [`execution/README.md`](execution/README.md) | Subprocess execution helpers |
 | [`scripts/README.md`](scripts/README.md) | CLI flags + return codes |
 | [`ui/README.md`](ui/README.md) | Streamlit operator console |
-| [`GeneratedCDK/README.md`](GeneratedCDK/README.md) | CDK deployment target |
+| [`generated_cdk/README.md`](generated_cdk/README.md) | CDK deployment target |
 | [`PHASE4_REPORT.md`](PHASE4_REPORT.md) | Phase 4 deep dive |
 | [`riskScoring.md`](riskScoring.md) | Proposed multi-factor risk model |
 
@@ -700,6 +700,6 @@ CDK path.
 ### Appendix E — Repository File Index
 
 See each module's README for a per-file breakdown:
-`AIgen/` (3 files), `Eval/` + `Eval/scanners/` (5 files), `pipeline/` (7 files),
-`Monitor/` (7 files), `ExecComponent/` (1 file), `scripts/` (1 file), `ui/` (10 files),
-`GeneratedCDK/` (deployment target).
+`generation/` (3 files), `security_gate/` + `security_gate/scanners/` (5 files), `pipeline/` (7 files),
+`monitoring/` (7 files), `execution/` (1 file), `scripts/` (1 file), `ui/` (10 files),
+`generated_cdk/` (deployment target).
