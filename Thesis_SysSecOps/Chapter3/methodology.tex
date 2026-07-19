@@ -153,7 +153,7 @@ deduplicated, and passed to the risk-scoring engine.
 \node[proc, below=of s2] (s3) {ML code-risk\\model};
 \node[proc, right=5mm of s2] (norm) {Normalize\\to schema};
 \node[proc, right=5mm of norm] (dedup) {Deduplicate\\(\emph{res,tmpl,cat})};
-\node[dec, right=5 mm of dedup] (engine) {Risk\\engine};
+\node[dec, right=5mm of dedup] (engine) {Risk\\engine};
 \draw[flow] (tmpl.east) -- ++(6mm,0) |- (s1.west);
 \draw[flow] (tmpl.east) -- ++(6mm,0) |- (s2.west);
 \draw[flow] (tmpl.east) -- ++(6mm,0) |- (s3.west);

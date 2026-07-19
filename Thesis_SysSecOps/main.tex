@@ -82,8 +82,8 @@
 \renewcommand{\figurename}{Figure}
 \renewcommand{\tablename}{Table}
 \renewcommand{\contentsname}{Contents}
-\renewcommand{\listfigurename}{List of Figures}
-\renewcommand{\listtablename}{List of Tables}
+\renewcommand{\listfigurename}{List of figures}
+\renewcommand{\listtablename}{List of tables}
 \renewcommand{\appendixname}{Appendix}
 
 
@@ -185,24 +185,28 @@
 
 \include{Chapter3/chapter3}
 
+\include{Chapter4/chapter4}
+
+\include{Chapter5/chapter5}
+
+\include{Chapter6/chapter6}
+
 % Công trình của tác giả (nếu không có thì comment 02 dòng dưới)
 \addcontentsline{toc}{chapter}{Danh mục công trình của tác giả}
 \include{Appendix/publish}
 
 % In tài liệu tham khảo
 \addcontentsline{toc}{chapter}{Tài liệu tham khảo}
-\printbibheading[title={Tài liệu tham khảo}]
 
 
+% \printbibliography
+% \printbibliography[title={Reference}]
 
-%\printbibliography
-
-\printbibliography[heading=subbibliography, title={Tiếng Việt}, keyword=Viet, resetnumbers=true]
+% \printbibliography[heading=subbibliography, title={Tiếng Việt}, keyword=Viet, resetnumbers=true]
 
 \DeclareNameAlias{sortname}{last-first}
 \DeclareNameAlias{default}{last-first}
 
-\printbibliography[heading=subbibliography, title={Tiếng Anh}, notkeyword=Viet, resetnumbers=4] 
 % ===================================================================== %
 % CHÚ Ý: phải gán lại resetnumbers=số tài liệu tham khảo tiếng Việt + 1 %
 % ===================================================================== %

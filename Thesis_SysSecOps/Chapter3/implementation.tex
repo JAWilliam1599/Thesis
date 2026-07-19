@@ -21,7 +21,7 @@ concern.
 \centering
 \caption{Repository layout and the concern each directory implements.}
 \label{tab:repo}
-\begin{tabular}{|L{3.3cm}|L{8.7cm}|}
+\begin{tabular}{|L{5.5cm}|L{8.7cm}|}
 \hline
 \textbf{Directory} & \textbf{Contents} \\
 \hline
@@ -109,7 +109,7 @@ Table~\ref{tab:adapters} lists the adapters.
 \centering
 \caption{Scanner adapters and the signal each contributes.}
 \label{tab:adapters}
-\begin{tabular}{|L{4.2cm}|L{7.8cm}|}
+\begin{tabular}{|L{6cm}|L{7.8cm}|}
 \hline
 \textbf{Adapter} & \textbf{Signal} \\
 \hline
@@ -224,17 +224,17 @@ rendering in the console, and returns the stable \texttt{\{return\_code, output\
 contract that every caller relies on. Concentrating process execution in one place keeps
 the output-capture and error-propagation behaviour consistent across the whole system.
 
-\subsection{Phase 4 observability}
-\label{subsec:impl-monitor}
+% \subsection{Phase 4 observability}
+% \label{subsec:impl-monitor}
 
-The monitoring layer implements three complementary observability concerns. Gate metrics
-(score, decision, and the component breakdown) are published to a custom CloudWatch
-namespace; compliance drift is watched by the configuration service and reacted to by an
-event-driven function; and an audit trail of API activity is captured by CloudTrail. A
-dashboard presents the risk score and the decision per target for both the public and the
-private side, and the operational-loop function reacts to drift and rollback events to
-enable automated remediation. The event shapes and parameter layout emitted by the
-orchestration layer are consumed unchanged by this layer, which keeps the two decoupled.
+% The monitoring layer implements three complementary observability concerns. Gate metrics
+% (score, decision, and the component breakdown) are published to a custom CloudWatch
+% namespace; compliance drift is watched by the configuration service and reacted to by an
+% event-driven function; and an audit trail of API activity is captured by CloudTrail. A
+% dashboard presents the risk score and the decision per target for both the public and the
+% private side, and the operational-loop function reacts to drift and rollback events to
+% enable automated remediation. The event shapes and parameter layout emitted by the
+% orchestration layer are consumed unchanged by this layer, which keeps the two decoupled.
 
 \subsection{Operator console and multi-project registry}
 \label{subsec:impl-ui}
