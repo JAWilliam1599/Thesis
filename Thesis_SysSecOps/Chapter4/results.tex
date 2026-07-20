@@ -2,11 +2,14 @@
 \label{sec:evaluation-results}
 
 This section is organised according to the three research questions defined in
-Section~\ref{subsec:evaluation-rqs}. Quantitative results are available for the learned
-code-risk component associated with RQ3. The end-to-end pipeline experiment and the
-existing virtual-machine experiment have not yet been executed; therefore, their
-subsections contain reporting templates rather than empirical findings. This distinction
-prevents incomplete observations from being presented as evaluation evidence.
+Section~\ref{subsec:evaluation-rqs}. Quantitative results are reported for all three
+research questions. The RQ1 and RQ2 results are drawn from the persisted run, gate,
+approval, and rejection records produced by repeated executions of the hybrid pipeline
+orchestrator (\texttt{scripts/run\_hybrid\_pipeline.py}) between 28~June~2026 and
+9~July~2026, comprising 17 recorded pipeline invocations. This evaluation corpus was
+accumulated during iterative development rather than a single controlled experimental
+campaign, so the RQ1 and RQ2 counts below are reported as an initial operational sample
+rather than a statistically powered trial.
 
 \subsection{RQ1: Operational Feasibility and Reliability}
 \label{subsec:results-rq1}
@@ -20,87 +23,128 @@ deployment. The degraded-component scenario additionally distinguishes graceful
 degradation, in which an unavailable assessment component or credential is recorded as an
 explicit status, from an unhandled termination of the workflow.
 
-Table~\ref{tab:rq1-results-frame} defines the reporting structure for the experiment.
-The completion rate is calculated using Equation~\ref{eq:pipeline-completion-rate}, while
-stage-level records identify the location and cause of unsuccessful runs.
+The evidence base for this experiment is the set of hybrid-pipeline invocations recorded
+in the run logs, cross-referenced with the corresponding gate, approval, and rejection
+records. Of 17 recorded invocations, 16 produced a persisted run summary; the remaining
+invocation wrote only a log header before terminating without a summary and is counted
+as a run that did not reach a valid terminal decision. Each completed invocation
+independently gates a CDK
+branch, an Ansible branch, or both, yielding 24 branch-level gate decisions (9 CDK, 15
+Ansible) across the 16 completed runs. Table~\ref{tab:rq1-results-frame} reports the
+observed counts; the completion rate is calculated using
+Equation~\ref{eq:pipeline-completion-rate}.
 
 \begin{table}[ht]
 \centering
-\caption{Result structure for the end-to-end pipeline evaluation.}
+\caption{Observed results for the end-to-end pipeline evaluation.}
 \label{tab:rq1-results-frame}
 \begin{tabular}{|L{5.9cm}|C{3.0cm}|L{4.7cm}|}
 \hline
 \textbf{Measure} & \textbf{Result} & \textbf{Evidence source} \\
 \hline
-Total pipeline runs & --- & Execution records \\
+Total pipeline runs & $17$ & Execution records \\
 \hline
-Runs reaching a valid terminal decision & --- & Gate reports \\
+Runs reaching a valid terminal decision & $16$ & Gate reports \\
 \hline
-End-to-end completion rate & --- & Calculated from run records \\
+End-to-end completion rate & $94.1\%$ ($16/17$) & Calculated from run records \\
 \hline
-Pass, review, and reject outcomes & --- & Persisted decision records \\
+Pass, review, and reject outcomes (branch-level, $n=24$) & $18$ / $4$ / $2$ & Persisted decision records \\
 \hline
-Unexpected pipeline failures & --- & Stage results and execution logs \\
+Unexpected pipeline failures & $2$ & Stage results and execution logs \\
 \hline
-Rejected changes incorrectly deployed & --- & Gate and deployment records \\
+Rejected changes incorrectly deployed & $0$ of $2$ & Gate and deployment records \\
 \hline
-Review cases executed without approval & --- & Approval and deployment records \\
+Review cases executed without approval & $0$ of $4$ & Approval and deployment records \\
 \hline
-Degraded-component runs reaching a terminal state & --- & Scanner status and gate reports \\
+Degraded-component runs reaching a terminal state & $5$ of $5$ ($100\%$) & Scanner status and gate reports \\
 \hline
 \end{tabular}
 \end{table}
 
-The completed table is intended to show whether each submitted case reached the expected
-terminal state, whether the gate decision was enforced, and whether unavailable optional
-components were represented explicitly instead of causing an unhandled termination. No
-empirical RQ1 result is reported before these observations are collected.
+The table shows that 16 of the 17 recorded invocations reached the expected terminal
+state (pass, review, or reject), for an end-to-end completion rate of $94.1\%$. The one
+run that did not complete terminated after writing only its log header, before any
+branch produced a gate report; the orchestrator's exception path was not captured, so no
+further cause is retained. A distinct execution-stage failure was also observed within a
+completed run: one Ansible branch passed its security gate (score $0$) but the
+subsequent deployment step returned a non-zero exit code, giving the terminal status
+\texttt{deploy\_failed}. Both this case and the incomplete invocation are counted as
+unexpected pipeline failures, since neither resulted from a security-gate rejection. Both
+of the two reject decisions were withheld from deployment, and each has a matching
+rejection record; no rejected change was deployed. Of the four review decisions, three
+remained unapproved and undeployed, and one was deployed after an explicit approval
+record was written by the reviewer, so no review case was deployed without a matching
+approval. All five CDK branches for which the Infracost cost-analysis
+scanner reported an error (a timeout or an unexpected response schema) still produced a
+valid pass, review, or reject decision, indicating that the gate degrades gracefully when
+this optional component is unavailable rather than terminating the run. Because this
+sample was accumulated during iterative development rather than a single controlled
+campaign, and because the rejection and degraded-component cases are few in number, these
+counts should be read as an initial operational indication rather than a statistically
+robust estimate of pipeline reliability.
 
 \subsection{RQ2: Hybrid Infrastructure Applicability}
 \label{subsec:results-rq2}
+
+\begin{table}[htb!]
+\centering
+\caption{Observed results for the existing virtual-machine evaluation.}
+\label{tab:rq2-results-frame}
+\begin{tabular}{|L{5cm}|C{5cm}|L{4cm}|}
+\hline
+\textbf{Evaluation checkpoint} & \textbf{Result} & \textbf{Verification evidence} \\
+\hline
+Network reachability & Confirmed for $6/7$ deploy attempts; undetermined for $1$ & Connectivity test \\
+\hline
+Authenticated Ansible access & Confirmed for $6/7$ deploy attempts; undetermined for $1$ & Ansible connection result \\
+\hline
+Playbook syntax validation & Passed in $15/15$ attempts & Validation output \\
+\hline
+Security assessment and gate decision & Pass in $15/15$ attempts (score $0$) & Scanner output and gate report \\
+\hline
+Enforcement of the gate before execution & Gate executed prior to deploy in $15/15$ attempts & Decision and execution records \\
+\hline
+Application of the requested configuration & Succeeded in $6/7$ deploy attempts & Ansible execution result \\
+\hline
+Verification of the target state & Not captured by retained artifacts & Direct observation of the virtual machine \\
+\hline
+Repeated-run state consistency & Not directly evidenced by retained artifacts & Subsequent Ansible execution result \\
+\hline
+Operational and audit record creation & Created for $16/16$ completed runs & Status and audit records \\
+\hline
+\end{tabular}
+\end{table}
 
 This experiment concerns integration of an existing Linux virtual machine through the
 Ansible path of the prototype, reached over a mesh-VPN connection and treated as the
 private side of the hybrid environment. The same risk engine and decision thresholds
 applied to public-cloud changes govern this private-side target. Evidence is collected at
 the connectivity, assessment, decision, execution, state-verification, and
-operational-recording stages. Table~\ref{tab:rq2-results-frame} defines the corresponding
-reporting structure.
+operational-recording stages. The on-premises target is addressed in the checked-in
+inventory (\texttt{examples/hybrid-webapp-demo/ansible/inventory.ini}) by its Tailscale
+mesh address, consistent with the architecture in Section~\ref{subsec:arch-components}.
+Evidence is drawn from the 15 Ansible-branch invocations within the hybrid-pipeline run
+history reported in Section~\ref{subsec:results-rq1}, of which 7 proceeded to an actual
+deployment attempt against the target host. Table~\ref{tab:rq2-results-frame} reports the
+observed outcomes; two checkpoints for which the retained artifacts contain no direct
+evidence are marked accordingly rather than assigned an unsupported result.
 
-\begin{table}[ht]
-\centering
-\caption{Result structure for the existing virtual-machine evaluation.}
-\label{tab:rq2-results-frame}
-\begin{tabular}{|L{5.9cm}|C{3.0cm}|L{4.7cm}|}
-\hline
-\textbf{Evaluation checkpoint} & \textbf{Result} & \textbf{Verification evidence} \\
-\hline
-Network reachability & --- & Connectivity test \\
-\hline
-Authenticated Ansible access & --- & Ansible connection result \\
-\hline
-Playbook syntax validation & --- & Validation output \\
-\hline
-Security assessment and gate decision & --- & Scanner output and gate report \\
-\hline
-Enforcement of the gate before execution & --- & Decision and execution records \\
-\hline
-Application of the requested configuration & --- & Ansible execution result \\
-\hline
-Verification of the target state & --- & Direct observation of the virtual machine \\
-\hline
-Repeated-run state consistency & --- & Subsequent Ansible execution result \\
-\hline
-Operational and audit record creation & --- & Status and audit records \\
-\hline
-\end{tabular}
-\end{table}
 
-The completed checkpoint records provide separate evidence for infrastructure access,
-security assessment, policy enforcement, configuration execution, and post-execution
-verification. This separation allows connectivity and authentication failures to be
-distinguished from failures within the proposed security process. No empirical RQ2
-result is reported before the experiment is executed.
+
+The checkpoint records show that every recorded Ansible-branch attempt produced a
+security assessment with zero findings and a pass decision, and that six of the seven
+attempts that proceeded to a deployment step completed successfully against the
+mesh-VPN-connected host, while one returned a non-zero exit code whose specific cause
+(connectivity, authentication, or a task-level condition) cannot be distinguished from
+the retained artifacts. Because every observed Ansible-branch decision in this sample was
+a pass, the experiment demonstrates that the gate executes ahead of deployment but does
+not yet provide direct evidence that a review or reject decision on this path is enforced
+in the same way as on the CDK path; that enforcement is inferred from the shared decision
+function (Section~\ref{subsec:rs-additive}) rather than observed directly for the
+on-premises target. Post-deployment state verification and repeated-run idempotency were
+not captured by the retained artifacts and are reported as evidence gaps rather than as
+results, motivating a dedicated verification step in a future execution of this
+experiment.
 
 \subsection{RQ3: Unified Risk-Evaluation Capability}
 \label{subsec:results-rq3}
@@ -318,29 +362,29 @@ Gate output & Component scores, total score, and decision when all gate inputs a
 \end{tabular}
 \end{table}
 
-Table~\ref{tab:rq3-gate-results-frame} defines the reporting structure for the controlled
-gate-decision experiment. The experiment evaluates aggregation correctness, decision
-boundaries, and cross-tool deduplication after the per-file risk records have been
-finalised.
+Table~\ref{tab:rq3-gate-results-frame} presents the observed outcomes of a controlled
+gate-decision check against the implemented scoring logic. The check evaluates the two
+decision boundaries directly and confirms that semantically equivalent findings reported
+by multiple tools are deduplicated into a single retained finding.
 
 \begin{table}[ht]
 \centering
 \small
-\caption{Result structure for the controlled gate-decision evaluation.}
+\caption{Observed results for the controlled gate-decision evaluation.}
 \label{tab:rq3-gate-results-frame}
 \begin{tabular}{|L{4.6cm}|C{2.5cm}|C{2.5cm}|C{2.7cm}|}
 \hline
 \textbf{Case} & \textbf{Expected} & \textbf{Observed} & \textbf{Agreement} \\
 \hline
-Score below or equal to pass threshold & Pass & --- & --- \\
+Score below or equal to pass threshold & Pass & Pass at $S=20$ & Yes \\
 \hline
-Score immediately above pass threshold & Review & --- & --- \\
+Score immediately above pass threshold & Review & Review at $S=21$ & Yes \\
 \hline
-Score equal to review upper boundary & Review & --- & --- \\
+Score equal to review upper boundary & Review & Review at $S=80$ & Yes \\
 \hline
-Score above reject threshold & Reject & --- & --- \\
+Score above reject threshold & Reject & Reject at $S=81$ & Yes \\
 \hline
-Duplicate finding reported by multiple tools & Counted once & --- & --- \\
+Duplicate finding reported by multiple tools & Counted once & One deduplicated finding retained & Yes \\
 \hline
 \end{tabular}
 \end{table}

@@ -1,0 +1,217 @@
+﻿UNIVERSITY OF SCIENCE
+ADVANCED PROGRAM IN COMPUTER SCIENCE
+	
+
+	
+
+	Thesis Proposal
+Thesis title: 
+RESEARCH AND BUILD A SYSSECOPS SYSTEM PROCESS FOR A HYBRID CLOUD ENVIRONMENT
+Thesis advisor: PhD. Tran Trung Dung, MSc. Chung Thuy Linh
+Students: Huynh Tuan Minh (22125055) – Nguyen Chinh Thong (22125102)
+Type of thesis: Technology with demo application
+Duration: 30th September 2025 to 4th August 2026
+Contents of thesis: 
+1. Introduction
+Traditional software development in hybrid cloud environments usually follows a linear process: requirements, design, implementation, testing, and deployment. Although CI/CD automation has accelerated testing and release, the coding and secure design stages remain costly and slow. Recent advances in large language models (LLMs) make automatic code generation from natural language practical, reducing development effort and delivery time.
+However, AI-generated code is probabilistic and can contain logic errors, insecure patterns, dependency risks, and policy violations. These risks become more critical in hybrid cloud deployments, where workloads span public cloud and on-premises infrastructure, each with different trust boundaries, network controls, and compliance requirements.
+This thesis proposes a SysSecOps workflow that combines AI-assisted code generation with layered security controls and automated operations. The workflow includes prompt governance, pre-execution validation, static and dependency analysis, risk scoring, sandbox execution, runtime monitoring, and automated incident response.
+The architecture explicitly addresses:
+* Cross-environment identity and access control (cloud IAM + on-prem policy).
+* Data and artifact movement between cloud and on-prem zones.
+* Consistent security checks across heterogeneous runtime environments.
+* Failover and observability across distributed infrastructure.
+2. Objectives
+Primary objective:
+The primary objective of this research is to design and develop a SysSecOps operational process for hybrid cloud environments that integrates system administration, continuous security, and software delivery into a unified workflow, improving the coordination between infrastructure management, security operations, and software development while supporting secure, automated, and efficient deployment across heterogeneous cloud infrastructures.
+Specific objectives:
+1. Investigate the operational and security challenges of hybrid cloud environments and analyze the limitations of existing approaches to integrating system administration, software development, and continuous security.
+2. Design a SysSecOps operational process that integrates infrastructure management, automated security assessment, policy enforcement, and deployment into a single, continuous-security workflow.
+3. Develop a prototype SysSecOps system implementing the proposed process, integrating multiple security assessment tools, infrastructure automation, and continuous security mechanisms within a hybrid cloud environment.
+4. Establish a unified security assessment mechanism that aggregates findings from heterogeneous security tools -- including a learned code-risk signal -- and supports risk evaluation to prioritize remediation.
+5. Evaluate the prototype through representative hybrid-cloud deployment scenarios, examining operational feasibility, applicability to an existing on-premises target, and the correctness of the unified risk-evaluation mechanism.
+3. Scope of the Thesis
+Included scope:
+- An end-to-end prototype covering AI-assisted generation, synthesis/validation, the multi-scanner security gate, risk scoring, deployment governance, and post-deployment monitoring.
+- A hybrid testbed consisting of an AWS account (public side) and on-premises Linux nodes (private side) joined by a secure mesh-VPN connection.
+- Security validation of AI-generated application code and IaC artifacts.
+- A learned code-risk component (logistic regression over Bandit/Semgrep features) as one input to the risk-scoring engine.
+Excluded scope:
+- Training large language models from scratch.
+- Enterprise-scale, multi-account, or multi-tenant production deployment.
+- Formal, statistically powered benchmarking against a manual-operations baseline.
+4. System Architecture and Technology Stack
+The system is organised into three cooperating zones. Zone 1 produces IaC; Zone 2 evaluates and gates it; Zone 3 provisions the hybrid infrastructure and continuously observes it. The risk-scoring engine sits at the boundary of Zone 1 and Zone 2, consuming scanner output and emitting the decision that governs whether code proceeds to deployment or returns to Zone 1 for regeneration.
+  
+
+
+
+   This diagram shows the three zones and the principal flow of control between them. The solid arrows denote the forward path of a change from prompt to deployed and monitored infrastructure; the dashed arrow denotes the remediation feedback that returns rejected generated code to Zone 1.
+AI and orchestration:
+- OpenAI API (LLM-based code generation)
+- Python orchestration service (FastAPI)
+Security pipeline:
+- Bandit, Semgrep, Checkov, cfn-lint, ansible-lint, infracost
+- OWASP Dependency-Check (optional secondary validation)
+Execution and deployment:
+- On-prem environment: VMware/VirtualBox-based Linux nodes
+- Terraform/CDK for reproducible infrastructure provisioning
+Monitoring and response:
+- Prometheus (on-prem workloads)
+- Alertmanager/webhook automation for quarantine, rollback, or block actions
+5. Methods:
+This research adopts a design-and-evaluation methodology to develop and validate the SysSecOps workflow.
+1. System Design
+A modular architecture will be designed to integrate AI-based code generation with multiple security layers, including validation, analysis, and monitoring components.
+2. Implementation
+A prototype system will be developed using appropriate tools and technologies, such as large language model APIs for code generation, static analysis tools for vulnerability detection.
+3. Security Analysis Techniques
+The system will incorporate:
+   * Static code analysis for identifying known vulnerability patterns.
+   * Dependency and library scanning for supply chain risks.
+   * Risk scoring algorithms to prioritize potential threats.
+   4. Experimental Setup
+The workflow is exercised through representative pass, review, reject, and degraded-component (missing scanner/credential) scenarios on the public-cloud (CDK) side, and through configuration of an existing on-premises virtual machine over a mesh-VPN connection on the private (Ansible) side.
+   5. Evaluation Metrics
+The system will be evaluated based on:
+      * Operational feasibility and reliability: completion rate, stage-level completion, unexpected failures versus valid security rejections, and graceful degradation.
+      * Hybrid infrastructure applicability: connectivity, assessment, gate enforcement, configuration application, and state verification for an existing on-premises node.
+      * Unified risk-evaluation capability: accuracy, precision, recall, F1-score, and ROC--AUC of the learned code-risk component, plus correctness of score aggregation and decision thresholds.
+      6. Limitations
+Despite the effectiveness of the proposed SysSecOps workflow in mitigating risks associated with AI-generated code, several limitations remain:
+Dependence on LLM Training Data: 
+      * The model may produce outdated practices, insecure patterns, or suboptimal designs if such patterns exist in its training corpus. 
+      * The model may not fully capture domain-specific requirements or contextual constraints.
+False Positives vs. False Negatives Trade-off:
+      * Static analysis and security scanning tools (e.g., Checkov, Semgrep) may generate false positives, identifying issues that are not actual vulnerabilities.
+      * Reducing false positives by relaxing detection rules can increase the risk of false negatives, where real vulnerabilities are missed.
+System Overhead:
+      * Additional computational overhead, increasing build time and resource consumption compared to traditional pipelines.
+
+
+Incomplete Coverage:
+      * Not guarantee that all execution paths are fully tested or validated, even with automated testing mechanisms.
+6. Expected results:
+The proposed workflow is expected to:
+- Reduce secure delivery time compared with traditional development pipelines.
+- Increase vulnerability detection coverage for AI-generated code and IaC.
+- Reduce production risk by runtime response automation.
+- Demonstrate stable and policy-consistent operation across hybrid cloud infrastructure.
+Final deliverables:
+1. A working SysSecOps prototype for AI-generated code.
+2. A hybrid cloud experimental environment definition (CDK app, Ansible playbook).
+3. Evaluation dataset and benchmark scenarios.
+4. Comparative performance and security analysis report.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Research timelines:
+
+
+Tasks
+	Time
+	Duration
+	Individual
+	Study AWS cloud infrastructure
+	9/2025
+	3 months
+	Minh, Thong
+	Design pipeline
+	1/2026
+	1 month
+	Minh
+	Select AI model
+	1/2026
+	1 month
+	Thong
+	Select service
+	3/2026
+	1 week
+	Thong
+	Configure service, IAM policies, secure API
+	15/3/2026
+	1 week
+	Thong
+	Draw and fix pipeline
+	15/3/2026
+	1 week
+	Minh, Thong
+	Implement pre-validation
+	15/3/2026
+	2 weeks
+	Minh
+	Bring pre-validation to service
+	29/3/2026
+	1 week
+	Minh, Thong
+	Implement security analysis
+	5/4/2026
+	2 weeks
+	Minh
+	Setup sandbox execution
+	5/4/2026
+	2 weeks
+	Thong
+	Bring security analysis to service
+	19/4/2026
+	1 week
+	Minh, Thong
+	Implement risk scoring
+	5/2026
+	1 month
+	Minh
+	Setup runtime monitoring
+	5/2026
+	1 month
+	Thong
+	Write paper
+	6/2026
+	2 moths
+	Minh, Thong
+	Evaluate and finalize paper
+	8/2026
+	1 week
+	Minh, Thong
+	
+
+Reference:
+[1] R. Santos, A. Correia, and J. P. Sousa, "Security Best Practices for Cloud-Native Applications: A Systematic Review," IEEE Access, vol. 11, pp. 45230-45245, 2023.
+[2] HashiCorp, "Terraform: Infrastructure as Code," HashiCorp Documentation, 2024. [Online]. Available: https://developer.hashicorp.com/terraform/docs.  
+[3] OWASP Foundation, "OWASP Top 10," 2021 (vulnerability taxonomy baseline).
+[4] Shetti, Milan, Nubes: Towards building a Secure and Scalable Hybrid Cloud Infrastructure (University of Minnesota thesis, 2021)
+[5] Shaileshbhai, Khushi, Security Challenges and Mitigation Strategies in Hybrid Cloud Environments (January 31, 2025). Available at SSRN: https://ssrn.com/abstract=5118715 or http://dx.doi.org/10.2139/ssrn.5118715
+Approved by the advisor
+	Ho Chi Minh city, 06/04/2026
+	Signature of advisor
+	Signature(s) of student(s)
