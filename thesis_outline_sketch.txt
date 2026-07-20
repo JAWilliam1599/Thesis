@@ -495,3 +495,4 @@ risk scoring: chưa mô tả training, tập dữ liệu. nói rõ phần gate
 
 thiếu hướng phát triển & hạn chế
 
+alo 1234
