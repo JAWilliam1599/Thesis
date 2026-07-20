@@ -1,0 +1,366 @@
+\section{Evaluation Results}
+\label{sec:evaluation-results}
+
+This section is organised according to the three research questions defined in
+Section~\ref{subsec:evaluation-rqs}. Quantitative results are available for the learned
+code-risk component associated with RQ3. The end-to-end pipeline experiment and the
+existing virtual-machine experiment have not yet been executed; therefore, their
+subsections contain reporting templates rather than empirical findings. This distinction
+prevents incomplete observations from being presented as evaluation evidence.
+
+\subsection{RQ1: Operational Feasibility and Reliability}
+\label{subsec:results-rq1}
+
+This experiment concerns execution of the complete SysSecOps pipeline for the pass,
+review, reject, and degraded-component scenarios described in
+Section~\ref{subsec:evaluation-rq1}. Its reporting structure distinguishes a valid
+security rejection from an unexpected execution failure. A rejected change is classified
+as a completed run when the pipeline produces a valid gate report and correctly prevents
+deployment. The degraded-component scenario additionally distinguishes graceful
+degradation, in which an unavailable assessment component or credential is recorded as an
+explicit status, from an unhandled termination of the workflow.
+
+Table~\ref{tab:rq1-results-frame} defines the reporting structure for the experiment.
+The completion rate is calculated using Equation~\ref{eq:pipeline-completion-rate}, while
+stage-level records identify the location and cause of unsuccessful runs.
+
+\begin{table}[ht]
+\centering
+\caption{Result structure for the end-to-end pipeline evaluation.}
+\label{tab:rq1-results-frame}
+\begin{tabular}{|L{5.9cm}|C{3.0cm}|L{4.7cm}|}
+\hline
+\textbf{Measure} & \textbf{Result} & \textbf{Evidence source} \\
+\hline
+Total pipeline runs & --- & Execution records \\
+\hline
+Runs reaching a valid terminal decision & --- & Gate reports \\
+\hline
+End-to-end completion rate & --- & Calculated from run records \\
+\hline
+Pass, review, and reject outcomes & --- & Persisted decision records \\
+\hline
+Unexpected pipeline failures & --- & Stage results and execution logs \\
+\hline
+Rejected changes incorrectly deployed & --- & Gate and deployment records \\
+\hline
+Review cases executed without approval & --- & Approval and deployment records \\
+\hline
+Degraded-component runs reaching a terminal state & --- & Scanner status and gate reports \\
+\hline
+\end{tabular}
+\end{table}
+
+The completed table is intended to show whether each submitted case reached the expected
+terminal state, whether the gate decision was enforced, and whether unavailable optional
+components were represented explicitly instead of causing an unhandled termination. No
+empirical RQ1 result is reported before these observations are collected.
+
+\subsection{RQ2: Hybrid Infrastructure Applicability}
+\label{subsec:results-rq2}
+
+This experiment concerns integration of an existing Linux virtual machine through the
+Ansible path of the prototype, reached over a mesh-VPN connection and treated as the
+private side of the hybrid environment. The same risk engine and decision thresholds
+applied to public-cloud changes govern this private-side target. Evidence is collected at
+the connectivity, assessment, decision, execution, state-verification, and
+operational-recording stages. Table~\ref{tab:rq2-results-frame} defines the corresponding
+reporting structure.
+
+\begin{table}[ht]
+\centering
+\caption{Result structure for the existing virtual-machine evaluation.}
+\label{tab:rq2-results-frame}
+\begin{tabular}{|L{5.9cm}|C{3.0cm}|L{4.7cm}|}
+\hline
+\textbf{Evaluation checkpoint} & \textbf{Result} & \textbf{Verification evidence} \\
+\hline
+Network reachability & --- & Connectivity test \\
+\hline
+Authenticated Ansible access & --- & Ansible connection result \\
+\hline
+Playbook syntax validation & --- & Validation output \\
+\hline
+Security assessment and gate decision & --- & Scanner output and gate report \\
+\hline
+Enforcement of the gate before execution & --- & Decision and execution records \\
+\hline
+Application of the requested configuration & --- & Ansible execution result \\
+\hline
+Verification of the target state & --- & Direct observation of the virtual machine \\
+\hline
+Repeated-run state consistency & --- & Subsequent Ansible execution result \\
+\hline
+Operational and audit record creation & --- & Status and audit records \\
+\hline
+\end{tabular}
+\end{table}
+
+The completed checkpoint records provide separate evidence for infrastructure access,
+security assessment, policy enforcement, configuration execution, and post-execution
+verification. This separation allows connectivity and authentication failures to be
+distinguished from failures within the proposed security process. No empirical RQ2
+result is reported before the experiment is executed.
+
+\subsection{RQ3: Unified Risk-Evaluation Capability}
+\label{subsec:results-rq3}
+
+The available RQ3 evidence comprises the held-out performance of the
+logistic-regression model and an examination of its fitted coefficients. This analysis
+assesses whether features obtained from multiple static analysers provide a useful
+learned signal for the unified risk-scoring mechanism. The reported results concern
+detector-visible insecure code and do not represent the detection of every semantic
+vulnerability.
+
+\subsubsection{Dataset Composition}
+\label{subsubsec:results-dataset}
+
+The corpus was constructed from two classes of Python files. Approximately 80 positive
+examples were selected from SecurityEval. Vulnerability categories that could not be
+represented by the configured Bandit and Semgrep features were excluded from the model
+corpus. The negative reference class contained approximately 80 files sampled from
+maintained Python projects, including \texttt{click}, \texttt{rich}, and
+\texttt{typer}. To reduce the difference in scale between the short SecurityEval
+examples and project source files, negative examples were restricted to files containing
+more than 20 and fewer than 300 non-blank, non-comment lines.
+
+The negative examples are referred to as \emph{reference secure} files rather than
+formally verified secure files. Maintained project code can still contain unknown
+vulnerabilities, and the assigned negative labels therefore represent a practical
+reference assumption. Similarly, excluding vulnerability categories outside the
+observable scope of the selected analysers narrows the interpretation of the results.
+The reported performance applies to the retained, detector-visible subset and is not an
+estimate of performance over the complete SecurityEval dataset.
+
+The held-out test partition contained 31 files: 16 negative samples and 15 positive
+samples. The near-balanced distribution limited the influence of class frequency on the
+reported accuracy.
+
+\subsubsection{Classification Performance}
+\label{subsubsec:results-classification}
+
+Table~\ref{tab:rq3-classification-results} presents the aggregate performance of the
+logistic-regression classifier on the held-out test partition. The classifier achieved
+an accuracy of $0.8710$ and a ROC--AUC of $0.8792$. Precision, recall, and F1-score for
+the positive class were all $0.8667$.
+
+\begin{table}[ht]
+\centering
+\caption{Logistic-regression performance on the held-out test partition.}
+\label{tab:rq3-classification-results}
+\begin{tabular}{|L{5.5cm}|C{3.5cm}|}
+\hline
+\textbf{Measure} & \textbf{Result} \\
+\hline
+Accuracy & $0.8710$ \\
+\hline
+Precision & $0.8667$ \\
+\hline
+Recall & $0.8667$ \\
+\hline
+F1-score & $0.8667$ \\
+\hline
+ROC--AUC & $0.8792$ \\
+\hline
+Test samples & $31$ \\
+\hline
+\end{tabular}
+\end{table}
+
+The confusion matrix is presented in Table~\ref{tab:rq3-confusion-matrix}. Of the 16
+negative samples, 14 were classified correctly and two were incorrectly classified as
+insecure. Of the 15 positive samples, 13 were identified correctly and two were
+incorrectly classified as reference secure. The model therefore produced four errors
+across the 31 held-out samples.
+
+\begin{table}[ht]
+\centering
+\caption{Confusion matrix for the held-out test partition.}
+\label{tab:rq3-confusion-matrix}
+\begin{tabular}{|L{4.7cm}|C{3.4cm}|C{3.4cm}|}
+\hline
+ & \textbf{Predicted negative} & \textbf{Predicted positive} \\
+\hline
+\textbf{Actual negative} & $14$ & $2$ \\
+\hline
+\textbf{Actual positive} & $2$ & $13$ \\
+\hline
+\end{tabular}
+\end{table}
+
+Table~\ref{tab:rq3-class-report} gives the class-specific results. The negative class
+obtained precision, recall, and F1-score values of approximately $0.88$, while the
+positive class obtained approximately $0.87$ for all three measures. The macro and
+weighted averages were both approximately $0.87$, indicating that performance was
+similar across the two classes in the held-out partition.
+
+\begin{table}[ht]
+\centering
+\caption{Class-specific classification results.}
+\label{tab:rq3-class-report}
+\begin{tabular}{|L{3.6cm}|C{2.5cm}|C{2.5cm}|C{2.5cm}|C{2.2cm}|}
+\hline
+\textbf{Class} & \textbf{Precision} & \textbf{Recall} & \textbf{F1-score} &
+\textbf{Support} \\
+\hline
+Negative ($0$) & $0.88$ & $0.88$ & $0.88$ & $16$ \\
+\hline
+Positive ($1$) & $0.87$ & $0.87$ & $0.87$ & $15$ \\
+\hline
+Macro average & $0.87$ & $0.87$ & $0.87$ & $31$ \\
+\hline
+Weighted average & $0.87$ & $0.87$ & $0.87$ & $31$ \\
+\hline
+\end{tabular}
+\end{table}
+
+The equal positive-class precision and recall resulted from the symmetric number of
+false-positive and false-negative predictions. From an operational perspective, the two
+false negatives are particularly relevant because they represent labelled insecure files
+that would receive a lower learned risk contribution. The two false positives have a
+different consequence: they may increase the score of reference negative code and cause
+unnecessary review, but they do not directly permit an insecure file to bypass the
+learned component.
+
+\subsubsection{Analysis of Model Coefficients}
+\label{subsubsec:results-coefficients}
+
+Table~\ref{tab:rq3-coefficients} presents the fitted logistic-regression coefficients in
+descending order. Because the features were standardised before training, coefficient
+magnitudes provide an indication of their relative influence within this fitted model. A
+positive coefficient indicates that an increase in the corresponding feature increases
+the estimated log-odds of the insecure class, with the remaining features held constant.
+
+\begin{table}[ht]
+\centering
+\small
+\caption{Coefficients of the trained logistic-regression model.}
+\label{tab:rq3-coefficients}
+\begin{tabular}{|L{6.4cm}|C{3.5cm}|}
+\hline
+\textbf{Feature} & \textbf{Coefficient} \\
+\hline
+\texttt{total\_semgrep} & $1.136296$ \\
+\hline
+\texttt{bandit\_conf\_medium} & $1.003949$ \\
+\hline
+\texttt{semgrep\_high} & $0.914679$ \\
+\hline
+\texttt{semgrep\_medium} & $0.720708$ \\
+\hline
+\texttt{total\_bandit} & $0.610932$ \\
+\hline
+\texttt{bandit\_medium} & $0.454592$ \\
+\hline
+\texttt{bandit\_high} & $0.435620$ \\
+\hline
+\texttt{bandit\_low} & $0.261740$ \\
+\hline
+\texttt{bandit\_conf\_high} & $0.138912$ \\
+\hline
+\texttt{bandit\_conf\_low} & $0.083852$ \\
+\hline
+\texttt{semgrep\_low} & $0.067123$ \\
+\hline
+\end{tabular}
+\end{table}
+
+The total number of Semgrep findings had the largest positive coefficient
+($1.136296$), followed by the number of medium-confidence Bandit findings
+($1.003949$) and high-severity Semgrep findings ($0.914679$). This ordering indicates
+that the fitted model relied most strongly on the overall Semgrep signal and on
+medium-to-high-strength findings from the two analysers. Low-severity and low-confidence
+features had smaller positive coefficients and therefore contributed less strongly to
+the predicted probability.
+
+These coefficients must be interpreted with caution. The total-finding features are
+mathematically related to the corresponding severity counts, which introduces correlated
+predictors. The coefficients describe the behaviour of the fitted model and do not
+establish that one feature has a causal relationship with software insecurity.
+
+\subsubsection{Per-File Risk Records}
+\label{subsubsec:results-per-file}
+
+In addition to the aggregate classification measures, the corpus is reprocessed through
+the trained component to obtain a predicted probability and risk contribution for each
+file. The resulting machine-readable artifact is archived with the project repository
+for inspection and reproducibility. Each record contains the sample identifier, dataset
+source, assigned label, extracted feature values, predicted probability, predicted
+class, and learned risk contribution. When the complete set of gate inputs is available,
+the record also contains the component scores, total score, and resulting deployment
+decision.
+
+Table~\ref{tab:rq3-per-file-fields} defines the fields retained in this supplementary
+artifact. The aggregate distribution of per-file probabilities and risk scores is
+reported after the re-execution records have been finalised.
+
+\begin{table}[ht]
+\centering
+\small
+\caption{Fields retained in the supplementary per-file risk artifact.}
+\label{tab:rq3-per-file-fields}
+\begin{tabular}{|L{4.2cm}|L{9.2cm}|}
+\hline
+\textbf{Field} & \textbf{Description} \\
+\hline
+Sample identifier & Unique identifier or relative path of the evaluated Python file \\
+\hline
+Source & SecurityEval or the originating reference project \\
+\hline
+Assigned label & Positive ($1$) or negative reference ($0$) class \\
+\hline
+Feature vector & Bandit and Semgrep counts supplied to the trained model \\
+\hline
+Model output & Predicted probability, predicted class, and learned risk contribution \\
+\hline
+Gate output & Component scores, total score, and decision when all gate inputs are available \\
+\hline
+\end{tabular}
+\end{table}
+
+Table~\ref{tab:rq3-gate-results-frame} defines the reporting structure for the controlled
+gate-decision experiment. The experiment evaluates aggregation correctness, decision
+boundaries, and cross-tool deduplication after the per-file risk records have been
+finalised.
+
+\begin{table}[ht]
+\centering
+\small
+\caption{Result structure for the controlled gate-decision evaluation.}
+\label{tab:rq3-gate-results-frame}
+\begin{tabular}{|L{4.6cm}|C{2.5cm}|C{2.5cm}|C{2.7cm}|}
+\hline
+\textbf{Case} & \textbf{Expected} & \textbf{Observed} & \textbf{Agreement} \\
+\hline
+Score below or equal to pass threshold & Pass & --- & --- \\
+\hline
+Score immediately above pass threshold & Review & --- & --- \\
+\hline
+Score equal to review upper boundary & Review & --- & --- \\
+\hline
+Score above reject threshold & Reject & --- & --- \\
+\hline
+Duplicate finding reported by multiple tools & Counted once & --- & --- \\
+\hline
+\end{tabular}
+\end{table}
+
+\subsubsection{Summary of Risk-Model Findings}
+\label{subsubsec:results-rq3-summary}
+
+Within the detector-visible and filtered evaluation corpus, the logistic-regression
+component achieved an accuracy of $0.8710$, an F1-score of $0.8667$, and a
+ROC--AUC of $0.8792$. The similar class-specific measures indicate that the result was
+not obtained by favouring only one class. The coefficient analysis further shows that
+the model incorporated signals from both Bandit and Semgrep, with the strongest fitted
+influence associated with Semgrep finding volume, medium-confidence Bandit findings, and
+high-severity Semgrep findings.
+
+The observed performance indicates that a learned multi-tool signal can contribute
+discriminatory information to the proposed risk-scoring mechanism within the evaluated
+corpus. It does not establish complete vulnerability detection, because the corpus
+excludes vulnerability categories outside the configured analysers' detection scope and
+uses maintained project files as a reference negative class. Evaluation of the complete
+deployment-decision mechanism additionally requires the per-file gate records and the
+controlled score-boundary cases defined in
+Section~\ref{subsubsec:evaluation-gate-decision}.

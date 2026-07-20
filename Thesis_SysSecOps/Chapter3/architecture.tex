@@ -92,7 +92,7 @@ that returns rejected generated code to Zone~1.
 \end{scope}
 % Zone 3
 \node[proc, right=24mm of synth] (deploy) {Deploy\\(AWS + on-prem)};
-\node[proc, below=12mm of deploy] (mon) {Monitor\\(Phase~4 loop)};
+\node[proc, below=12mm of deploy] (mon) {Monitor\\(operational loop)};
 \node[store, below=14mm of mon] (audit) {Audit\\\& metrics};
 \begin{scope}[on background layer]
   \node[zone, fit=(deploy)(mon)(audit), label=above:{\footnotesize\textbf{Hybrid infra \& ops}}] (z3) {};
@@ -384,16 +384,7 @@ nodes registered as SSM managed instances.}
 \subsubsection{Connectivity options between the public and private sides}
 \label{subsubsec:arch-connectivity}
 
-Joining the public and private sides is a design choice with several viable options rather
-than a single fixed mechanism. The architecture treats connectivity as a pluggable
-concern: the gate, the SSM registration, and the operational loop are indifferent to
-\emph{how} the link is established, as long as the on-premises nodes can reach the regional
-AWS endpoints and the two sides can exchange traffic securely. Table~\ref{tab:connectivity}
-compares the practical options, ordered from the lightest-weight software overlay to a
-dedicated physical link, so that a deployment can select the method that matches its
-latency, bandwidth, cost, and compliance requirements.
-
-\begin{table}[ht]
+\begin{table}[htb!]
 \centering
 \caption{Options for connecting the public (AWS) and private (on-premises) sides.}
 \label{tab:connectivity}
@@ -428,6 +419,17 @@ workloads. \\
 \end{tabular}
 \end{table}
 
+Joining the public and private sides is a design choice with several viable options rather
+than a single fixed mechanism. The architecture treats connectivity as a pluggable
+concern: the gate, the SSM registration, and the operational loop are indifferent to
+\emph{how} the link is established, as long as the on-premises nodes can reach the regional
+AWS endpoints and the two sides can exchange traffic securely. Table~\ref{tab:connectivity}
+compares the practical options, ordered from the lightest-weight software overlay to a
+dedicated physical link, so that a deployment can select the method that matches its
+latency, bandwidth, cost, and compliance requirements.
+
+
+
 These options are not mutually exclusive: a lightweight mesh overlay can carry workload
 and control traffic while an SSM hybrid activation provides the operational loop with
 management-plane reach, and the heavier options (IPsec Site-to-Site VPN, Direct Connect,
@@ -461,9 +463,9 @@ deduplication, risk scoring, and report assembly. \\
 \texttt{execution/} & Subprocess execution backbone with a stable result contract. \\
 \hline
 \texttt{pipeline/} & Orchestration and governance: synth--gate--diff--deploy, the approval
-audit trail, credentials, and the Phase~4 emitters. \\
+audit trail, credentials, and the operational-loop emitters. \\
 \hline
-\texttt{monitoring/} & Phase~4 observability: CloudTrail, CloudWatch metrics and
+\texttt{monitoring/} & CloudTrail, CloudWatch metrics and
 dashboards, the operational-loop Lambda, and on-premises SSM registration. \\
 \hline
 \texttt{scripts/} & Command-line entry points for the CDK-only and the hybrid flows. \\

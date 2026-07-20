@@ -1,0 +1,346 @@
+\section{Evaluation Methodology}
+\label{sec:evaluation-methodology}
+
+The proposed SysSecOps process was evaluated through a controlled prototype case study
+comprising three complementary investigations. The first investigation examined the
+operational feasibility and execution reliability of the complete pipeline. The second
+examined the applicability of the process to an existing on-premises virtual machine.
+The third examined the performance of the machine-learning component and the correctness
+of the unified risk-scoring mechanism. This design enabled the evaluation to address the
+operation of the prototype, its applicability within a hybrid environment, and its
+ability to transform heterogeneous security evidence into a reproducible deployment
+decision.
+
+The evaluation focused on observable system behaviour rather than on the capabilities of
+any individual implementation tool. Evidence was collected from pipeline execution
+records, synthesized infrastructure artifacts, scanner outputs, risk reports, deployment
+records, target-state observations, and classifier predictions. The same scoring rules
+and decision thresholds defined in Chapter~\ref{Chapter3} were applied throughout the
+evaluation.
+
+\subsection{Research Questions}
+\label{subsec:evaluation-rqs}
+
+The evaluation was guided by the following research questions:
+
+\begin{description}
+    \item[\textbf{RQ1.}] \textbf{Operational feasibility and reliability:} To what
+    extent can the proposed SysSecOps prototype execute the complete operational
+    workflow, from infrastructure generation or intake, through synthesis or
+    validation, the multi-scanner risk gate placed between synthesis and deployment,
+    the deployment decision, policy-enforced deployment, and post-deployment
+    monitoring, without unexpected pipeline failures, including when an optional
+    assessment component or credential is unavailable?
+
+    \item[\textbf{RQ2.}] \textbf{Hybrid infrastructure applicability:} To what extent
+    can the proposed process apply a common security assessment, risk-scoring,
+    deployment-control, and operational-traceability workflow to an existing
+    on-premises Linux node over a mesh-VPN connection,
+    using the same risk engine and decision thresholds as the public-cloud side of
+    the hybrid environment?
+
+    \item[\textbf{RQ3.}] \textbf{Unified risk-evaluation capability:} To what extent
+    can the proposed risk-scoring mechanism integrate findings from multiple security
+    tools and a logistic-regression code-risk estimate to distinguish insecure code and
+    produce consistent, interpretable deployment decisions?
+\end{description}
+
+Table~\ref{tab:rq-evaluation-map} presents the relationship between the research
+questions, the corresponding evaluation methods, and the principal measurements.
+
+\begin{table}[ht]
+\centering
+\small
+\setlength{\tabcolsep}{4pt}
+\caption{Relationship between the research questions and evaluation measures.}
+\label{tab:rq-evaluation-map}
+\begin{tabular}{|C{1.2cm}|L{4.3cm}|L{4.5cm}|L{4.1cm}|}
+\hline
+\textbf{RQ} & \textbf{Evaluation method} & \textbf{Collected evidence} &
+\textbf{Measures} \\
+\hline
+RQ1 & Execution of representative end-to-end pipeline scenarios, including a
+degraded-component scenario & Stage results, gate reports, deployment records,
+monitoring records, and execution logs & Completion rate, stage completion,
+unexpected failures, graceful degradation, and decision enforcement \\
+\hline
+RQ2 & Integration and configuration of an existing Linux node through Ansible using
+the shared risk engine over a mesh-VPN connection & Connectivity results, playbook
+analysis, execution records, gate reports, and target-state observations & Integration
+success, configuration success, policy enforcement, and state verification \\
+\hline
+RQ3 & Held-out classifier evaluation and controlled risk-decision cases & True labels,
+predicted probabilities, confusion matrix, component scores, deduplicated findings, and
+gate decisions & Accuracy, precision, recall, F1-score, ROC--AUC, score correctness, and
+decision consistency \\
+\hline
+\end{tabular}
+\end{table}
+
+\subsection{Evaluation Design}
+\label{subsec:evaluation-design}
+
+The unit of analysis for RQ1 was one complete pipeline run. A run began when an
+infrastructure request or existing project was submitted to the prototype and ended when
+the process produced a persisted terminal decision. Where the decision permitted
+deployment, the run additionally included deployment and post-deployment status
+collection. For RQ2, the unit of analysis was one pipeline-controlled Ansible operation
+against an existing virtual machine. For RQ3, an individual Python file constituted the
+unit of analysis for classifier evaluation, while one controlled combination of risk
+inputs constituted the unit of analysis for gate-decision evaluation.
+
+The evaluation varied three principal conditions: the risk characteristics of the
+submitted infrastructure, the deployment target, and the availability of optional
+assessment components. The observed dependent variables included completion status,
+stage outcome, gate decision, deployment outcome, resulting target state, predicted
+code-risk probability, and agreement between independently calculated and reported risk
+scores.
+
+A security rejection was not classified as a pipeline failure. A run that identified an
+unacceptable change, produced a valid \emph{reject} decision, and prevented deployment
+represented correct execution of the security process. An unexpected failure was defined
+as an unhandled exception, premature pipeline termination, absent or malformed decision
+report, incorrect transition between stages, or deployment that violated the gate and
+approval policy.
+
+\subsection{End-to-End Pipeline Evaluation}
+\label{subsec:evaluation-rq1}
+
+RQ1 was investigated by executing the prototype across representative scenarios that
+exercised the principal paths through the operational workflow. Each run was observed at
+the following checkpoints:
+
+\begin{enumerate}
+    \item acceptance or generation of the infrastructure source;
+    \item synthesis of the public-cloud template or syntax validation of the
+    private-side playbook;
+    \item execution of the configured assessment components;
+    \item normalisation and deduplication of the collected findings;
+    \item calculation and persistence of the component scores, total score, and gate
+    decision;
+    \item enforcement of the deployment and approval policy; and
+    \item publication of the decision and deployed-target state to the monitoring and
+    audit layer.
+\end{enumerate}
+
+Four scenario classes were included. A low-risk change exercised the \emph{pass} path,
+a moderate-risk change exercised the manual \emph{review} path, and a deliberately
+insecure change exercised the \emph{reject} path. A degraded-execution scenario was also
+included by making an optional assessment dependency or credential unavailable. This
+scenario examined whether the corresponding component returned an explicit unavailable
+or skipped status without causing an unhandled termination of the complete pipeline.
+The degraded scenario was analysed separately because successful continuation with a
+missing assessment source provides less security evidence than a fully assessed run.
+
+For $n$ pipeline runs, the end-to-end completion rate was calculated as
+
+\begin{equation}
+\label{eq:pipeline-completion-rate}
+\mathrm{Completion\ Rate} =
+\frac{n_{\mathrm{terminal}}}{n} \times 100\%,
+\end{equation}
+
+where $n_{\mathrm{terminal}}$ denotes the number of runs that reached a valid and
+persisted terminal decision without an unexpected failure. Stage-level completion was
+reported in addition to the aggregate rate to identify whether failures occurred during
+generation, validation, assessment, scoring, deployment, or monitoring. Policy
+enforcement was verified by confirming that a rejected change was not deployed and that
+a review decision could proceed only after an explicit approval record had been created.
+
+\subsection{Existing On-Premises Virtual Machine Evaluation}
+\label{subsec:evaluation-rq2}
+
+RQ2 examined the use of the proposed process with infrastructure that existed before the
+pipeline run and was located outside the public-cloud provisioning workflow. The target
+was a Linux virtual machine represented in an Ansible inventory and configured through
+an Ansible playbook, reached over a mesh-VPN connection between the public-cloud and
+on-premises domains. The virtual machine retained its existing operating environment and
+was therefore treated as the private-side target of the hybrid case study. The same risk
+engine, scoring rules, and decision thresholds applied to public-cloud changes governed
+this private-side target, so that both sides of the hybrid environment were subject to a
+single, common security process.
+
+The evaluation procedure comprised six stages. First, network reachability and
+authenticated Ansible access to the target were verified. Second, the inventory and
+playbook were submitted to syntax validation and static security assessment. Third, the
+resulting findings were normalised and processed by the same risk engine and decision
+thresholds used for public-cloud changes. Fourth, playbook execution was permitted only
+when the gate decision and approval state satisfied the deployment policy. Fifth, the
+requested configuration state was verified directly on the virtual machine. Finally,
+the target identity, gate decision, execution result, and post-execution state were
+recorded for operational traceability.
+
+Successful integration required all of the following conditions: authenticated access
+to the existing target, successful analysis of the playbook, production of a valid gate
+decision, enforcement of that decision before execution, successful application of an
+allowed configuration, and verification of the requested target state. Where the
+playbook described an idempotent operation, a subsequent execution was used to determine
+whether the desired state remained stable without unintended configuration changes.
+
+Observed failures were classified as connectivity, authentication, validation,
+assessment, gate-enforcement, configuration-execution, or target-verification failures.
+This classification separated failures caused by the external infrastructure from those
+caused by the implementation of the proposed process.
+
+\subsection{Risk-Scoring Evaluation}
+\label{subsec:evaluation-rq3}
+
+RQ3 was examined through two linked evaluations. The first measured the ability of the
+logistic-regression component to discriminate between labelled insecure and reference
+secure Python files. The second examined whether the complete gate correctly aggregated
+the machine-learning result with the remaining risk components and produced the decision
+specified by the scoring policy.
+
+\subsubsection{Dataset Construction}
+\label{subsubsec:evaluation-dataset}
+
+The evaluation corpus contained a positive class and a negative reference class. The
+positive class was obtained from the \textsc{SecurityEval} dataset, which contains
+Python vulnerability examples associated with Common Weakness Enumeration categories
+and was developed for evaluating the security of machine-learning-based code-generation
+techniques \cite{Siddiq2022SecurityEval}. Each selected vulnerability example was stored
+as an individual Python file and assigned label $1$.
+
+The negative class was sampled from the source trees of maintained open-source Python
+projects, including \texttt{click}, \texttt{rich}, and \texttt{typer}. Each selected
+file was assigned label $0$. These files constituted a \emph{reference secure} class
+rather than a formally verified secure class. Their use in maintained software projects
+provided practical negative examples, but did not establish the absence of every
+possible vulnerability.
+
+To improve comparability between the two classes, package initialisers and test files
+were excluded. Files containing fewer than 20 or more than 700 non-blank,
+non-comment lines were also excluded. These criteria reduced the influence of trivial
+snippets, tests, and unusually large files on the learned model. The number of samples,
+class distribution, and originating project or dataset were retained as dataset
+metadata. The final corpus was balanced as far as practical to limit majority-class
+bias.
+
+\subsubsection{Feature Extraction and Model Training}
+\label{subsubsec:evaluation-model-training}
+
+Each file was analysed independently using Bandit and Semgrep. The findings were reduced
+to the eleven-dimensional feature vector defined in Table~\ref{tab:ml-features}. The
+features represented Bandit severity counts, Bandit confidence counts, Semgrep severity
+counts, and the total number of findings returned by each analyser.
+
+The corpus was divided into training and test partitions using a stratified $80/20$
+split. Stratification preserved the class distribution in both partitions. A feature
+scaler was fitted exclusively on the training partition and was then applied unchanged
+to the held-out test partition. The logistic-regression classifier was trained with
+balanced class weights, and its output for each file was the estimated probability of
+membership in the insecure class. Fixing the data split and preprocessing configuration
+enabled the experiment to be reproduced under the same conditions.
+
+\subsubsection{Classifier Evaluation Measures}
+\label{subsubsec:evaluation-classifier-measures}
+
+Classifier performance was assessed using the confusion matrix, accuracy, precision,
+recall, F1-score, and the area under the receiver operating characteristic curve
+(ROC--AUC). Let $TP$, $TN$, $FP$, and $FN$ denote the numbers of true positives, true
+negatives, false positives, and false negatives, respectively. The principal measures
+were calculated as
+
+\begin{align}
+\mathrm{Accuracy} &= \frac{TP+TN}{TP+TN+FP+FN},
+\label{eq:evaluation-accuracy} \\
+\mathrm{Precision} &= \frac{TP}{TP+FP},
+\label{eq:evaluation-precision} \\
+\mathrm{Recall} &= \frac{TP}{TP+FN},
+\label{eq:evaluation-recall} \\
+F_1 &= 2 \times
+\frac{\mathrm{Precision}\times\mathrm{Recall}}
+{\mathrm{Precision}+\mathrm{Recall}}.
+\label{eq:evaluation-f1}
+\end{align}
+
+Accuracy represented overall predictive correctness, whereas precision measured the
+proportion of predicted insecure files that belonged to the positive class. Recall
+measured the proportion of labelled insecure files identified by the model. Recall was
+particularly relevant to the gate because a false-negative result reduced the learned
+risk contribution assigned to insecure code. The F1-score summarised the balance between
+precision and recall, while ROC--AUC measured the ability of the model to rank positive
+samples above negative samples across probability thresholds.
+
+A scanner-only rule provided the baseline for comparison with the logistic-regression
+classifier. The baseline classified a file as insecure when at least one configured
+security finding was reported. This comparison determined whether learning a relationship
+among the scanner features provided discriminatory value beyond treating the presence of
+any finding as a positive classification.
+
+\subsubsection{Unified Score and Decision Evaluation}
+\label{subsubsec:evaluation-gate-decision}
+
+The complete risk-scoring mechanism was evaluated using controlled cases containing
+different combinations of deduplicated static findings, estimated infrastructure cost,
+live compliance state, and machine-learning probability. For each case, the expected
+component contributions and total score were calculated independently using
+Equation~\ref{eq:score}. The independently calculated values were then compared with the
+values recorded in the gate report.
+
+Cases were constructed below, at, and above the decision boundaries defined in
+Equation~\ref{eq:decision}. This boundary-oriented design exercised the \emph{pass},
+\emph{review}, and \emph{reject} outcomes and examined whether the implemented
+comparisons treated threshold values consistently. Additional cases contained
+equivalent findings produced by more than one scanner to determine whether the
+deduplication procedure prevented repeated counting of one underlying issue.
+
+The gate evaluation considered three properties:
+
+\begin{itemize}
+    \item \textbf{Aggregation correctness}: the reported score equalled the sum of the
+    deduplicated severity, cost, compliance, and machine-learning contributions.
+    \item \textbf{Decision consistency}: the reported decision corresponded to the
+    score interval defined by the configured thresholds.
+    \item \textbf{Interpretability}: the report identified the contributing findings,
+    component values, scanner execution states, total score, and resulting decision.
+\end{itemize}
+
+The classifier evaluation and the controlled gate cases addressed different aspects of
+RQ3. The classifier measures assessed the discriminatory performance of the learned
+code-risk component. The gate cases assessed whether that component and the other risk
+signals were combined correctly and transparently to govern deployment.
+
+\subsection{Data Collection and Analysis}
+\label{subsec:evaluation-data-analysis}
+
+Evidence from each pipeline scenario was collected from the machine-readable artifacts
+produced by the prototype. These artifacts included stage return states, scanner
+execution states, normalised and deduplicated findings, component scores, final gate
+decisions, approval records, deployment results, and monitoring records. For the
+on-premises scenario, Ansible execution output and direct target-state observations were
+also retained. For the classifier evaluation, the true label, predicted class,
+predicted probability, and source of each test sample were recorded.
+
+Quantitative results were summarised using counts, rates, classification measures, and
+agreement between expected and observed decisions. Qualitative inspection was limited to
+failure classification and assessment of whether a gate report contained sufficient
+information to trace a decision to its contributing evidence. Results were organised by
+research question so that conclusions could be derived from the corresponding evaluation
+evidence rather than from individual tool outputs in isolation.
+
+\subsection{Threats to Validity}
+\label{subsec:evaluation-validity}
+
+The evaluation was conducted as a prototype case study and therefore has limitations in
+external validity. The selected public-cloud resources, on-premises virtual machine, and
+infrastructure scenarios do not represent every hybrid cloud configuration. Network
+conditions, service availability, credentials, and the state of external services may
+also affect execution independently of the proposed process. These environmental states
+were recorded to distinguish transient infrastructure failures from pipeline defects.
+
+The construction of the machine-learning dataset introduces a threat to construct
+validity. SecurityEval provides labelled vulnerable examples, whereas files sampled from
+maintained open-source projects are not formally proven to be free of vulnerabilities.
+The negative class may therefore contain label noise. In addition, the features extracted
+by Bandit and Semgrep represent only weaknesses observable through their configured rule
+sets. Consequently, the classifier was evaluated as an estimator of
+\emph{detector-visible insecurity}, rather than as a general detector of all semantic
+software vulnerabilities.
+
+The fixed risk weights and decision thresholds constitute an operational policy rather
+than a universally optimal definition of risk. The controlled cases can establish that
+the prototype implements this policy consistently, but cannot demonstrate that the same
+thresholds are appropriate for every organisation. Evaluation in additional hybrid
+environments and calibration using organisation-specific risk preferences would be
+required to support broader generalisation.

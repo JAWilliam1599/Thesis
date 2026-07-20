@@ -1,0 +1,227 @@
+\section{Interpretation of Research Questions}
+\label{sec:discussion-rqs}
+
+The evaluation considers the operational feasibility of the complete pipeline, its
+applicability to an existing private-infrastructure target, and the capability of the
+unified risk-evaluation mechanism. The available evidence is incomplete: RQ1 and RQ2
+have not yet been evaluated experimentally, whereas RQ3 is partially addressed by the
+held-out evaluation of the learned code-risk component. Table~\ref{tab:rq-status}
+summarises the current status without treating an unexecuted experiment as a positive
+result.
+
+\begin{table}[ht]
+\centering
+\caption{Current evidential status of the research questions.}
+\label{tab:rq-status}
+\begin{tabular}{|C{1.3cm}|L{4.4cm}|L{5.3cm}|L{2.8cm}|}
+\hline
+\textbf{RQ} & \textbf{Objective} & \textbf{Available evidence} & \textbf{Status} \\
+\hline
+RQ1 & End-to-end feasibility and reliability & Reporting structure defined; pipeline
+scenarios not yet executed & Not determined \\
+\hline
+RQ2 & Integration of an existing on-premises Linux node over a mesh-VPN connection using
+the shared risk engine & Reporting structure
+defined; target experiment not yet executed & Not determined \\
+\hline
+RQ3 & Multi-tool risk estimation and deployment decision & Held-out model results
+available; complete gate-decision analysis incomplete & Partially evaluated \\
+\hline
+\end{tabular}
+\end{table}
+
+\subsection{RQ1: Operational Feasibility and Reliability}
+\label{subsec:discussion-rq1}
+
+No empirical conclusion can currently be drawn for RQ1. A working prototype does not by
+itself establish end-to-end feasibility because the question concerns coordinated
+operation across pass, review, reject, and degraded-component conditions. A completed
+run must reach a valid terminal state, preserve the evidence used by the gate, enforce
+approval requirements, and prevent rejected changes from being deployed. Under the
+degraded-component condition, an unavailable scanner or credential must be recorded as an
+explicit status rather than causing an unhandled termination, so that graceful
+degradation is demonstrated separately from a fully assessed run. A justified
+rejection is therefore correct pipeline behaviour rather than an execution failure. The
+framework in Table~\ref{tab:rq1-results-frame} provides the evidence required for this
+interpretation after the scenarios have been executed.
+
+\subsection{RQ2: Hybrid Infrastructure Applicability}
+\label{subsec:discussion-rq2}
+
+RQ2 also remains undetermined. The presence of an Ansible path in the architecture does
+not demonstrate successful use with an existing on-premises virtual machine reached over
+a mesh-VPN connection. The experiment must verify authenticated connectivity, playbook
+assessment under the same risk engine and decision thresholds applied to public-cloud
+changes, gate enforcement, configuration execution, target-state verification, and
+audit-record creation. These
+checkpoints also distinguish external network or credential failures from weaknesses in
+the proposed operational process. The corresponding evidence is organised in
+Table~\ref{tab:rq2-results-frame}.
+
+\subsection{RQ3: Unified Risk-Evaluation Capability}
+\label{subsec:discussion-rq3}
+
+The classifier experiment provides positive but bounded evidence for RQ3. The
+logistic-regression component achieved an accuracy of $0.8710$, an F1-score of $0.8667$,
+and a ROC--AUC of $0.8792$ on the held-out partition. The confusion matrix contained two
+false positives and two false negatives, indicating similar performance for the two
+classes. Within the filtered corpus, the combined Bandit and Semgrep features therefore
+provided a useful learned risk signal.
+
+This result does not validate the complete gate. The model was evaluated only on
+detector-visible Python vulnerabilities, and categories outside the capabilities of the
+feature extractors were excluded. In addition, the negative files were sampled from
+maintained projects rather than formally verified as secure. The controlled tests for
+score aggregation, threshold boundaries, deduplication, and final deployment decisions
+also remain incomplete. RQ3 is consequently interpreted as partially evaluated: the
+learned component performed consistently on the selected test set, but the complete
+multi-component decision mechanism has not yet been fully validated.
+
+\section{Comparison with Related Approaches}
+\label{sec:discussion-comparison}
+
+The contribution of the proposed process concerns cloud operations rather than security
+alone. It coordinates infrastructure definition, assessment, deployment, and monitoring
+across public and private targets, with security acting as a decision function within
+the broader workflow.
+
+Traditional infrastructure operations often separate provisioning, system
+administration, delivery, and security review. This separation can require manual
+coordination and may delay security feedback. Rajapakse et al. report that conventional
+security tools are difficult to adapt to rapid DevOps workflows, while CloudCAMP
+identifies substantial manual and scripting effort in cloud deployment
+\cite{Rajapakse2021ToolIntegration,Bhattacharjee2019CloudCAMP}. The proposed process
+instead places a common gate before deployment and records the relationship between a
+change, its evidence, its decision, and its deployed state. However, the present study
+does not quantify improvements in lead time, operator effort, or incident reduction over
+a manual baseline.
+
+The NIST Cloud Computing Reference Architecture describes cloud actors,
+responsibilities, service orchestration, management, security, and privacy, but it does
+not prescribe a concrete implementation sequence \cite{Liu2011NISTRA}. The proposed
+process complements this reference view by defining an executable sequence for
+assessment, approval, deployment, and monitoring. This concreteness reduces generality:
+the prototype reflects one public-cloud provider and one private-side configuration
+mechanism, whereas the NIST architecture is vendor-neutral.
+
+Infrastructure as Code improves repeatability and automation, but industrial evidence
+shows that IaC ecosystems remain fragmented and provide limited support for integration,
+quality automation, maintenance, and evolution \cite{Guerriero2019IaC}. Research on IaC
+testing also indicates that executable infrastructure definitions still require explicit
+verification \cite{Hasan2020IaCTesting}. The proposed adapter and normalisation layers
+address heterogeneous scanner output, but they introduce maintenance obligations as tool
+formats and rules evolve. Compared with CloudCAMP's model-driven deployment abstraction,
+the proposed process places greater emphasis on risk-based gating and auditability, while
+offering less platform independence \cite{Bhattacharjee2019CloudCAMP}.
+
+Continuous-security approaches similarly integrate security activities throughout the
+delivery lifecycle. Kumar and Goyal's ADOC model proposes automated continuous security
+using open-source software over cloud infrastructure \cite{Kumar2020ADOC}. The proposed
+process follows this principle but adds a shared risk decision for public-cloud and
+private-side changes. Its normalised findings, deduplication, and component breakdown also
+address the alert fatigue and tool-integration difficulties reported by Rajapakse et al.
+\cite{Rajapakse2021ToolIntegration}. Nevertheless, aggregation may conceal context unless
+the original findings and component contributions remain available to the reviewer.
+
+\begin{table}[ht]
+\centering
+\small
+\setlength{\tabcolsep}{4pt}
+\caption{Comparison with related cloud operational approaches.}
+\label{tab:discussion-comparison}
+\begin{tabular}{|L{3.3cm}|L{4.3cm}|L{6.3cm}|}
+\hline
+\textbf{Approach} & \textbf{Primary emphasis} & \textbf{Relationship to this research} \\
+\hline
+Traditional operations & Separately coordinated provisioning, administration, and
+review & The proposed process integrates these transitions, but no quantitative manual
+baseline has yet been evaluated. \\
+\hline
+NIST reference architecture \cite{Liu2011NISTRA} & Vendor-neutral actors and cloud
+components & Provides the architectural context; the proposed process supplies a more
+concrete but less vendor-neutral operational sequence. \\
+\hline
+CloudCAMP \cite{Bhattacharjee2019CloudCAMP} & Model-driven generation and reduced manual
+scripting & Provides stronger platform abstraction; this research places greater emphasis
+on gating, traceability, and monitoring. \\
+\hline
+Industrial IaC practice \cite{Guerriero2019IaC} & Adoption, integration, and maintenance
+challenges & Normalisation addresses heterogeneous outputs but creates an adapter layer
+that must be maintained. \\
+\hline
+Continuous security \cite{Kumar2020ADOC,Rajapakse2021ToolIntegration} & Lifecycle security,
+tool integration, and triage & This research adds hybrid-cloud decision control and an
+explainable quantitative score. \\
+\hline
+\end{tabular}
+\end{table}
+
+\section{Limitations}
+\label{sec:discussion-limitations}
+
+The study has five principal limitations.
+
+\begin{enumerate}
+    \item \textbf{Incomplete and small-scale evaluation.} RQ1 and RQ2 have not yet been
+    executed, and the prototype has not been evaluated with large repositories,
+    concurrent pipelines, or a substantial private-infrastructure fleet. End-to-end
+    reliability, latency, cost, and operational scalability therefore remain unknown.
+
+    \item \textbf{Restricted implementation scope.} The learned component is limited to
+    Python and uses features from Bandit and Semgrep. The wider prototype relies on a
+    small fixed set of adapters and is centred on AWS CDK, CloudFormation, AWS operational
+    services, and Ansible. The findings cannot be assumed to transfer to other languages,
+    cloud providers, configuration systems, or vulnerability classes.
+
+    \item \textbf{Dataset and model validity.} The held-out result contains only 31
+    samples and was obtained from one train--test split. Vulnerability categories outside
+    the selected analysers' detection scope were excluded, and maintained project files
+    were treated as negative examples without formal security verification. These choices
+    introduce selection bias, possible label noise, and uncertainty about performance on
+    external projects.
+
+    \item \textbf{Risk assumptions.} The severity weights, cost bands, compliance
+    contribution, model contribution, and decision thresholds have not been
+    calibrated using expert judgement or historical incidents. Exposure, asset
+    criticality, data sensitivity, and compensating controls are also represented only
+    indirectly. Furthermore, allowing an unavailable scanner to contribute no findings
+    may create a fail-open condition.
+
+    \item \textbf{Limited comparative and operational measures.} The study does not yet
+    compare the proposed process with manual cloud operations or IaC deployment without
+    the unified gate. It also does not measure operator effort, deployment lead time,
+    change-failure rate, remediation time, false-alert handling, or long-term incident
+    reduction. The current findings therefore establish limited component feasibility
+    rather than overall operational superiority.
+\end{enumerate}
+
+\section{Directions for Improvement}
+\label{sec:discussion-improvements}
+
+The first priority is completion of the end-to-end and existing virtual-machine
+experiments. Subsequent evaluation should increase repository size, infrastructure scale,
+and pipeline concurrency while measuring execution time, resource consumption, storage
+growth, and cloud-service cost. A controlled comparison among manual operations, IaC
+automation without the gate, and the proposed process would provide evidence regarding
+operator effort, lead time, policy violations, and remediation time.
+
+The code-risk model should be evaluated using a larger multi-project corpus,
+project-aware data partitioning, repeated cross-validation, and an external holdout set.
+Vulnerabilities outside the current analyser scope should be retained as a separate
+challenge set rather than removed entirely. Additional language-specific models and
+features covering dependency risk, resource exposure, identity policy, data sensitivity,
+and runtime behaviour would broaden the assessment scope.
+
+The unified score should be calibrated using expert-labelled changes, historical
+incidents, and organisational risk preferences. Sensitivity and ablation analyses would
+show how individual components affect decisions and whether the learned signal adds value
+beyond severity-only or scanner-only baselines. Missing assessment components should
+produce an assurance penalty or configurable fail-closed behaviour so that insufficient
+evidence is not interpreted as low risk.
+
+Finally, the provider and adapter interfaces should be extended to additional cloud and
+private-infrastructure platforms. Evaluation with system administrators, developers, and
+security practitioners would determine whether the component breakdown improves
+decision-making or obscures important detail. Versioned policies, role-separated
+approvals, signed audit records, and longitudinal deployment would further strengthen the
+governance and practical applicability of the process.

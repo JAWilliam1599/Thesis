@@ -1,0 +1,150 @@
+\section{Implementation Environment}
+\label{sec:implementation-environment}
+
+The proposed SysSecOps process was implemented as a Python-based prototype operating
+across a hybrid cloud environment. The environment comprised a public-cloud domain and
+a private infrastructure domain connected through a common orchestration and security
+assessment workflow. The public-cloud domain provided programmable infrastructure,
+deployment, compliance information, and operational telemetry, whereas the private
+domain represented Linux-based on-premises systems managed through infrastructure
+automation. This arrangement enabled the same operational process and risk evaluation
+mechanism described in Chapter~\ref{Chapter3} to be exercised across heterogeneous
+infrastructure targets.
+
+The implementation environment was organised into four functional groups: prototype
+execution, infrastructure provisioning, security assessment, and operational
+monitoring. Table~\ref{tab:implementation-environment} summarises the technologies used
+to realise each group. These technologies are implementation choices for evaluating the
+proposed process; the process itself is not restricted to these particular products.
+
+\begin{table}[htb!]
+\centering
+\small
+\setlength{\tabcolsep}{4pt}
+\caption{Technologies used in the implementation environment.}
+\label{tab:implementation-environment}
+\begin{tabular}{|L{3.6cm}|L{4.2cm}|L{6.0cm}|}
+\hline
+\textbf{Environment group} & \textbf{Technology} & \textbf{Role in the prototype} \\
+\hline
+Prototype execution & Python, command-line interface, and Streamlit & Implemented the
+process logic, pipeline entry points, and browser-based operator console. \\
+\hline
+AI-assisted generation & Amazon Bedrock and OpenRouter & Provided interchangeable
+language-model backends for generating and regenerating infrastructure code. \\
+\hline
+Public infrastructure & AWS CDK and AWS CloudFormation & Defined, synthesized, compared,
+and deployed resources in the public-cloud domain. \\
+\hline
+Private infrastructure & Ansible and Linux nodes & Represented and configured the
+on-premises domain of the hybrid environment. \\
+\hline
+Security assessment & Checkov, \texttt{cfn-lint}, \texttt{ansible-lint}, and a
+secret-detection component & Examined infrastructure artifacts for syntax errors,
+misconfigurations, insecure practices, and exposed secrets. \\
+\hline
+Contextual risk inputs & Infracost and AWS Config & Supplied estimated cost information
+and the live compliance state used by the risk-scoring mechanism. \\
+\hline
+Code-risk analysis & Bandit, Semgrep, and a logistic-regression model & Extracted static
+analysis features and estimated the probability that generated Python code contained
+detector-visible insecurity. \\
+\hline
+Monitoring and audit & AWS Systems Manager, Amazon CloudWatch, AWS CloudTrail, Amazon
+EventBridge, AWS Lambda, and Amazon SNS & Collected operational state, recorded activity,
+distributed events, and supported notification and remediation actions. \\
+\hline
+\end{tabular}
+\end{table}
+
+\subsection{Prototype Execution Environment}
+\label{subsec:prototype-execution-environment}
+
+Python was used as the principal implementation language for the prototype. The
+pipeline was accessible through command-line entry points and a Streamlit operator
+console. Both interfaces invoked the same orchestration logic, ensuring that an
+operation performed through the graphical interface followed the same generation,
+assessment, approval, and deployment sequence as an operation initiated from the
+command line. External programs were invoked through a shared process-execution layer,
+which captured their return status and output in a consistent form for subsequent
+processing.
+
+AI-assisted infrastructure generation was provided through interchangeable model
+providers. Amazon Bedrock represented a managed cloud-based model service, while
+OpenRouter provided an alternative hosted inference interface. The provider was selected
+through configuration without changing the remaining pipeline. Generated artifacts,
+synthesis output, scanner findings, risk components, and gate decisions were retained
+for each run, allowing an unsuccessful generation attempt to be examined and used as
+feedback for a subsequent attempt.
+
+\subsection{Hybrid Infrastructure Environment}
+\label{subsec:hybrid-infrastructure-environment}
+
+The public part of the environment was hosted on Amazon Web Services. Infrastructure was
+expressed as an AWS Cloud Development Kit application written in Python and synthesized
+into AWS CloudFormation templates. The synthesized template, rather than only the
+high-level source code, was used as the principal public-cloud assessment artifact. This
+allowed the security gate to inspect the resource definitions and configuration values
+that would be submitted for deployment. Representative resources supported by the
+prototype included networking, compute, storage, and database services within a virtual
+private cloud.
+
+The private part of the environment consisted of Linux nodes representing on-premises
+infrastructure. Their desired configuration was expressed through Ansible inventories
+and playbooks. Before execution, the playbooks were subjected to syntax and static
+analysis checks. Where operational monitoring across both domains was required, the
+private nodes were registered as managed instances through AWS Systems Manager hybrid
+activation. This provided a common management path for public-cloud instances and
+private Linux nodes while preserving their distinct deployment mechanisms.
+
+Credentials and other sensitive configuration values were supplied to the prototype
+through the execution environment rather than embedded in generated infrastructure code
+or command-line examples. Deployment remained conditional on the security-gate result:
+an accepting result allowed the relevant provisioning mechanism to proceed, a review
+result required explicit approval, and a rejection prevented deployment.
+
+\subsection{Security Assessment and Risk Environment}
+\label{subsec:security-risk-environment}
+
+The security assessment environment combined several complementary sources rather than
+depending on a single scanner. Checkov and \texttt{cfn-lint} evaluated synthesized
+CloudFormation templates, while \texttt{ansible-lint} evaluated the private-side
+playbooks. A built-in pattern-based component checked the submitted artifacts for
+embedded secrets. Their outputs were converted into the common finding representation
+defined by the proposed methodology before deduplication and scoring.
+
+Two additional services supplied operational context to the assessment. Infracost
+estimated the financial effect of the proposed infrastructure, and AWS Config provided
+the compliance state of resources already operating in the public-cloud environment.
+Consequently, the gate decision reflected not only static misconfiguration findings but
+also cost and live compliance information.
+
+The code-risk component was implemented as a logistic-regression classifier. Bandit and
+Semgrep were used to extract severity, confidence, and finding-count features from
+Python files. The trained classifier converted these features into a probability of
+detector-visible insecurity, which was then incorporated into the unified risk score.
+The persisted model and feature scaler were reused during evaluation so that inference
+followed the same feature transformation as model training.
+
+Each external assessment component was accessed through an adapter. An unavailable
+scanner, missing credential, or unsupported input was recorded as a component status
+instead of terminating the complete workflow. The resulting report therefore contained
+both the gate decision and the execution status of its contributing assessment sources,
+making the conditions under which each result was obtained explicit.
+
+\subsection{Monitoring and Audit Environment}
+\label{subsec:monitoring-audit-environment}
+
+After an accepted deployment, the environment used AWS Systems Manager to obtain managed
+instance information and support operational actions across the hybrid targets. Amazon
+CloudWatch collected gate metrics and operational observations, while AWS CloudTrail
+recorded public-cloud API activity for audit purposes. Amazon EventBridge distributed
+compliance and deployment events to the operational workflow. Event-driven processing
+and notification were supported through AWS Lambda and Amazon SNS, respectively.
+
+The monitoring environment consumed the same target identifiers and gate records
+produced during assessment and deployment. This maintained traceability between a
+proposed infrastructure change, its security decision, the resulting deployment, and
+its subsequent operational state. It also provided the implementation basis for
+evaluating whether the proposed process could integrate pre-deployment assessment with
+post-deployment monitoring across the public and private domains.

@@ -13,7 +13,7 @@
     roughly 95 pages. Chapters are grounded in the implemented system: an
     AI-assisted IaC generation front end, a multi-scanner risk-scored security
     gate placed between synthesis and deployment, a hybrid (AWS CDK + on-prem
-    Ansible) deployment path, an ML-augmented risk-scoring engine, and a Phase 4
+    Ansible) deployment path, an ML-augmented risk-scoring engine, and an
     operational monitoring loop.
     \vspace{1em}
 \end{abstract}
@@ -109,7 +109,7 @@
           AWS (CDK) and on-prem (Ansible) sides.
     \item C2: A reference \emph{system} implementing the pipeline (AI generation +
           regen feedback loop, multi-scanner gate, risk scoring, deploy governance,
-          Phase 4 monitoring, CLI + Streamlit UI).
+          operational monitoring, CLI + Streamlit UI).
     \item C3: A quantitative, deduplicated, ML-augmented \emph{risk-scoring engine}.
     \item C4: A \emph{systematic evaluation} over 2 scenarios (correctness, scoring
           behavior, deployment, and observability).
@@ -173,11 +173,38 @@
           degradation; auditability; feedback-driven remediation.
 \end{itemize}
 
-\subsection{3.2 Three-Zone Reference Architecture} \hfill [p: 3-4]
+\subsection{3.2 Three-Zone Reference Architecture} \hfill [p: 4-5]
 \begin{itemize}
-    \item Zone 1 (AI + IaC local dev), Zone 2 (IaC security gate), Zone 3 (hybrid
-          infrastructure and ops monitoring).
-    \item High-level flow diagram (generate -> synth -> gate -> decision -> deploy -> monitor).
+    \item High-level flow diagram (generate -> synth -> gate -> decision -> deploy -> monitor)
+          and the module-to-zone mapping table (generation/, security\_gate/,
+          pipeline/, scripts/, monitoring/).
+    \item \textbf{Zone 1 --- AI + IaC Local Dev (detailed).} Natural-language prompt intake;
+          provider abstraction (Bedrock Qwen3-Coder / OpenRouter); single-stack CDK app
+          synthesis under a hardened system prompt (least-privilege IAM, default
+          encryption, no public SSH/RDP, RETAIN for stateful resources); local
+          pre-validation via \texttt{cdk synth}/\texttt{cdk diff}; artifacts written to
+          \texttt{generated\_cdk/} and \texttt{logs/}. Maps to \texttt{generation/},
+          \texttt{generated\_cdk/}.
+    \item \textbf{Zone 2 --- IaC Security Gate (detailed).} The chokepoint between
+          \texttt{cdk synth} and \texttt{cdk deploy}. Scans the \emph{synthesized}
+          CloudFormation (not CDK source) with four pluggable adapters (Checkov,
+          cfn-lint, Infracost, AWS Config) plus an internal heuristic analyser;
+          cross-source deduplication by \texttt{(resource\_id, template, category)};
+          additive risk scoring with cost and live-compliance dimensions; emits a
+          \texttt{pass}/\texttt{review}/\texttt{reject} decision via \texttt{can\_deploy()};
+          persists an append-only gate report and approval/rejection audit records with
+          the approver's STS identity. Maps to \texttt{security\_gate/},
+          \texttt{pipeline/}, \texttt{scripts/}. The risk-scoring engine sits at the
+          Zone 1/Zone 2 boundary (forward reference to Chapter 5).
+    \item \textbf{Zone 3 --- Hybrid Infrastructure and Ops Monitoring (detailed).}
+          The AWS (CDK-provisioned) side and the on-prem (Ansible-managed) side, plus
+          the operational monitoring loop. Post-deploy telemetry publishing (SSM Parameter
+          Store, EventBridge \texttt{GateDecision} events, CloudWatch metrics/logs/alarms),
+          three-layer security monitoring mesh (Application Insights; per-resource
+          operational + security alarms; CloudTrail CIS alarms + VPC flow-log alarms),
+          and event-driven drift/rollback remediation via the ops-loop Lambda. Maps to
+          \texttt{monitoring/}, \texttt{pipeline/}. Detailed tool inventory and
+          public/on-prem connectivity are covered in 3.4.
 \end{itemize}
 
 \subsection{3.3 End-to-End Data Flow} \hfill [p: 2-3]
@@ -187,10 +214,22 @@
           telemetry.
 \end{itemize}
 
-\subsection{3.4 Hybrid Deployment Topology} \hfill [p: 2]
+\subsection{3.4 Hybrid Deployment Topology and Zone 3 Tooling} \hfill [p: 3-4]
 \begin{itemize}
-    \item AWS (CDK-provisioned) side and on-prem (Ansible-managed) side.
-    \item Mesh VPN connectivity; SSM managed instances for on-prem nodes.
+    \item \textbf{Zone 3 tool inventory (explicit).} AWS side: CloudFormation/CDK,
+          CloudWatch (metrics, logs, alarms, dashboard), SSM Parameter Store,
+          EventBridge, SNS, Application Insights, CloudTrail (+ S3 CIS alarms),
+          VPC flow logs, AWS Config, and the ops-loop Lambda. On-prem side: Ansible
+          (playbook synth-check / \texttt{--check} dry run), SSM Agent for managed-instance
+          registration, and the same gate/scoring engine applied to Ansible artifacts.
+    \item \textbf{Public $\leftrightarrow$ on-prem connectivity (list the methods).}
+          Mesh-overlay VPN (WireGuard/Tailscale) forming the hybrid trust boundary;
+          AWS Systems Manager hybrid activations registering on-prem nodes as
+          SSM managed instances; EventBridge/SNS as the cross-side event and
+          notification plane; SSM Parameter Store as the shared state channel. Describe
+          which channel carries control, telemetry, and remediation traffic.
+    \item Current implemented subset vs. conceptual full topology (CDK-first implemented;
+          Ansible/on-prem path defined in the model).
 \end{itemize}
 
 \subsection{3.5 Component Map and Interfaces} \hfill [p: 2-3]
@@ -213,6 +252,12 @@
 \begin{itemize}
     \item Reuse and extend an existing security-automation baseline; derive each module
           from a concrete hybrid-cloud problem.
+    \item \textbf{Describe the current implemented model and connectivity.} State clearly
+          which parts are implemented today (AWS CDK-first path: generation, regen loop,
+          multi-scanner gate, additive+ML scoring, deploy governance, operational ops loop,
+          CLI + Streamlit UI) versus the conceptual Ansible/on-prem path; describe the
+          currently used cross-side connection mechanism (mesh VPN + SSM hybrid
+          activation + EventBridge/SNS/SSM Parameter Store) as realised in the code.
 \end{itemize}
 
 \subsection{4.2 Problem-to-Module Mapping} \hfill [p: 2]
@@ -236,7 +281,15 @@
 \subsection{4.5 Security Evaluation (Multi-Scanner Gate)} \hfill [p: 2-3]
 \begin{itemize}
     \item Scanner adapters and normalization into a common finding schema.
-    \item Cross-source deduplication (resource/template/category) to prevent score inflation.
+    \item \textbf{Clarify the gate mechanics.} Gate placement strictly between
+          \texttt{cdk synth} and \texttt{cdk deploy}; the \texttt{can\_deploy()}
+          single chokepoint; the four external adapters (Checkov, cfn-lint, Infracost,
+          AWS Config) plus internal heuristic checks (SSH-open SG, public S3, wildcard
+          IAM, unencrypted RDS/EBS); the graceful-degradation status contract
+          (\texttt{ok}/\texttt{skipped}/\texttt{not\_installed}/\texttt{no\_credentials}/
+          \texttt{error}) that guarantees a decision is always produced.
+    \item Cross-source deduplication (resource/template/category) with severity-max
+          merge and source-label union to prevent score inflation.
 \end{itemize}
 
 \subsection{4.6 Risk Scoring and the Decision Function} \hfill [p: 2]
@@ -252,7 +305,7 @@
 
 \subsection{4.8 Monitoring and the Operational Loop} \hfill [p: 1-2]
 \begin{itemize}
-    \item Post-deploy metrics, drift detection, event-driven remediation (Phase 4).
+    \item Post-deploy metrics, drift detection, event-driven remediation.
 \end{itemize}
 
 % =====================================================================
@@ -271,14 +324,32 @@
 
 \subsection{5.3 Implemented Additive Scoring} \hfill [p: 2]
 \begin{itemize}
-    \item Severity points, cost bands, config-violation points, ML points; thresholds.
-    \item Relationship between the proposed model and the implemented approximation.
+    \item Severity points (Critical 20 / High 10 / Medium 5 / Low 1), cost bands
+          (Infracost monthly delta: $>\$50\to10$, $>\$10\to5$), config-violation points
+          ($5\times$ AWS Config violations), ML points; thresholds
+          (\texttt{pass\_max}=20, \texttt{review\_max}=80).
+    \item Decision function: $0\text{--}20$ \texttt{pass}, $21\text{--}80$ \texttt{review},
+          $>80$ \texttt{reject}; relationship between the proposed model and the
+          implemented additive approximation.
+    \item \textbf{Clarify how scoring plugs into the gate} (score components object,
+          provenance/override flags, report schema fields consumed by \texttt{can\_deploy()}).
 \end{itemize}
 
-\subsection{5.4 ML Code-Risk Model} \hfill [p: 2-3]
+\subsection{5.4 ML Code-Risk Model --- Dataset and Training} \hfill [p: 3-4]
 \begin{itemize}
-    \item Dataset construction; features from bandit + semgrep; logistic regression.
-    \item Training/inference parity with the gate adapter; probability-to-points mapping.
+    \item \textbf{Dataset construction (make explicit).} Source corpus of secure/insecure
+          code samples, labelling scheme, and the merge step
+          (\texttt{dataset.csv}/\texttt{dataset.jsonl}/\texttt{dataset\_with\_risk.csv});
+          class balance and train/test split.
+    \item \textbf{Feature extraction.} Static-analysis signals from Bandit and Semgrep
+          (issue counts by severity/confidence, rule categories) forming the feature
+          vector; \texttt{feature\_importance.csv} for interpretability.
+    \item \textbf{Training procedure.} Logistic-regression training
+          (\texttt{LogisticRegression.py}), hyperparameters, evaluation metrics
+          (accuracy/precision/recall/AUC), and model persistence.
+    \item \textbf{Training/inference parity.} The gate adapter recomputes the identical
+          Bandit+Semgrep features at inference time; probability-to-points mapping into
+          the additive score.
 \end{itemize}
 
 \subsection{5.5 Deduplication and Explainability} \hfill [p: 1-2]
@@ -303,7 +374,7 @@
 
 \subsection{6.5 Execution Backbone (ExecComponent)} \hfill [p: 1]
 
-\subsection{6.6 Phase 4 Observability (Monitor)} \hfill [p: 1-2]
+\subsection{6.6 Operational-Loop Observability (Monitor)} \hfill [p: 1-2]
 
 \subsection{6.7 Operator Console (Streamlit UI) and Multi-Project Registry} \hfill [p: 1-2]
 
@@ -366,10 +437,31 @@
 \subsection{9.1 Advantages} \hfill [p: 1-2]
 \subsection{9.2 Limitations and Threats to Validity} \hfill [p: 2-3]
 \begin{itemize}
-    \item Scope of scenarios, tool coverage, ML dataset bias, single-cloud focus.
+    \item Single-stack generation assumption; multi-stack apps out of scope.
+    \item Additive vs. full multi-factor scoring: exposure/exploitability/confidence
+          modelled conceptually but not yet wired into gate weights.
+    \item Heuristic coverage defers breadth to Checkov; novel resource types depend on
+          external tools.
+    \item Cost-estimation fidelity: Infracost conservative for usage-based resources.
+    \item Ansible/on-prem (Zone 3 hybrid) path implemented for the CDK/AWS subset only.
+    \item No formal benchmark: demonstrative, artifact-based evaluation rather than a
+          controlled study against a labelled misconfiguration corpus.
+    \item ML dataset scope/bias; scenario count; single-cloud focus.
 \end{itemize}
 \subsection{9.3 Security and Ethical Considerations of AI-Generated IaC} \hfill [p: 1-2]
 \subsection{9.4 Future Directions} \hfill [p: 1-2]
+\begin{itemize}
+    \item Implement the full multi-factor risk model ($W_sS+W_eE+W_xX+W_cC$), wiring
+          deployment-context exposure into the gate.
+    \item Confidence weighting to down-weight low-confidence findings.
+    \item Multi-stack and Terraform support beyond single CDK stacks.
+    \item Policy-as-data thresholds: externalise thresholds/severity weights per
+          organisation.
+    \item Controlled evaluation against a labelled/seeded-misconfiguration corpus
+          (precision/recall of the gate).
+    \item Closed-loop auto-remediation in production (verified self-healing with guardrails).
+    \item Complete Ansible/private-node integration to fully realise Zone 3.
+\end{itemize}
 
 % =====================================================================
 \section{Chapter 10 --- Conclusion} \hfill [p: 3-4]
