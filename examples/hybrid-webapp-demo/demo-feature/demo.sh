@@ -175,6 +175,7 @@ case "${1:-}" in
     status)          cmd_status ;;
     gate)            cmd_gate ;;
     add-feature)     cmd_add_feature ;;
+    export-db-password) export_db_password ;;
     reset)           cmd_reset ;;
     deploy-frontend) cmd_deploy_frontend ;;
     approve-route)   cmd_approve_route ;;

@@ -6,8 +6,9 @@ AWS Secrets Manager at cold start — nothing sensitive is baked into the code o
 the environment.
 
 Routes (via API Gateway):
-  GET  /guestbook  -> list the most recent entries
-  POST /guestbook  -> add an entry  {"name": "...", "message": "..."}
+  GET  /guestbook            -> list the most recent entries
+  POST /guestbook            -> add an entry  {"name": "...", "message": "..."}
+  POST /guestbook/{id}/like  -> increment an entry's like counter
 """
 import json
 import os
@@ -57,7 +58,7 @@ def _list_entries():
     with _connect() as conn:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute(
-                "SELECT id, name, message, created_at "
+                "SELECT id, name, message, likes, created_at "
                 "FROM guestbook ORDER BY created_at DESC LIMIT 50"
             )
             return cur.fetchall()
@@ -68,8 +69,21 @@ def _add_entry(name, message):
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute(
                 "INSERT INTO guestbook (name, message) VALUES (%s, %s) "
-                "RETURNING id, name, message, created_at",
+                "RETURNING id, name, message, likes, created_at",
                 (name, message),
+            )
+            row = cur.fetchone()
+        conn.commit()
+        return row
+
+
+def _like_entry(entry_id):
+    with _connect() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(
+                "UPDATE guestbook SET likes = likes + 1 WHERE id = %s "
+                "RETURNING id, name, message, likes, created_at",
+                (entry_id,),
             )
             row = cur.fetchone()
         conn.commit()
@@ -78,7 +92,18 @@ def _add_entry(name, message):
 
 def handler(event, _context):
     method = event.get("httpMethod", "GET")
+    resource = event.get("resource", "")
     try:
+        # POST /guestbook/{id}/like -> bump the like counter for one entry.
+        if resource.endswith("/like") and method == "POST":
+            entry_id = (event.get("pathParameters") or {}).get("id")
+            if not entry_id or not str(entry_id).isdigit():
+                return _response(400, {"error": "a numeric entry id is required"})
+            row = _like_entry(int(entry_id))
+            if row is None:
+                return _response(404, {"error": f"entry {entry_id} not found"})
+            return _response(200, {"entry": row})
+
         if method == "GET":
             return _response(200, {"entries": _list_entries()})
 

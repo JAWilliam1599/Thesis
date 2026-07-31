@@ -31,8 +31,29 @@
       when.textContent = new Date(entry.created_at).toLocaleString();
       const msg = document.createElement("p");
       msg.textContent = entry.message;
-      li.append(who, when, msg);
+
+      const likeBtn = document.createElement("button");
+      likeBtn.type = "button";
+      likeBtn.className = "like";
+      likeBtn.textContent = `♥ ${entry.likes ?? 0}`;
+      likeBtn.addEventListener("click", () => likeEntry(entry.id, likeBtn));
+
+      li.append(who, when, msg, likeBtn);
       entriesEl.appendChild(li);
+    }
+  }
+
+  async function likeEntry(id, button) {
+    button.disabled = true;
+    try {
+      const res = await fetch(`${endpoint}/${id}/like`, { method: "POST" });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      button.textContent = `♥ ${data.entry.likes}`;
+    } catch (err) {
+      setStatus(`Could not like entry: ${err.message}`, true);
+    } finally {
+      button.disabled = false;
     }
   }
 

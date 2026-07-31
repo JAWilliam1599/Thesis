@@ -182,7 +182,7 @@ Under the hood, `add-feature`:
 4. uploads the updated frontend (`aws s3 sync` + CloudFront invalidation),
 
 ```
-   aws s3 sync ../frontend "s3://hybridwebappstack-frontendbucketefe2e19c-w4jxyowcfedj"
+   aws s3 sync ./frontend "s3://hybridwebappstack-frontendbucketefe2e19c-w4jxyowcfedj"
    aws cloudfront create-invalidation \
      --distribution-id E1C3PJK1G3O0C5 --paths '/*'
 ```

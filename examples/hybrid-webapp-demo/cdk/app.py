@@ -281,6 +281,14 @@ class HybridWebappStack(Stack):
         guestbook.add_method("GET")
         guestbook.add_method("POST")
 
+        # Reactions feature: POST /guestbook/{id}/like increments an entry's
+        # like counter. Adding this resource + method is an *additive* change to
+        # the API Gateway REST API, so a re-deploy is a clean CloudFormation
+        # changeset that leaves the existing guestbook methods untouched.
+        entry = guestbook.add_resource("{id}")
+        like = entry.add_resource("like")
+        like.add_method("POST")
+
         # ------------------------------------------------------------------
         # Static frontend: private S3 bucket served through CloudFront (OAC).
         # NOTE (intentional gate finding): no WAF and no CloudFront access

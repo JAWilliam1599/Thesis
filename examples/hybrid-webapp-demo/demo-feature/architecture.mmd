@@ -1,0 +1,19 @@
+%%{init: {'theme': 'default'}}%%
+flowchart TB
+    Browser["Browser"]
+    CloudFront["CloudFront"]
+    S3["S3 (static frontend, private via OAC)"]
+    APIGW["API Gateway"]
+    Lambda["Lambda (in VPC private-isolated subnets)"]
+    Secrets["Secrets Manager (VPC endpoint, no NAT)"]
+    Tailscale["Tailscale subnet-router EC2 (in VPC)"]
+    OnPremDB["On-prem PostgreSQL\n(multipass VM onprem-db, Ansible-provisioned)\nguestbook table now has a likes column"]
+
+    Browser -- HTTPS --> CloudFront
+    CloudFront --> S3
+    CloudFront -- "/prod/guestbook (fetch: list + add)" --> APIGW
+    CloudFront -- "/prod/guestbook/{id}/like (fetch: NEW - increment likes)" --> APIGW
+    APIGW --> Lambda
+    Lambda -- reads DB creds --> Secrets
+    Lambda -- "psycopg2 (TCP 5432)" --> Tailscale
+    Tailscale -- "Tailscale mesh (WireGuard)" --> OnPremDB
