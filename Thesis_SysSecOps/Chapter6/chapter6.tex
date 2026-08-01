@@ -58,20 +58,28 @@ execution. All 106 runs produced the declared decision, the confusion matrix ove
 three bands was exactly diagonal, and six enforcement invariants --- including that
 no rejection was ever deployed and no review was deployed without an approval record
 --- held on every applicable run. On the on-premises path, syntax validation, security
-gating and dry run were attained on all 59 runs, while apply, post-apply verification
-and idempotency were not attempted because the campaign is deliberately offline. RQ3
+gating and dry run were attained on all 59 offline runs, and a separate live-target arm
+of 6 runs against a disposable virtual machine closed the remaining three checkpoints:
+apply succeeded, post-apply verification asserted the resulting host state against
+independently written expectations, a repeated apply reported no further change, and
+the runs that requested deployment of a rejected fixture were stopped at the gate
+without ever reaching the host. RQ3
 is partially evaluated through the held-out performance of the learned code-risk
 component.
 
 Two findings emerged that the pipeline's own success criteria would not have
 surfaced. First, the additive score \emph{fails open}: removing one scanner moved a
 \emph{review}-band change to \emph{pass}, because an unavailable scanner and a
-scanner that found nothing contribute identically. Second, decision parity across the
-hybrid boundary was initially zero of four weakness pairs --- not from a threshold
-mismatch, since both branches share one decision function, but because the
-on-premises scanner set could not see the weaknesses at all. Adding semantic
-configuration rules for that path raised agreement to two of four; both arms are
-reported so the improvement is measured rather than assumed.
+scanner that found nothing contribute identically. Second, detection coverage is
+unequal across the hybrid boundary. Of four weakness classes expressed on both
+sides, three are named by both branches in a shared finding vocabulary, but the
+fourth is named only on the private side: the cloud path runs no secret scanner
+and detects a committed credential solely as a by-product of the learned
+code-risk model scoring the surrounding Python, so nothing in its report states
+that a secret exists. A gap of that kind is not reachable by adjusting weights or
+thresholds --- a weakness that produces no finding cannot be scored, reviewed, or
+audited at any setting --- and it was visible only because the same weakness was
+expressed on both sides and the two reports were compared.
 
 The classifier evaluation used a filtered corpus containing vulnerable Python examples
 from SecurityEval and reference negative files from maintained Python projects. On the
@@ -132,9 +140,12 @@ judgement, historical incidents, and organisational risk preferences. The RQ1 an
 evidence rests on fixtures authored by the same work that built the gate, so it
 establishes that the implementation satisfies its own specification on cases whose
 correct treatment is known, not that the specification grades arbitrary real
-infrastructure correctly. Several invariants rest on small denominators, decision parity
-rests on four weakness pairs, and the apply, post-apply verification, and idempotency
-checkpoints were never attempted. The current results therefore indicate internal
+infrastructure correctly. Several results rest on very few runs --- ten
+approved-review runs, sixteen rejections, and three replicates for each of the
+apply, post-apply verification and idempotency checkpoints against a single fresh
+virtual machine --- so they show that each mechanism works when exercised rather
+than how often it fails. Detection coverage rests on four weakness classes.
+The current results therefore indicate internal
 correctness under pre-declared conditions rather than general operational effectiveness
 at scale.
 
@@ -150,22 +161,27 @@ threshold. The existing degradation scenarios provide ready-made test cases for
 verifying such a change, since each declares in advance what the remaining evidence
 ought to support.
 
-The second priority is to close the residual cross-boundary gap at its source. The two
-weakness pairs that still disagree both sit exactly on the \emph{pass} ceiling, and
-their cloud counterparts clear it partly through the learned code-risk component, which
-is computed from Python source and has no playbook analogue. Two routes are available:
-develop an equivalent learned signal over configuration artifacts, or normalise scores
-explicitly across branches whose available components differ. Either addresses the
-asymmetry directly, whereas adding detection rules until the pairs happen to agree would
-manufacture the result. The semantic configuration rules should also be broadened beyond
-the six categories currently implemented, and the parity set extended well beyond four
-weakness classes, since four pairs yield intervals too wide to support a statistical
-claim.
+The second priority is to close the residual coverage gaps at their source, on both
+sides of the boundary. The cloud path should run the same secret scan the private
+path already runs, so that a committed credential appears as a named finding rather
+than as an increment to a learned probability that an operator cannot interpret. The
+private path should either gain an equivalent learned signal over configuration
+artifacts or declare explicitly that no such component applies, so that a missing
+component is distinguishable from a component that found nothing. Both are coverage
+repairs and neither requires the two branches to produce equal scores, which they
+should not be expected to do: a wildcard IAM policy and a sudoers entry are not the
+same object and do not admit the same number of legitimate findings. The semantic
+configuration rules should also be broadened beyond the six categories currently
+implemented, and the weakness set extended well beyond four classes and drawn from an
+external catalogue, so that coverage is measured rather than merely demonstrated.
 
-The evaluation should then be extended to the deployment side by granting the campaign
-live-target capability, which would close the apply, post-apply verification, and
-idempotency checkpoints. This requires a verification playbook that asserts the intended
-end state and a repeated execution confirming no further change. Independently authored
+The deployment-side evaluation should then be broadened. The live-target arm establishes
+that apply, post-apply verification and repeated-run idempotency succeed against a fresh
+host, but every recorded run fell into the failure class \texttt{none}, which means the
+attribution machinery has not yet been exercised. Repeating the arm against hosts with
+divergent prior state, against several targets concurrently, and under induced partial
+failures would test whether failures are classified and surfaced as designed.
+Independently authored
 fixtures would address the self-authorship dependency in the present results.
 
 The evaluation should subsequently be extended to larger repositories, more

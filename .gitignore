@@ -212,3 +212,6 @@ dependency-check-*.zip
 
 # Backup folder
 Backup/
+# Live evaluation target (machine-specific address and private key)
+.eval-target/
+examples/eval-fixtures/ansible/deploy-inventory.ini

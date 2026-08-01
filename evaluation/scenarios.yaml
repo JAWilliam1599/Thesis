@@ -203,10 +203,22 @@ scenarios:
   #
   # These reach a real host and are skipped unless explicitly allowed with
   #   python -m evaluation.run_campaign --allow target-host
+  #
+  # Provision the host first with scripts/setup_multipass_target.sh, which
+  # writes ../deploy-inventory.ini.  Both paths below are relative to the
+  # fixture directory, and both files sit outside it: the gate scans every YAML
+  # file under the project it is pointed at, so keeping the verification
+  # playbook out of the fixture leaves its calibrated score untouched.
   # ======================================================================== #
   - id: ans-pass-deploy
     fixture: ans-pass
-    flags: ["--deploy", "--idempotence-check"]
+    flags:
+      - "--inventory"
+      - "../deploy-inventory.ini"
+      - "--verify-playbook"
+      - "../verify.yml"
+      - "--deploy"
+      - "--idempotence-check"
     expect_status: deployed
     replicates: 3
     requires: ["target-host"]
@@ -216,7 +228,10 @@ scenarios:
 
   - id: ans-reject-deploy-blocked
     fixture: ans-reject
-    flags: ["--deploy"]
+    flags:
+      - "--inventory"
+      - "../deploy-inventory.ini"
+      - "--deploy"
     expect_status: reject
     replicates: 3
     requires: ["target-host"]

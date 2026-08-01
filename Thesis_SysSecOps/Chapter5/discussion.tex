@@ -23,9 +23,10 @@ every applicable run; ten degradation scenarios behaved as predicted &
 Evaluated \\
 \hline
 RQ2 & Equivalent governance of an on-premises target and a cloud target by the
-shared risk engine & Validation, gating and dry-run attained on $59/59$
-on-premises runs; decision parity $0/4$ pairs before on-premises semantic rules,
-$2/4$ after & Evaluated (parity incomplete) \\
+shared risk engine & All seven on-premises checkpoints attained, the last three
+in a $6$-run live-target arm; three of four matched weakness classes named on
+both sides of the boundary in a shared finding vocabulary &
+Evaluated (coverage narrow) \\
 \hline
 RQ3 & Multi-tool risk estimation and deployment decision & Held-out model results
 available; complete gate-decision analysis incomplete & Partially evaluated \\
@@ -61,11 +62,13 @@ The strength of this evidence should not be overstated in two specific respects.
 The fixtures were authored by the same work that built the gate, so conformance
 shows that the implementation satisfies its specification on cases whose correct
 treatment is already known; it does not show that the specification assigns the
-right band to arbitrary real infrastructure. And several invariants rest on
-small denominators --- ten approved-review runs, sixteen rejections --- so their
-Wilson intervals remain wide despite point estimates of $1.00$. What has been
-established is internal correctness under pre-declared conditions, which is a
-weaker and more precise claim than "the gate works".
+right band to arbitrary real infrastructure. And the invariants were not all
+exercised equally often: summary persistence and scanner-status reporting held
+over all 106 runs, but the approval-record invariant was tested by ten runs and
+the two rejection invariants by sixteen. Ten clean runs show that the mechanism
+works when it is invoked; they do not show how often it would fail. What has
+been established is internal correctness under pre-declared conditions, which is
+a weaker and more precise claim than "the gate works".
 
 \subsubsection{The Gate Fails Open}
 
@@ -119,55 +122,62 @@ admits no negative answer once the integration has been built, and is therefore
 unfalsifiable as stated. The restated question asks whether the two sides of the
 boundary are governed \emph{alike}, which can fail and, as it turned out, did.
 
-The workflow-attainment half of the question is answered positively: syntax
-validation, security gating and dry run were attained on every attempted
-on-premises run, with no failures in any class. Three checkpoints --- apply,
-post-apply verification, and idempotency --- were never attempted, because the
-registered campaign is deliberately offline. Those remain evidence gaps rather
-than results, and are recorded as such.
+The workflow-attainment half of the question is answered positively across all
+seven checkpoints. Syntax validation, security gating and dry run were attained
+on every attempted on-premises run in the offline campaign, with no failures in
+any class. The remaining three --- apply, post-apply verification, and
+idempotency --- required a real host, and were closed by a live-target arm run
+against a disposable Multipass virtual machine. That arm supplies a kind of
+evidence the offline campaign structurally could not: an apply whose resulting
+state is read back and asserted against independently written expectations, a
+second apply that reports \texttt{changed=0}, and --- most importantly for the
+enforcement claim --- three runs that requested deployment of the rejected
+fixture against a reachable, authenticated host and were stopped at the gate,
+never reaching the apply stage at all. Enforcement holds at the point of
+application, not merely in simulation. The arm is small, at three replicates per
+scenario against one host and one operating system image, so it establishes that
+the deployment path completes correctly rather than that it is reliable across
+heterogeneous fleets.
 
-The decision half produced the more interesting finding. Measured before any
-on-premises semantic detection existed, zero of the four matched weakness pairs
-agreed: every cloud fixture reached \emph{review} while every on-premises
-counterpart passed (Table~\ref{tab:rq2-parity}). The cause was not a threshold
-mismatch or a scoring bug --- the two branches share a single decision function
---- but an absence of detection capability. The private-side scanner set could
-not see an \texttt{iptables} rule accepting SSH from \texttt{0.0.0.0/0}, a
-\texttt{NOPASSWD: ALL} sudoers entry, or a filesystem created without
-encryption, because \texttt{ansible-lint} enforces style rather than security
-posture and Checkov's Ansible framework returned nothing on these fixtures.
+The decision half produced the more interesting finding, and it is not a finding
+about decisions. Both branches run one decision function, and after the
+on-premises configuration rules both draw on scanner sets that name three of the
+four matched weakness classes in the same vocabulary
+(Table~\ref{tab:rq2-coverage}). An unrestricted firewall rule is reported as
+\texttt{sg\_ssh\_open} whether it appears in a security group or in an
+\texttt{iptables} task; unrestricted administrative privilege is reported as
+\texttt{iam\_wildcard} whether it comes from an IAM policy or a sudoers file.
+That shared vocabulary is the substantive achievement, because it is what makes
+the two sides comparable at all. Equal scores would not have been.
+
+The fourth class is the one that fails, and it fails on the cloud side. On the
+plaintext-secret pair it is the \emph{cloud} branch that names nothing: its
+report contains five findings about Lambda hygiene and a redundant cfn-lint
+dependency warning, none of which state that a credential was committed. The
+fixture still reaches \emph{review}, because the learned code-risk component
+scores the surrounding Python, so the decision looks correct --- but it is
+correct by accident, and the report an operator would actually read does not
+mention the secret. Deciding alike is not the same as seeing alike, and only the
+latter is auditable.
 
 This deserves emphasis because it inverts a common assumption. A shared scoring
 function and shared thresholds are frequently taken to imply consistent
 treatment across a hybrid estate. They do not. Consistency of \emph{decision
 logic} is worth little without comparable \emph{detection coverage} feeding it,
 and the boundary at which coverage diverges is invisible in any architecture
-diagram --- both branches appear to call the same gate, because they do.
+diagram --- both branches appear to call the same gate, because they do. Nor is
+such a gap reachable by tuning: a weakness that produces no finding cannot be
+scored, reviewed, or audited at any threshold, so the remedy is to add the
+missing scanner rather than to reweight the ones already present. The same
+argument applies in reverse to the learned component, which is computed from
+Python source and has no playbook analogue.
 
-A semantic configuration-rule scanner was then written for the on-premises path,
-raising agreement to two pairs of four. The honest framing of this result is
-that the capability was built \emph{in response to} the measurement, not
-designed in from the start, which is why both arms are reported. With four pairs
-the Wilson intervals overlap heavily ($[0.00, 0.49]$ against $[0.15, 0.85]$), so
-the improvement is not established statistically and is not claimed to be. What
-the run records do establish is the mechanism: each score change is deterministic
-and traceable to specific findings that previously did not exist.
-
-The two pairs that still disagree have a different character from the baseline
-gap, and this distinction carries the RQ2 conclusion. Both weaknesses are now
-detected on both sides; the on-premises fixtures score exactly $20$, which is the
-\emph{pass} ceiling, while their cloud counterparts reach $24$ and $44$ partly
-through the learned code-risk component, which contributes $4$ and $19$ points
-and is computed from Python source with no playbook analogue. The residual gap is
-thus a scoring asymmetry rather than a detection blind spot: one branch has
-access to a score component the other structurally cannot have. That is a
-narrower and more tractable problem than the one the baseline revealed, but it
-means cross-boundary equivalence is not yet achieved.
-
-Both pairs could have been closed trivially --- a rule for world-readable
-credential files, or a one-level severity increase on the ingress rule --- and
-neither was. Adjusting the rules until the pairs agreed would have manufactured
-the result RQ2 exists to test, so the two were left sitting on the boundary.
+The evidence supporting this is narrow, and the reason is the size of the
+parity set rather than the number of runs. Four weakness classes, authored by
+hand alongside the rules that detect them, are enough to show that cross-boundary
+coverage gaps exist and to locate two of them. They cannot indicate how many more
+there are, and a different four could have produced a different picture in either
+direction.
 
 \subsection{RQ3: Unified Risk-Evaluation Capability}
 \label{subsec:discussion-rq3}
@@ -282,20 +292,24 @@ The study has seven principal limitations.
     specification on cases whose correct treatment is already known. It does
     not establish that the specification assigns the right band to arbitrary
     real infrastructure, which would require independently authored cases.
-    Several invariants also rest on small denominators --- ten approved-review
-    runs, sixteen rejections --- so their Wilson intervals stay wide despite
-    point estimates of $1.00$, and decision parity rests on only four weakness
-    pairs. The prototype has additionally not been evaluated with large
-    repositories, concurrent pipelines, or a substantial private-infrastructure
-    fleet.
+    Several results also rest on very few runs --- ten approved-review runs,
+    sixteen rejections, and three replicates for each of the apply,
+    verification and idempotency checkpoints --- so they establish that the
+    mechanism works when exercised rather than how often it fails. Detection
+    coverage rests on four weakness classes. The prototype has additionally not
+    been evaluated with large repositories, concurrent pipelines, or a
+    substantial private-infrastructure fleet.
 
-    \item \textbf{Deployment-side evidence gaps.} The registered campaign is
-    deliberately offline, so three on-premises checkpoints --- apply, post-apply
-    verification, and repeated-run idempotency --- were never attempted. What
-    has been shown is that the private-side path validates, gates, and dry-runs
-    reliably, and that its \emph{review} and \emph{reject} decisions are
-    enforced. Behaviour at and after apply time against a live target remains
-    unmeasured.
+    \item \textbf{Narrow deployment-side evidence.} Apply, post-apply
+    verification, and repeated-run idempotency were measured, but only in the
+    live-target arm: three replicates of one scenario against a single
+    disposable virtual machine running one operating system image. What that
+    supports is that the deployment path completes correctly and that a
+    \emph{reject} decision blocks application against a real host. It does not
+    support claims about behaviour under host heterogeneity, concurrent targets,
+    partial failures, or hosts whose prior state differs from a fresh image ---
+    all of which are exactly the conditions under which convergence tooling
+    tends to misbehave.
 
     \item \textbf{Restricted implementation scope.} The learned component is limited to
     Python and uses features from Bandit and Semgrep. The wider prototype relies on a
@@ -322,12 +336,15 @@ The study has seven principal limitations.
     scanner-status field but no part of the decision function acts on it.
 
     \item \textbf{Unequal detection coverage across the boundary.} The two
-    branches share a decision function but not a scanner set, and the learned
-    code-risk component applies to the cloud path only. After adding semantic
-    configuration rules for the on-premises path, two of four weakness pairs
-    still receive different verdicts, with the private side sitting exactly on
-    the \emph{pass} ceiling in both cases. Cross-boundary equivalence is
-    therefore improved but not attained.
+    branches share a decision function but not a scanner set. Adding semantic
+    configuration rules brought the on-premises path to four weakness classes of
+    four, but the cloud path still names only three of four: it has no secret
+    scanner, and detects a committed credential only as a side effect of the
+    learned code-risk model scoring the surrounding Python. That model is in turn
+    unavailable to the on-premises path, which has no source-code analogue. Each
+    side therefore retains a blind spot the other does not, and coverage is
+    established over four hand-authored classes rather than a representative
+    catalogue.
 
     \item \textbf{Limited comparative and operational measures.} The study does not yet
     compare the proposed process with manual cloud operations or IaC deployment without
@@ -348,21 +365,25 @@ policy that forces \emph{review} below a coverage threshold --- would convert a
 diagnostic record into an enforced property, and the existing degradation
 scenarios already provide the test cases to verify it.
 
-The second is to close the remaining parity gap at its source. Both outstanding
-pairs sit exactly on the \emph{pass} ceiling because the learned code-risk
-component is available to the cloud branch and structurally unavailable to the
-on-premises branch. Either an equivalent learned signal for configuration
-artifacts, or an explicit normalisation of scores across branches with unequal
-component availability, would address the asymmetry directly rather than by
-adding rules until the pairs happen to agree. Extending the parity set well
-beyond four weakness classes would also narrow intervals that are currently too
-wide to support a statistical claim.
+The second is to close the remaining coverage gaps at their source, on both
+sides. The cloud branch needs the same regex secret scan the on-premises branch
+already runs, so that a committed credential is named in the report rather than
+absorbed into a learned probability; the on-premises branch needs either an
+equivalent learned signal for configuration artifacts or an explicit statement
+that no such component applies, so that a reader can tell a missing component
+from a component that found nothing. Both are coverage repairs, and neither
+requires the two branches to produce the same score. Extending the weakness set
+well beyond four classes --- and drawing it from an external catalogue rather
+than authoring it alongside the rules --- would turn a demonstration that a gap
+exists into a measurement of how large it is.
 
-The evaluation itself should then be extended to the deployment side: granting
-the campaign live-target capability would close the apply, post-apply
-verification, and idempotency checkpoints, which requires a verification
-playbook that asserts the intended end state and a repeated execution that
-confirms no further change. Independently authored fixtures would address the
+The evaluation itself should then be broadened on the deployment side. The
+live-target arm closes the apply, post-apply verification, and idempotency
+checkpoints, but against a single fresh virtual machine; the informative
+extension is to repeat it against hosts with divergent prior state, several
+targets concurrently, and induced partial failures, so that the failure-class
+attribution has something other than \texttt{none} to classify. Independently
+authored fixtures would address the
 self-authorship dependency. Subsequent evaluation should increase repository
 size, infrastructure scale, and pipeline concurrency while measuring execution
 time, resource consumption, storage growth, and cloud-service cost --- the

@@ -6,7 +6,10 @@ Section~\ref{subsec:evaluation-rqs}. The RQ1 and RQ2 results are drawn from the
 pre-registered campaign described in Section~\ref{subsec:evaluation-campaign}:
 106 runs over 30 declared scenarios, executed in a single batch on
 1~August~2026 and analysed by \texttt{evaluation/analyze\_campaign.py} from the
-persisted run, gate, approval, and rejection records alone. Every scenario's
+persisted run, gate, approval, and rejection records alone. The one exception is
+the cross-boundary coverage table, which reports finding categories rather than
+aggregates and was compiled by reading the gate reports each run record points
+to. Every scenario's
 expected decision was fixed in a version-controlled specification before any of
 the reported runs executed. The optional cost-estimation and cloud-configuration
 components, whose outputs depend on live external state, were disabled
@@ -26,7 +29,7 @@ campaign reported here.
 
 Across all 106 runs, the observed gate decision equalled the decision declared
 in advance in every case, giving a decision conformance of $100\%$
-($106/106$; Wilson 95\% interval $[0.965, 1.000]$) by
+($106/106$) by
 Equation~\ref{eq:decision-conformance}. Conformance was $1.0$ for each of the 30
 scenarios individually, so the aggregate does not conceal a scenario that failed
 consistently while others compensated. Replicated runs of the same scenario
@@ -87,32 +90,33 @@ that a single violation would be visible rather than diluted.
 \centering
 \caption{Enforcement invariants over the campaign.}
 \label{tab:rq1-invariants}
-\begin{tabular}{|L{6.6cm}|C{1.2cm}|C{1.6cm}|C{1.6cm}|C{2.4cm}|}
+\begin{tabular}{|L{8.4cm}|C{1.6cm}|C{1.8cm}|C{1.8cm}|}
 \hline
-\textbf{Invariant} & \textbf{$n$} & \textbf{Held} & \textbf{Rate} &
-\textbf{Wilson 95\%} \\
+\textbf{Invariant} & \textbf{$n$} & \textbf{Held} & \textbf{Rate} \\
 \hline
-Run produces a persisted summary & $106$ & $106$ & $1.00$ & $[0.965, 1.000]$ \\
+Run produces a persisted summary & $106$ & $106$ & $1.00$ \\
 \hline
-Gate reports a status for every scanner & $106$ & $106$ & $1.00$ & $[0.965, 1.000]$ \\
+Gate reports a status for every scanner & $106$ & $106$ & $1.00$ \\
 \hline
-Unapproved \emph{review} halts & $43$ & $43$ & $1.00$ & $[0.918, 1.000]$ \\
+Unapproved \emph{review} halts & $43$ & $43$ & $1.00$ \\
 \hline
-Approved \emph{review} writes an approval record & $10$ & $10$ & $1.00$ & $[0.723, 1.000]$ \\
+Approved \emph{review} writes an approval record & $10$ & $10$ & $1.00$ \\
 \hline
-\emph{Reject} blocks deployment & $16$ & $16$ & $1.00$ & $[0.806, 1.000]$ \\
+\emph{Reject} blocks deployment & $16$ & $16$ & $1.00$ \\
 \hline
-\emph{Reject} writes a rejection record & $16$ & $16$ & $1.00$ & $[0.806, 1.000]$ \\
+\emph{Reject} writes a rejection record & $16$ & $16$ & $1.00$ \\
 \hline
 \end{tabular}
 \end{table}
 
-Every invariant held on every applicable run. The Wilson intervals are reported
-because they are the honest expression of what a small denominator supports: ten
-approved-review runs without a violation are consistent with a true failure rate
-as high as roughly $28\%$, so the approval-record invariant is far less firmly
-established than the summary-persistence invariant measured over 106 runs, even
-though both show a point estimate of $1.00$.
+Every invariant held on every applicable run. The denominators matter as much as
+the rates, and they are not comparable to one another. Summary persistence and
+scanner-status reporting were exercised on all 106 runs; the approval-record
+invariant was exercised on ten, and the two rejection invariants on sixteen. A
+rate of $1.00$ over ten runs is a much weaker statement than the same rate over
+106 --- it is consistent with a defect that occurs infrequently enough to have
+been missed --- so the last four rows should be read as evidence that the
+mechanism works when exercised, not as an estimate of how often it fails.
 
 \subsubsection{Behaviour Under Degraded Assurance}
 
@@ -226,147 +230,188 @@ the size of the change.
 \subsubsection{Checkpoint Attainment}
 
 Table~\ref{tab:rq2-checkpoints} reports the seven operational checkpoints over
-the 59 Ansible-branch runs in the campaign. Attainment is computed over
-attempted checkpoints only: when the gate returns \emph{reject}, the dry run is
-never attempted, and counting that as a failure would penalise the system for
+the 65 Ansible-branch runs, separated into the 59 runs of the offline campaign
+and the 6 runs of the live-target arm. Attainment is computed over attempted
+checkpoints only: when the gate returns \emph{reject}, the dry run is never
+attempted, and counting that as a failure would penalise the system for
 behaving correctly.
+
+The offline campaign is deliberately hermetic, so the two scenarios that touch a
+real node are skipped unless the \texttt{target-host} capability is granted at
+invocation. Granting it requires a host to grant it against. The live-target arm
+therefore provisions a disposable Ubuntu~22.04 virtual machine through Multipass,
+injects a dedicated SSH key pair at first boot, and points the orchestrator at an
+inventory file naming that machine in the \texttt{appservers} group. Two
+scenarios run against it: \texttt{ans-pass-deploy}, which carries the clean
+fixture through apply, post-apply verification and a repeated apply; and
+\texttt{ans-reject-deploy-blocked}, which requests deployment of the rejected
+fixture and must not get one. All six runs were decision- and status-conformant.
 
 \begin{table}[ht]
 \centering
-\caption{On-premises checkpoint attainment across 59 Ansible-branch runs.}
+\caption{On-premises checkpoint attainment across 65 Ansible-branch runs.}
 \label{tab:rq2-checkpoints}
-\begin{tabular}{|L{4.6cm}|C{1.3cm}|C{1.6cm}|C{1.7cm}|C{2.8cm}|}
+\begin{tabular}{|L{5.2cm}|C{1.4cm}|C{1.8cm}|C{1.4cm}|C{1.8cm}|}
 \hline
-\textbf{Checkpoint} & \textbf{$n$} & \textbf{Attained} & \textbf{Rate} &
-\textbf{Wilson 95\%} \\
+\textbf{Checkpoint} & \multicolumn{2}{c|}{\textbf{Offline (59)}} &
+\multicolumn{2}{c|}{\textbf{Live target (6)}} \\
+\cline{2-5}
+ & \textbf{$n$} & \textbf{Attained} & \textbf{$n$} & \textbf{Attained} \\
 \hline
-Target reachability & $0$ & --- & --- & not attempted \\
+Target reachability & $0$ & --- & $6$ & $6$ \\
 \hline
-Syntax validation & $59$ & $59$ & $1.00$ & $[0.939, 1.000]$ \\
+Syntax validation & $59$ & $59$ & $6$ & $6$ \\
 \hline
-Security gate & $59$ & $59$ & $1.00$ & $[0.939, 1.000]$ \\
+Security gate & $59$ & $59$ & $6$ & $6$ \\
 \hline
-Dry run & $31$ & $31$ & $1.00$ & $[0.890, 1.000]$ \\
+Dry run & $31$ & $31$ & $3$ & $3$ \\
 \hline
-Apply & $0$ & --- & --- & not attempted \\
+Apply & $0$ & --- & $3$ & $3$ \\
 \hline
-Post-apply verification & $0$ & --- & --- & not attempted \\
+Post-apply verification & $0$ & --- & $3$ & $3$ \\
 \hline
-Repeated-run idempotency & $0$ & --- & --- & not attempted \\
+Repeated-run idempotency & $0$ & --- & $3$ & $3$ \\
 \hline
 \end{tabular}
 \end{table}
 
-No run recorded a failure of any attempted checkpoint; all 59 runs were
-classified in the failure class \texttt{none}. Three checkpoints were never
-attempted, because the registered campaign is deliberately offline: the two
-scenarios that deploy against a live node are skipped unless that capability is
-explicitly granted at invocation. The consequence is stated plainly rather than
-glossed: the campaign establishes that the on-premises path validates, gates,
-and dry-runs reliably, and it establishes nothing about apply-time behaviour,
-post-apply state, or idempotency. Those three checkpoints remain evidence gaps.
+No run in either arm recorded a failure of any attempted checkpoint; all 65 runs
+were classified in the failure class \texttt{none}. Three observations from the
+live arm carry more weight than the rates themselves, because each is a distinct
+kind of evidence that the offline campaign structurally could not produce.
 
-\subsubsection{Decision Parity}
+First, apply is not merely a zero exit code. Post-apply verification is performed
+by a separate playbook that reads the resulting state back off the host and
+asserts against it: that the service directory exists with mode \texttt{0750}
+owned by the service account, that the configuration file exists with mode
+\texttt{0640}, that the account exists with a non-interactive shell, and that the
+deployed configuration binds the service to the loopback interface. Its expected
+values are written literally rather than read from the fixture's variables ---
+asserting against the same variables that produced the state would accept a wrong
+variable value as correct. Nine assertions executed with zero failures on every
+apply run.
+
+Second, idempotency is measured rather than assumed. Each \texttt{ans-pass-deploy}
+run applies the playbook a second time and parses the resulting \texttt{PLAY
+RECAP}; all three recorded \texttt{changed=0}, so the converged state is stable
+under re-execution.
+
+Third, and most directly relevant to enforcement, the three
+\texttt{ans-reject-deploy-blocked} runs requested deployment explicitly and never
+received one. Their recorded stage sequences terminate after
+\texttt{ansible.gate}: no dry run, no apply, no verification. The reject
+decision blocked deployment against a live, reachable, credential-verified host
+rather than in simulation.
+
+These results should not be over-read, and the run counts are the reason. The
+last four checkpoints in Table~\ref{tab:rq2-checkpoints} rest on three runs
+each, executed against one host running one operating system image from a fresh
+boot. Three successes are enough to show that the apply, verification and
+idempotency machinery works and produces the records it claims to; they are far
+too few to characterise how often it fails. The same applies to the enforcement
+result: three blocked deployments demonstrate that the gate stops a rejected
+change at a live host, but a defect that manifests only occasionally would not
+have appeared in three attempts. What the live arm establishes is that the
+deployment path completes correctly under the conditions tested, not that it is
+reliable across host heterogeneity, concurrent targets, or partial failures.
+
+\subsubsection{Detection Coverage Across the Boundary}
 \label{subsec:evaluation-results-parity}
 
 Checkpoint attainment shows that the on-premises path \emph{runs} the same
-workflow. Whether it \emph{decides} the same way is a separate question, and the
-one on which RQ2 turns. Four matched fixture pairs each express a single
-weakness class twice, once as cloud infrastructure code and once as on-premises
-configuration.
+workflow. Whether it \emph{sees} the same things is a separate question, and the
+one on which RQ2 turns.
 
-The first measurement was taken before any on-premises semantic detection
-existed, and is reported here as the baseline arm. Its result was unambiguous:
-zero of the four pairs agreed. Every cloud fixture reached \emph{review}; every
-on-premises counterpart passed. Inspection of the finding breakdowns showed why.
-The private-side path carried no scanner with semantic security coverage ---
-\texttt{ansible-lint} enforces style, Checkov's Ansible framework returned no
-findings on any of these fixtures, and the regex secret scan matches only
-credential-shaped strings. An \texttt{iptables} rule accepting SSH from
-\texttt{0.0.0.0/0}, a \texttt{NOPASSWD: ALL} sudoers entry, and a filesystem
-created with no encryption layer were all invisible to it. Only the plaintext
-credential was detected at all, and even then the resulting score of $20$ landed
-exactly on the \emph{pass} ceiling.
+It is tempting to state that question as decision equality --- that the same
+weakness should receive the same band on both sides --- but that is the wrong
+property to demand. An \texttt{iptables} rule is not a security group, and a
+\texttt{sudoers} entry is not an IAM policy. They differ in blast radius, in how
+easily they are reverted, and in how many independent defects a scanner can
+legitimately raise against them. Requiring identical bands would assert an
+equivalence between artifacts that are not equivalent, and it could be satisfied
+trivially by adjusting weights until the fixtures agreed, which would measure the
+adjustment rather than the system.
 
-This finding motivated a semantic configuration-rule scanner for the
-on-premises path (\texttt{security\_gate/scanners/ansible\_rules\_adapter.py}),
-which applies the same classes of check the cloud path already had, emitting the
-same finding categories and severities so that both branches deduplicate and
-score through identical logic. Because the rules were built in response to the
-measurement, reporting only the post-rule figures would present a capability as
-though it had been designed in from the start. Both arms are therefore declared
-in the campaign specification and executed under one code state, one
-environment, and one provenance record; the baseline arm is reproduced by
-disabling the rules at invocation. Table~\ref{tab:rq2-parity} reports both.
+The property that does matter is weaker and more fundamental: a weakness class
+the gate can see on one side of the boundary should not be \emph{invisible} on
+the other. A weakness that produces no finding cannot be scored, cannot be
+routed to review, and cannot be audited afterwards, whatever the thresholds are
+set to. Detection coverage is therefore measured directly: for each matched
+pair, did the branch emit a finding whose category names the weakness the
+fixture encodes? The criterion is applied identically to both branches, and a
+generic style finding that happens to touch the same artifact does not count as
+detection. Table~\ref{tab:rq2-coverage} compiles the answer from the gate
+reports referenced by each run record.
 
 \begin{table}[ht]
 \centering
-\small
-\caption{Cross-boundary treatment of the same weakness, before and after the
-on-premises semantic rules. Scores are medians over three replicates, which were
-identical.}
-\label{tab:rq2-parity}
-\begin{tabular}{|L{2.5cm}|L{3.5cm}|C{1.9cm}|C{1.9cm}|C{1.1cm}|C{1.1cm}|}
+\caption{Findings naming each weakness class, by branch. Categories are those
+emitted in the persisted gate reports; ``---'' denotes that no finding
+identified the weakness.}
+\label{tab:rq2-coverage}
+\begin{tabular}{|L{3.0cm}|L{5.0cm}|L{5.4cm}|}
 \hline
-\textbf{Arm} & \textbf{Weakness} & \textbf{Cloud} & \textbf{On-prem} &
-\textbf{Gap} & \textbf{Agree} \\
+\textbf{Weakness} & \textbf{Cloud branch} & \textbf{On-premises branch} \\
 \hline
-Baseline & Open ingress          & review ($24$) & pass ($0$)  & $24$ & No \\
+Open ingress & \texttt{sg\_ssh\_open} (critical) &
+\texttt{sg\_ssh\_open} (critical) \\
 \hline
-Baseline & Over-privileged access & review ($59$) & pass ($0$)  & $59$ & No \\
+Over-privileged access & \texttt{iam\_wildcard} (critical) &
+\texttt{iam\_wildcard} (critical); \texttt{file\_world\_writable} (high) \\
 \hline
-Baseline & Plaintext secret      & review ($44$) & pass ($20$) & $24$ & No \\
+Plaintext secret & --- (no finding names the credential) &
+\texttt{secret\_password} (high); \texttt{secret\_token} (high) \\
 \hline
-Baseline & Unencrypted storage   & review ($34$) & pass ($10$) & $24$ & No \\
+Unencrypted storage & \texttt{ebs\_encryption} (medium) &
+\texttt{storage\_encryption} (high);
+\texttt{storage\_mount\_encryption} (medium) \\
 \hline
-\multicolumn{4}{|l|}{\textbf{Baseline agreement}} &
-\multicolumn{2}{c|}{$0/4$, Wilson $[0.00, 0.49]$} \\
-\hline
-Rules & Open ingress          & review ($24$) & pass ($20$)   & $4$  & No  \\
-\hline
-Rules & Over-privileged access & review ($59$) & review ($30$) & $29$ & Yes \\
-\hline
-Rules & Plaintext secret      & review ($44$) & pass ($20$)   & $24$ & No  \\
-\hline
-Rules & Unencrypted storage   & review ($34$) & review ($25$) & $9$  & Yes \\
-\hline
-\multicolumn{4}{|l|}{\textbf{Agreement with rules enabled}} &
-\multicolumn{2}{c|}{$2/4$, Wilson $[0.15, 0.85]$} \\
+\textbf{Coverage} & $3/4$ & $4/4$ \\
 \hline
 \end{tabular}
 \end{table}
 
-Agreement improved from zero pairs to two. The Wilson intervals overlap heavily
---- $[0.00, 0.49]$ against $[0.15, 0.85]$ --- so with only four pairs this
-comparison does not establish the improvement statistically, and it is not
-claimed to. What the run-level records do establish is the mechanism: the
-per-fixture score changes are deterministic and attributable to specific
-findings. Over-privileged access moved from $0$ to $30$ points because the
-sudoers entry and the world-writable directory became visible; unencrypted
-storage moved from $10$ to $25$ because the filesystem creation and the
-persistent mount became visible. These are not statistical effects but direct
-consequences of detection capability that previously did not exist.
+Three of the four weakness classes are named on both sides, and the identifiers
+are the same on both sides. That is the substantive result rather than the
+counts. An unrestricted firewall rule is reported as \texttt{sg\_ssh\_open}
+whether it was found in a security group or in an \texttt{iptables} task, and
+unrestricted administrative privilege is reported as \texttt{iam\_wildcard}
+whether it came from an IAM policy or from a sudoers file. The on-premises rules
+in \texttt{security\_gate/scanners/ansible\_rules\_adapter.py} were written to
+emit the cloud-side categories deliberately, so a weakness carries one name
+across the boundary and both branches deduplicate and score it through a single
+code path. Without that shared vocabulary the two columns of
+Table~\ref{tab:rq2-coverage} would not be comparable at all.
 
-The two remaining disagreements share a single cause, and it is a different one
-from the baseline gap. Both on-premises fixtures now score exactly $20$ --- the
-\emph{pass} ceiling, since the threshold is inclusive --- while their cloud
-counterparts score $24$ and $44$. The open-ingress pair is separated by four
-points and the plaintext-secret pair by twenty-four, and in both cases the cloud
-side clears the threshold in part through the learned code-risk component, which
-contributes $4$ and $19$ points respectively. That component is computed from
-Python source and has no analogue for a playbook. The residual gap is therefore
-no longer a detection gap --- both weaknesses are now seen on both sides --- but
-a scoring asymmetry: one branch has access to a score component the other
-structurally cannot have.
+The fourth class is where coverage breaks, and it breaks on the side one would
+not predict. On the plaintext-secret pair the \emph{cloud} branch emits no
+finding naming the hardcoded credential. Its report contains five findings about
+Lambda hygiene --- a missing dead-letter queue, no concurrency limit, no VPC
+placement, unencrypted environment variables --- and a redundant dependency
+warning from cfn-lint, none of which mention the secret. The fixture still
+reaches \emph{review}, because the learned code-risk component scores the
+function's Python source, but that contribution is a probability rather than a
+statement: nothing an operator would read tells them that a credential was
+committed. The on-premises branch, which runs a dedicated regex secret scan,
+names it twice.
 
-It would have been straightforward to close the plaintext-secret pair by adding
-a rule for credential files readable by all users, and to close the open-ingress
-pair by raising the severity of the ingress rule by one level. Neither was done.
-The rules were written to cover the weakness classes the fixtures express, with
-severities mirroring the existing cloud heuristics, and were not adjusted
-afterwards to move any pair across a threshold. Tuning them until the pairs
-agreed would have manufactured exactly the result RQ2 exists to test, and the
-two pairs were left sitting on the boundary rather than nudged over it.
+This is worth separating from a mis-set threshold, because no adjustment to the
+weights or the bands would repair it. A weakness that produces no finding cannot
+be scored, reviewed, or audited at any threshold; the report is silent about it
+regardless of what the arithmetic does. The cloud path lacks a secret scanner,
+and the remedy is to give it one, not to tune what it already collects. The
+converse holds for the learned component, which is computed from Python source
+and has no playbook analogue --- the on-premises path cannot acquire it by
+reweighting either.
+
+What the four pairs establish is therefore narrow but specific. Both branches
+run one decision function, and after the on-premises configuration rules they
+draw on scanner sets that name the same weaknesses in the same vocabulary for
+three of four classes. They do not draw on equivalent sets: each side retains a
+blind spot the other does not, and the blind spots were found only by expressing
+the same weakness twice and comparing the resulting reports. Four
+hand-authored classes are enough to demonstrate that such gaps exist and to
+locate two of them; they are not enough to estimate how many remain.
 
 \subsection{RQ3: Unified Risk-Evaluation Capability}
 \label{subsec:results-rq3}

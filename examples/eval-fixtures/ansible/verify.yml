@@ -1,0 +1,82 @@
+---
+# Post-deployment assertions for the ans-pass fixture.
+#
+# Deliberately kept OUTSIDE the fixture directory: the gate scans every YAML
+# file under the project it is pointed at, so adding this file to
+# ansible/pass/ would change that fixture's calibrated score and invalidate the
+# RQ1 figures already reported.
+#
+# Expected values are hard-coded rather than read from group_vars.  Asserting
+# against the same variables that produced the state would accept a wrong
+# variable value as correct; the point of verification is to check the end
+# state against an independent statement of what it should be.
+- name: Verify the application node reached the intended state
+  hosts: appservers
+  become: true
+  gather_facts: false
+
+  tasks:
+    - name: Collect the application directory state
+      ansible.builtin.stat:
+        path: /opt/appsvc
+      register: verify_app_dir
+
+    - name: Collect the configuration file state
+      ansible.builtin.stat:
+        path: /opt/appsvc/app.conf
+      register: verify_app_conf
+
+    - name: Read the application user entry
+      ansible.builtin.getent:
+        database: passwd
+        key: appsvc
+      register: verify_app_user
+      failed_when: false
+
+    - name: Record the application user entry, empty when the account is absent
+      ansible.builtin.set_fact:
+        verify_app_passwd: >-
+          {{ (verify_app_user.ansible_facts | default({})).get('getent_passwd', {}).get('appsvc', []) }}
+
+    - name: Assert the application directory exists with restrictive permissions
+      ansible.builtin.assert:
+        that:
+          - verify_app_dir.stat.exists
+          - verify_app_dir.stat.isdir
+          - verify_app_dir.stat.mode == '0750'
+          - verify_app_dir.stat.pw_name == 'appsvc'
+          - verify_app_dir.stat.gr_name == 'appsvc'
+        fail_msg: >-
+          /opt/appsvc is missing, is not a directory, or does not have mode 0750
+          owned by appsvc:appsvc.
+
+    - name: Assert the configuration file exists and is not world-readable
+      ansible.builtin.assert:
+        that:
+          - verify_app_conf.stat.exists
+          - verify_app_conf.stat.isreg
+          - verify_app_conf.stat.mode == '0640'
+          - verify_app_conf.stat.pw_name == 'appsvc'
+        fail_msg: >-
+          /opt/appsvc/app.conf is missing or does not have mode 0640 owned by
+          appsvc.
+
+    - name: Assert the service account exists and cannot log in
+      ansible.builtin.assert:
+        that:
+          - verify_app_passwd | length > 5
+          - "'nologin' in verify_app_passwd[5]"
+        fail_msg: appsvc is absent or has an interactive login shell.
+
+    - name: Read the deployed configuration
+      ansible.builtin.slurp:
+        src: /opt/appsvc/app.conf
+      register: verify_app_conf_content
+
+    - name: Assert the service is bound to the loopback interface only
+      ansible.builtin.assert:
+        that:
+          - "'listen_address=127.0.0.1' in verify_app_conf_content.content | b64decode"
+          - "'listen_port=8080' in verify_app_conf_content.content | b64decode"
+        fail_msg: >-
+          The deployed configuration does not bind the service to 127.0.0.1:8080.

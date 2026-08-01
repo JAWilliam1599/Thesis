@@ -16,6 +16,8 @@ eval-fixtures/
   cdk/{pass,review,reject}/       public-cloud fixtures, one per decision band
   parity/<pair-id>/{cdk,ansible}/ paired fixtures encoding the same weakness
                                   on both sides of the hybrid boundary
+  ansible/verify.yml              post-apply assertions for the live-target arm
+  ansible/deploy-inventory.ini    generated; points at the Multipass VM
 ```
 
 ## Declared expectations
@@ -127,6 +129,41 @@ The rules were written to cover the weakness classes the pairs express, and
 their severities mirror the existing CDK heuristics. They were not adjusted
 afterwards to move any pair across a threshold; `open-ingress` and
 `plaintext-secret` were left sitting on the boundary rather than nudged over it.
+
+## Live target (`ansible/verify.yml`, `ansible/deploy-inventory.ini`)
+
+Most of the campaign runs offline, which leaves the RQ2 checkpoints that only a
+real host can evidence — reachability, apply, post-apply verification and
+repeated-run idempotency — unattempted. The `ans-pass-deploy` and
+`ans-reject-deploy-blocked` scenarios close them against a throwaway Multipass
+VM. They are gated behind `--allow target-host` and never run by default.
+
+```bash
+scripts/setup_multipass_target.sh          # launch the VM, write the inventory
+.venv/bin/python -m evaluation.run_campaign \
+    --scenario ans-pass-deploy --scenario ans-reject-deploy-blocked \
+    --allow target-host --campaign-id rq2_deploy
+scripts/setup_multipass_target.sh --destroy
+```
+
+Two details are load-bearing:
+
+- **The inventory is a file with an `[appservers]` group, not `--target-host`.**
+  `--target-host H` builds the inline inventory `H,`, which puts the host in
+  `all`/`ungrouped`. The fixture playbooks declare `hosts: appservers`, so
+  nothing would match — and `ansible-playbook` exits 0 with an empty PLAY RECAP
+  when nothing matches, so a deployment that applied nothing would be recorded
+  as a successful apply.
+- **`verify.yml` sits above the fixtures, not inside one.** The gate scans every
+  YAML file under the project it is pointed at, so adding it to `ansible/pass/`
+  would change that fixture's calibrated score of 0. Its expected values are
+  hard-coded rather than read from `group_vars`: asserting against the same
+  variables that produced the state would accept a wrong variable value as
+  correct.
+
+`deploy-inventory.ini` and the generated key pair under `.eval-target/` are
+gitignored; [`deploy-inventory.ini.example`](ansible/deploy-inventory.ini.example)
+records the expected shape.
 
 ## Safety
 

@@ -34,8 +34,8 @@ The evaluation was guided by the following research questions:
 
     \item[\textbf{RQ2.}] \textbf{Cross-boundary enforcement equivalence:} When the
     same class of weakness is expressed once as public-cloud infrastructure code
-    and once as on-premises configuration, does the shared risk engine assign it
-    the same decision band on both sides of the hybrid boundary, and does the
+    and once as on-premises configuration, does the shared risk engine
+    \emph{detect} it on both sides of the hybrid boundary, and does the
     on-premises path attain the same operational checkpoints --- reachability,
     validation, gating, dry run, apply, post-apply verification, and repeated-run
     idempotency --- as the cloud path?
@@ -52,11 +52,16 @@ completes every run, so a completion rate cannot by itself distinguish a working
 security control from an inert one. Conformance to a declared expectation, and
 enforcement of the resulting decision, are the properties that carry evidential
 weight; completion is reported only as a supporting measure. Second, RQ2 is
-stated as a question about equivalence rather than as an assumption of it. An
+stated as a question about detection rather than about decision equality. An
 earlier formulation asked only whether the process \emph{could be applied} to an
-on-premises node, which the prototype's existence already answers. Asking
-whether the two boundaries treat the same weakness alike admits a negative
-answer, and Section~\ref{subsec:evaluation-results-parity} reports one.
+on-premises node, which the prototype's existence already answers. A later one
+asked whether both sides reach the same decision band --- but the two sides are
+not the same artifact, and demanding identical bands would assert an equivalence
+between a firewall rule and a security group that does not hold, while being
+satisfiable by simply retuning weights. What can fail, and what matters
+operationally, is whether a weakness visible on one side is invisible on the
+other. Section~\ref{subsec:evaluation-results-parity} reports a case where it
+was.
 
 
 Table~\ref{tab:rq-evaluation-map} presents the relationship between the research
@@ -80,10 +85,10 @@ confusion matrix, enforcement-invariant satisfaction, degradation behaviour, and
 gate overhead \\
 \hline
 RQ2 & Paired cloud/on-premises fixtures expressing the same weakness class, and
-checkpoint attainment on an existing Linux node reached over a mesh-VPN
-connection & Paired gate decisions and scores, connectivity results, dry-run and
-apply records, verification results, and idempotency counters & Decision
-agreement per pair, score gap, checkpoint attainment rate, and failure-class
+checkpoint attainment on a Linux node reached over SSH & Per-branch finding
+categories, paired gate scores, connectivity results, dry-run and
+apply records, verification results, and idempotency counters & Detection
+coverage per weakness class, checkpoint attainment rate, and failure-class
 distribution \\
 \hline
 RQ3 & Held-out classifier evaluation and controlled risk-decision cases & True labels,
@@ -151,9 +156,10 @@ fixture and fails if any has drifted outside its declared band, so a scanner
 upgrade that silently changes the arithmetic is caught rather than absorbed. An
 important methodological constraint applies to the parity pairs: their declared
 bands are \emph{descriptive}, recorded from measurement, and were not adjusted
-to make the two branches agree. Tuning the fixtures until both sides returned
-the same decision would have manufactured precisely the result that RQ2 exists
-to test.
+to bring the two branches into line. Tuning the fixtures or the weights until
+both sides returned the same band would have manufactured a result while leaving
+the question RQ2 actually asks --- whether each side can see the weakness at all
+--- untouched.
 
 \subsubsection{Scenario Matrix}
 
@@ -169,19 +175,15 @@ from the calibrated breakdown, so the scenario tests a prediction rather than
 merely recording whatever occurs. Eight \emph{parity} scenarios, replicated
 three times each, submit the four pairs, and four \emph{parity baseline}
 scenarios repeat the on-premises half of each pair with the semantic
-configuration rules disabled, for the reason given below. Two further scenarios
-exercise real deployment against a live node and are skipped unless that
-capability is explicitly granted, keeping the offline campaign self-contained.
-
-The baseline arm exists because the on-premises detection rules were written
-\emph{in response to} the first parity measurement, which found that the private
-side of the boundary could not see three of the four weakness classes at all.
-Reporting only the post-rule figures would present a capability as though it had
-been designed in from the start, and would make the improvement unverifiable.
-Declaring both arms in one specification instead lets a single campaign produce
-the before and after measurements under an identical code state, environment,
-and provenance record, so the difference between them is attributable to the
-rules rather than to anything that changed between two separate campaigns.
+configuration rules disabled; these are retained as a regression check that the
+rules are the component responsible for the on-premises findings, and are not
+reported separately. Two further scenarios,
+replicated three times each, exercise real deployment against a live node; they
+are skipped unless the \texttt{target-host} capability is explicitly granted,
+which keeps the offline campaign self-contained and reproducible without any
+external dependency. They are reported separately as the live-target arm, run
+against a disposable Multipass virtual machine provisioned by
+\texttt{scripts/setup\_multipass\_target.sh}.
 
 \subsubsection{Controlling Non-Determinism}
 
@@ -211,10 +213,16 @@ directory.
 
 All reported statistics are computed by \texttt{evaluation/analyze\_campaign.py}
 from those persisted records alone; the analysis program never re-executes the
-pipeline. Proportions are reported with Wilson score intervals at the 95\%
-level, which behave sensibly at the small sample sizes and boundary proportions
-this campaign produces, where a normal approximation would give intervals
-extending below zero or collapsing to zero width. Durations are reported as
+pipeline. Proportions are reported as a count over the number of runs to which
+the measure applied, rather than as a percentage alone. The denominator is
+carried alongside every rate because several of them are small --- some
+invariants and checkpoints are exercised by ten runs or fewer --- and a rate of
+$1.00$ over ten runs supports a much weaker claim than the same rate over 106.
+No confidence intervals are reported: the campaign's replicate counts were
+chosen to cover the declared scenarios rather than to estimate failure
+frequencies, and an interval computed over three or ten runs would suggest a
+precision the design does not provide. The run counts are stated instead, so
+that the strength of each result is visible directly. Durations are reported as
 medians with inter-quartile ranges rather than means, because pipeline stage
 times are right-skewed by occasional tool start-up costs.
 
@@ -268,8 +276,8 @@ declared for that scenario in advance:
 \end{equation}
 
 where $d_{\mathrm{obs}}(r)$ and $d_{\mathrm{exp}}(r)$ denote the observed and
-pre-declared decision for run $r$. Conformance is reported both in aggregate,
-with a Wilson interval, and as a confusion matrix over the three decision bands,
+pre-declared decision for run $r$. Conformance is reported both in aggregate and
+as a confusion matrix over the three decision bands,
 so that a systematic bias towards permissiveness or towards over-blocking would
 be visible rather than averaged away.
 
@@ -296,16 +304,27 @@ recorded per run and reported as medians with inter-quartile ranges.
 RQ2 examined whether the two sides of the hybrid boundary are governed alike.
 This has two parts, which are measured separately: whether the on-premises path
 can attain the same operational checkpoints as the cloud path, and whether the
-shared risk engine reaches the same decision when confronted with the same class
-of weakness on either side.
+shared risk engine detects the same class of weakness when it is expressed on
+either side.
 
 The on-premises target was a Linux virtual machine represented in an Ansible
-inventory and configured through an Ansible playbook, reached over a mesh-VPN
-connection between the public-cloud and on-premises domains. The virtual machine
-retained its existing operating environment and was therefore treated as the
-private-side target of the hybrid case study. The same risk engine, scoring
-rules, and decision thresholds applied to public-cloud changes governed this
-private-side target.
+inventory and configured through an Ansible playbook. For the live-target arm it
+was a disposable Ubuntu~22.04 instance provisioned through Multipass and reached
+over SSH with a purpose-generated key pair injected at first boot; the hybrid
+case study of Section~\ref{sec:implementation} instead reaches an equivalent
+private-side host over a mesh-VPN connection between the two domains. The
+distinction is one of transport only --- in both cases the orchestrator sees an
+inventory entry it must reach, authenticate to, and converge --- and using a
+disposable instance keeps the measurement reproducible by anyone with the
+provisioning script. The same risk engine, scoring rules, and decision
+thresholds applied to public-cloud changes governed this private-side target.
+
+The inventory is supplied as a file declaring the host in the
+\texttt{appservers} group rather than as a bare hostname on the command line.
+This is a correctness requirement, not a preference: the fixture playbooks target
+that group, and \texttt{ansible-playbook} exits successfully with an empty
+\texttt{PLAY RECAP} when no host matches a play, so a group mismatch would record
+a deployment that applied nothing as a successful apply.
 
 \subsubsection{Checkpoint Attainment}
 
@@ -340,10 +359,10 @@ assessment, gate-enforcement, configuration-execution, or target-verification fa
 This classification separated failures caused by the external infrastructure from those
 caused by the implementation of the proposed process.
 
-\subsubsection{Decision Parity}
+\subsubsection{Detection Coverage}
 
 Checkpoint attainment establishes that the on-premises path \emph{runs} the same
-workflow. It does not establish that the workflow \emph{decides} the same way.
+workflow. It does not establish that the workflow \emph{sees} the same things.
 To test the latter, four weakness classes were selected that have a faithful
 expression in both technologies: unrestricted network ingress, a plaintext
 credential committed to the repository, over-privileged access, and unencrypted
@@ -351,20 +370,23 @@ storage. Each was authored twice --- once as CDK infrastructure code and once as
 an Ansible role --- forming a matched pair in which the intended security defect
 is held constant and only the boundary varies.
 
-For each pair, the modal decision and the median score of each branch were taken
-across replicates, and the pair was scored as agreeing when both branches
-returned the same decision band. Agreement across pairs is reported as a
-proportion with a Wilson interval, together with the absolute score gap per pair,
-which indicates how far apart the two assessments are even when the band happens
-to coincide.
+The measured quantity is coverage, not agreement. For each pair and each branch,
+the persisted gate report was examined for a finding whose category names the
+weakness the fixture encodes; the branch was credited with detection only if such
+a finding was present. The criterion was applied identically to both branches,
+and a generic style or hygiene finding that happens to touch the same artifact
+was not credited, since a report that names the wrong problem gives an operator
+no signal that the real one exists.
 
-The interpretation of a disagreement requires care. A pair may disagree because
-one branch over-reports, because the other under-reports, or because the two
-scanner sets simply address different aspects of a system. The analysis
-therefore reports, alongside each disagreement, the finding breakdown that
-produced each side's score, so that the cause can be attributed to a specific
-presence or absence of detection capability rather than left as an unexplained
-numeric difference.
+Decision agreement was deliberately \emph{not} adopted as the measure. The two
+sides of a pair are not the same artifact --- a host firewall rule and a
+security group differ in blast radius, in reversibility, and in how many distinct
+controls they can violate --- so requiring identical bands would assert an
+equivalence that does not hold, and could be satisfied by adjusting weights
+rather than by improving detection. Where a branch fails to detect a weakness,
+the finding breakdown of both sides is reported so that the cause can be
+attributed to a specific absence of capability rather than left as an
+unexplained numeric difference.
 
 \subsection{Risk-Scoring Evaluation}
 \label{subsec:evaluation-rq3}
@@ -537,13 +559,14 @@ specification before the reported runs execute, so an unexpected result cannot b
 reinterpreted after the fact. The degradation scenarios declare an outcome derived
 arithmetically from the calibrated breakdown, so they test a prediction that can
 fail. Most importantly, the parity fixtures were deliberately \emph{not} adjusted
-to agree; had they been tuned until both branches returned the same band, the
-resulting agreement figure would have measured the tuning rather than the system.
+to bring the branches into line; had the rules or weights been tuned until both
+sides returned the same band, the resulting figure would have measured the tuning
+rather than the system.
 
-The parity design covers four weakness classes. This is sufficient to demonstrate
-that a systematic difference exists between the two boundaries, but not to
-quantify its full extent, and a different selection of weakness classes could
-yield a different agreement rate. Relatedly, any parity gap observed is a
+The parity design covers four weakness classes. This is sufficient to show that
+coverage gaps exist and to locate the particular ones reported, but not to
+quantify how many remain, and a different selection of weakness classes could
+yield a different coverage rate. Relatedly, any coverage gap observed is a
 property of the particular scanner set assembled in this prototype, not an
 inherent property of the process architecture; substituting a scanner with
 broader on-premises coverage would change the measurement without changing the
