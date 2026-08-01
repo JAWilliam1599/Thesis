@@ -1,0 +1,27 @@
+---
+# REJECT-band fixture variables.
+#
+# SAFETY NOTE: every credential below is a syntactically valid but
+# non-functional placeholder, present solely so the secret scanner has
+# something to detect.  None of these values authenticate to anything.
+app_user: appsvc
+app_root: /opt/appsvc
+app_artifact_url: http://artifacts.internal.example/app.tar.gz
+app_bootstrap_url: http://artifacts.internal.example/bootstrap.sh
+
+aws_access_key_id: AKIAFIXTURE0NOTREAL0
+aws_secret_access_key: FIXTUREnotarealsecretkey0000000000000000
+
+app_db:
+  host: db.internal.example
+  user: root
+  password: FIXTURE-not-a-real-password-2
+
+app_service:
+  api_key: FIXTUREnotarealapikey0000
+
+deploy_private_key: |
+  -----BEGIN RSA PRIVATE KEY-----
+  RklYVFVSRSBLRVkgTUFURVJJQUwgLSBOT1QgQSBSRUFMIEtFWSAtIEZPUiBHQVRF
+  IEVWQUxVQVRJT04gT05MWSAtIFRISVMgSVMgTk9UIFVTQUJMRSBLRVkgREFUQQ==
+  -----END RSA PRIVATE KEY-----

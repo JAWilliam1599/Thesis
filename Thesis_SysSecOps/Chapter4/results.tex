@@ -2,149 +2,371 @@
 \label{sec:evaluation-results}
 
 This section is organised according to the three research questions defined in
-Section~\ref{subsec:evaluation-rqs}. Quantitative results are reported for all three
-research questions. The RQ1 and RQ2 results are drawn from the persisted run, gate,
-approval, and rejection records produced by repeated executions of the hybrid pipeline
-orchestrator (\texttt{scripts/run\_hybrid\_pipeline.py}) between 28~June~2026 and
-9~July~2026, comprising 17 recorded pipeline invocations. This evaluation corpus was
-accumulated during iterative development rather than a single controlled experimental
-campaign, so the RQ1 and RQ2 counts below are reported as an initial operational sample
-rather than a statistically powered trial.
+Section~\ref{subsec:evaluation-rqs}. The RQ1 and RQ2 results are drawn from the
+pre-registered campaign described in Section~\ref{subsec:evaluation-campaign}:
+106 runs over 30 declared scenarios, executed in a single batch on
+1~August~2026 and analysed by \texttt{evaluation/analyze\_campaign.py} from the
+persisted run, gate, approval, and rejection records alone. Every scenario's
+expected decision was fixed in a version-controlled specification before any of
+the reported runs executed. The optional cost-estimation and cloud-configuration
+components, whose outputs depend on live external state, were disabled
+throughout, so every score reported below is reproducible from the repository.
 
-\subsection{RQ1: Operational Feasibility and Reliability}
+An earlier corpus of pipeline invocations accumulated during iterative
+development between 28~June and 9~July~2026 is not reported. It was a
+convenience sample: it over-represented whatever was being debugged at the time,
+it included runs of incomplete projects, and the decision of which invocations
+to count would have been made after seeing them. It is superseded in full by the
+campaign reported here.
+
+\subsection{RQ1: Decision Conformance and Enforcement Correctness}
 \label{subsec:results-rq1}
 
-This experiment concerns execution of the complete SysSecOps pipeline for the pass,
-review, reject, and degraded-component scenarios described in
-Section~\ref{subsec:evaluation-rq1}. Its reporting structure distinguishes a valid
-security rejection from an unexpected execution failure. A rejected change is classified
-as a completed run when the pipeline produces a valid gate report and correctly prevents
-deployment. The degraded-component scenario additionally distinguishes graceful
-degradation, in which an unavailable assessment component or credential is recorded as an
-explicit status, from an unhandled termination of the workflow.
+\subsubsection{Decision Conformance}
 
-The evidence base for this experiment is the set of hybrid-pipeline invocations recorded
-in the run logs, cross-referenced with the corresponding gate, approval, and rejection
-records. Of 17 recorded invocations, 16 produced a persisted run summary; the remaining
-invocation wrote only a log header before terminating without a summary and is counted
-as a run that did not reach a valid terminal decision. Each completed invocation
-independently gates a CDK
-branch, an Ansible branch, or both, yielding 24 branch-level gate decisions (9 CDK, 15
-Ansible) across the 16 completed runs. Table~\ref{tab:rq1-results-frame} reports the
-observed counts; the completion rate is calculated using
-Equation~\ref{eq:pipeline-completion-rate}.
+Across all 106 runs, the observed gate decision equalled the decision declared
+in advance in every case, giving a decision conformance of $100\%$
+($106/106$; Wilson 95\% interval $[0.965, 1.000]$) by
+Equation~\ref{eq:decision-conformance}. Conformance was $1.0$ for each of the 30
+scenarios individually, so the aggregate does not conceal a scenario that failed
+consistently while others compensated. Replicated runs of the same scenario
+produced identical scores in every case --- for instance, all five replicates of
+\texttt{cdk-reject-block} scored exactly $114$ and all five of
+\texttt{ans-reject-block} scored exactly $155$ --- confirming that the scoring
+pipeline is deterministic once the two live-state components are disabled.
+
+Table~\ref{tab:rq1-confusion} presents the confusion matrix over the three
+decision bands. It is exactly diagonal: no run was assigned a band other than
+the one declared for it. This matters more than the aggregate proportion,
+because a gate can achieve a high overall agreement rate while being
+systematically permissive --- passing changes it should have held --- and that
+bias would be invisible in a single percentage. Here there is neither a
+permissive nor an over-blocking tendency to report.
 
 \begin{table}[ht]
 \centering
-\caption{Observed results for the end-to-end pipeline evaluation.}
-\label{tab:rq1-results-frame}
-\begin{tabular}{|L{5.9cm}|C{3.0cm}|L{4.7cm}|}
+\caption{Expected against observed gate decision, all 106 campaign runs.}
+\label{tab:rq1-confusion}
+\begin{tabular}{|L{2.4cm}|L{2.4cm}|C{2.2cm}|C{2.2cm}|C{2.2cm}|C{1.4cm}|}
 \hline
-\textbf{Measure} & \textbf{Result} & \textbf{Evidence source} \\
+\textbf{Branch} & \textbf{Expected} & \textbf{Obs. pass} & \textbf{Obs. review}
+& \textbf{Obs. reject} & \textbf{$n$} \\
 \hline
-Total pipeline runs & $17$ & Execution records \\
+Ansible & Pass   & $26$ & $0$  & $0$ & $26$ \\
 \hline
-Runs reaching a valid terminal decision & $16$ & Gate reports \\
+Ansible & Review & $0$  & $25$ & $0$ & $25$ \\
 \hline
-End-to-end completion rate & $94.1\%$ ($16/17$) & Calculated from run records \\
+Ansible & Reject & $0$  & $0$  & $8$ & $8$  \\
 \hline
-Pass, review, and reject outcomes (branch-level, $n=24$) & $18$ / $4$ / $2$ & Persisted decision records \\
+CDK     & Pass   & $11$ & $0$  & $0$ & $11$ \\
 \hline
-Unexpected pipeline failures & $2$ & Stage results and execution logs \\
+CDK     & Review & $0$  & $28$ & $0$ & $28$ \\
 \hline
-Rejected changes incorrectly deployed & $0$ of $2$ & Gate and deployment records \\
-\hline
-Review cases executed without approval & $0$ of $4$ & Approval and deployment records \\
-\hline
-Degraded-component runs reaching a terminal state & $5$ of $5$ ($100\%$) & Scanner status and gate reports \\
+CDK     & Reject & $0$  & $0$  & $8$ & $8$  \\
 \hline
 \end{tabular}
 \end{table}
 
-The table shows that 16 of the 17 recorded invocations reached the expected terminal
-state (pass, review, or reject), for an end-to-end completion rate of $94.1\%$. The one
-run that did not complete terminated after writing only its log header, before any
-branch produced a gate report; the orchestrator's exception path was not captured, so no
-further cause is retained. A distinct execution-stage failure was also observed within a
-completed run: one Ansible branch passed its security gate (score $0$) but the
-subsequent deployment step returned a non-zero exit code, giving the terminal status
-\texttt{deploy\_failed}. Both this case and the incomplete invocation are counted as
-unexpected pipeline failures, since neither resulted from a security-gate rejection. Both
-of the two reject decisions were withheld from deployment, and each has a matching
-rejection record; no rejected change was deployed. Of the four review decisions, three
-remained unapproved and undeployed, and one was deployed after an explicit approval
-record was written by the reviewer, so no review case was deployed without a matching
-approval. All five CDK branches for which the Infracost cost-analysis
-scanner reported an error (a timeout or an unexpected response schema) still produced a
-valid pass, review, or reject decision, indicating that the gate degrades gracefully when
-this optional component is unavailable rather than terminating the run. Because this
-sample was accumulated during iterative development rather than a single controlled
-campaign, and because the rejection and degraded-component cases are few in number, these
-counts should be read as an initial operational indication rather than a statistically
-robust estimate of pipeline reliability.
+This result should be read for what it establishes and what it does not. The
+fixtures were authored by the same work that built the gate, so conformance
+demonstrates that the implemented system behaves as its specification requires
+on inputs whose correct treatment is known --- it does not demonstrate that the
+specification assigns the right band to arbitrary real-world infrastructure.
+That stronger claim would require fixtures authored independently, and is
+recorded as a limitation in Section~\ref{subsec:evaluation-validity}.
 
-\subsection{RQ2: Hybrid Infrastructure Applicability}
+\subsubsection{Enforcement Correctness}
+
+Conformance concerns the decision the gate reaches. Enforcement concerns whether
+that decision actually constrains what happens next, which is the property that
+distinguishes a working control from an inert one. Each invariant in
+Table~\ref{tab:rq1-invariants} is reported over the runs to which it applies, so
+that a single violation would be visible rather than diluted.
+
+\begin{table}[ht]
+\centering
+\caption{Enforcement invariants over the campaign.}
+\label{tab:rq1-invariants}
+\begin{tabular}{|L{6.6cm}|C{1.2cm}|C{1.6cm}|C{1.6cm}|C{2.4cm}|}
+\hline
+\textbf{Invariant} & \textbf{$n$} & \textbf{Held} & \textbf{Rate} &
+\textbf{Wilson 95\%} \\
+\hline
+Run produces a persisted summary & $106$ & $106$ & $1.00$ & $[0.965, 1.000]$ \\
+\hline
+Gate reports a status for every scanner & $106$ & $106$ & $1.00$ & $[0.965, 1.000]$ \\
+\hline
+Unapproved \emph{review} halts & $43$ & $43$ & $1.00$ & $[0.918, 1.000]$ \\
+\hline
+Approved \emph{review} writes an approval record & $10$ & $10$ & $1.00$ & $[0.723, 1.000]$ \\
+\hline
+\emph{Reject} blocks deployment & $16$ & $16$ & $1.00$ & $[0.806, 1.000]$ \\
+\hline
+\emph{Reject} writes a rejection record & $16$ & $16$ & $1.00$ & $[0.806, 1.000]$ \\
+\hline
+\end{tabular}
+\end{table}
+
+Every invariant held on every applicable run. The Wilson intervals are reported
+because they are the honest expression of what a small denominator supports: ten
+approved-review runs without a violation are consistent with a true failure rate
+as high as roughly $28\%$, so the approval-record invariant is far less firmly
+established than the summary-persistence invariant measured over 106 runs, even
+though both show a point estimate of $1.00$.
+
+\subsubsection{Behaviour Under Degraded Assurance}
+
+Ten scenarios removed a single scanner from an otherwise identical run. In every
+case the resulting decision matched the decision predicted arithmetically from
+the calibrated finding breakdown, so the gate degrades predictably rather than
+erratically. Table~\ref{tab:rq1-degradation} reports the score deltas.
+
+\begin{table}[ht]
+\centering
+\small
+\caption{Score and decision change when one assurance source is removed.
+Each row is the median of three replicates, which were identical.}
+\label{tab:rq1-degradation}
+\begin{tabular}{|L{4.4cm}|C{1.5cm}|C{1.5cm}|C{1.3cm}|C{3.6cm}|}
+\hline
+\textbf{Component removed} & \textbf{Full} & \textbf{Degr.} & \textbf{$\Delta$} &
+\textbf{Decision change} \\
+\hline
+Checkov (from \emph{reject}) & $114$ & $64$ & $50$ & reject $\rightarrow$ review \\
+\hline
+ML risk model (from \emph{reject}) & $114$ & $110$ & $4$ & reject $\rightarrow$ reject \\
+\hline
+cfn-lint (from \emph{review}) & $54$ & $49$ & $5$ & review $\rightarrow$ review \\
+\hline
+Checkov (from \emph{review}) & $54$ & $9$ & $45$ & review $\rightarrow$ \textbf{pass} \\
+\hline
+cfn-lint (from \emph{pass}) & $14$ & $9$ & $5$ & pass $\rightarrow$ pass \\
+\hline
+Secret scan (from \emph{reject}) & $155$ & $75$ & $80$ & reject $\rightarrow$ review \\
+\hline
+ansible-lint (from \emph{reject}) & $155$ & $135$ & $20$ & reject $\rightarrow$ reject \\
+\hline
+ansible-lint (from \emph{review}) & $55$ & $25$ & $30$ & review $\rightarrow$ review \\
+\hline
+Secret scan (from \emph{review}) & $55$ & $35$ & $20$ & review $\rightarrow$ review \\
+\hline
+Checkov (from \emph{pass}) & $0$ & $0$ & $0$ & pass $\rightarrow$ pass \\
+\hline
+\end{tabular}
+\end{table}
+
+The most consequential row is the fourth. Removing Checkov from a
+\emph{review}-band CDK change drops the score from $54$ to $9$ and moves the
+decision to \emph{pass}. The gate conformed to its specification --- this is
+precisely the outcome the scenario declared in advance --- but the specification
+permits a change to be released because the evidence that would have held it was
+never collected. The gate fails \emph{open}. Two rows above, removing Checkov
+from a \emph{reject} change costs $50$ points and downgrades it to
+\emph{review}, and removing the secret scanner from the Ansible \emph{reject}
+fixture costs $80$ of its $155$ points. In each case the loss of a single
+assurance source materially weakens the verdict while the run still reports a
+clean terminal status.
+
+This is a design deficiency of the scoring model, not an implementation defect,
+and it is inherent to any purely additive score: an absent scanner and a scanner
+that found nothing contribute identically. The scanner-status record makes the
+degradation visible to an auditor after the fact, but nothing in the decision
+function acts on it. Section~\ref{sec:discussion-limitations} returns to this
+point, and Chapter~\ref{Chapter6} proposes an assurance penalty as the remedy.
+
+\subsubsection{Gate Overhead}
+
+A control that is correct but prohibitively slow will not survive contact with a
+real delivery process, so gate duration and its share of run wall-clock time
+were recorded per run. Table~\ref{tab:rq1-latency} reports medians with
+inter-quartile ranges, since stage times are right-skewed by tool start-up
+costs.
+
+\begin{table}[ht]
+\centering
+\caption{Stage duration and gate share of total run time.}
+\label{tab:rq1-latency}
+\begin{tabular}{|L{2.2cm}|L{3.4cm}|C{1.2cm}|C{2.0cm}|C{3.4cm}|}
+\hline
+\textbf{Branch} & \textbf{Stage} & \textbf{$n$} & \textbf{Median} &
+\textbf{IQR (p25--p75)} \\
+\hline
+CDK & Synthesis & $47$ & $13.87$~s & $11.91$--$16.81$~s \\
+\hline
+CDK & Difference & $47$ & $14.93$~s & $12.99$--$16.23$~s \\
+\hline
+CDK & Security gate & $47$ & $102.50$~s & $101.14$--$102.73$~s \\
+\hline
+CDK & Gate share of run & $47$ & $69.35\%$ & $67.55$--$70.51\%$ \\
+\hline
+Ansible & Syntax validation & $59$ & $0.52$~s & $0.52$--$0.53$~s \\
+\hline
+Ansible & Dry run & $31$ & $5.46$~s & $5.46$--$5.46$~s \\
+\hline
+Ansible & Security gate & $59$ & $7.04$~s & $4.89$--$7.29$~s \\
+\hline
+Ansible & Gate share of run & $59$ & $24.80\%$ & $20.54$--$29.02\%$ \\
+\hline
+\end{tabular}
+\end{table}
+
+The two branches differ by more than an order of magnitude: the cloud gate takes
+a median of $102.50$~seconds and consumes roughly seven-tenths of total run
+time, whereas the on-premises gate takes $7.04$~seconds and consumes about a
+quarter. The cloud figure is dominated by Checkov, which is invoked once per
+synthesised template file rather than once per directory. In absolute terms both
+are acceptable for a pre-deployment check --- under two minutes on the slower
+branch --- but the cloud gate would become the dominant cost of a pipeline whose
+other stages were optimised, and it scales with template count rather than with
+the size of the change.
+
+\subsection{RQ2: Cross-Boundary Enforcement Equivalence}
 \label{subsec:results-rq2}
 
-\begin{table}[htb!]
+\subsubsection{Checkpoint Attainment}
+
+Table~\ref{tab:rq2-checkpoints} reports the seven operational checkpoints over
+the 59 Ansible-branch runs in the campaign. Attainment is computed over
+attempted checkpoints only: when the gate returns \emph{reject}, the dry run is
+never attempted, and counting that as a failure would penalise the system for
+behaving correctly.
+
+\begin{table}[ht]
 \centering
-\caption{Observed results for the existing virtual-machine evaluation.}
-\label{tab:rq2-results-frame}
-\begin{tabular}{|L{5cm}|C{5cm}|L{4cm}|}
+\caption{On-premises checkpoint attainment across 59 Ansible-branch runs.}
+\label{tab:rq2-checkpoints}
+\begin{tabular}{|L{4.6cm}|C{1.3cm}|C{1.6cm}|C{1.7cm}|C{2.8cm}|}
 \hline
-\textbf{Evaluation checkpoint} & \textbf{Result} & \textbf{Verification evidence} \\
+\textbf{Checkpoint} & \textbf{$n$} & \textbf{Attained} & \textbf{Rate} &
+\textbf{Wilson 95\%} \\
 \hline
-Network reachability & Confirmed for $6/7$ deploy attempts; undetermined for $1$ & Connectivity test \\
+Target reachability & $0$ & --- & --- & not attempted \\
 \hline
-Authenticated Ansible access & Confirmed for $6/7$ deploy attempts; undetermined for $1$ & Ansible connection result \\
+Syntax validation & $59$ & $59$ & $1.00$ & $[0.939, 1.000]$ \\
 \hline
-Playbook syntax validation & Passed in $15/15$ attempts & Validation output \\
+Security gate & $59$ & $59$ & $1.00$ & $[0.939, 1.000]$ \\
 \hline
-Security assessment and gate decision & Pass in $15/15$ attempts (score $0$) & Scanner output and gate report \\
+Dry run & $31$ & $31$ & $1.00$ & $[0.890, 1.000]$ \\
 \hline
-Enforcement of the gate before execution & Gate executed prior to deploy in $15/15$ attempts & Decision and execution records \\
+Apply & $0$ & --- & --- & not attempted \\
 \hline
-Application of the requested configuration & Succeeded in $6/7$ deploy attempts & Ansible execution result \\
+Post-apply verification & $0$ & --- & --- & not attempted \\
 \hline
-Verification of the target state & Not captured by retained artifacts & Direct observation of the virtual machine \\
-\hline
-Repeated-run state consistency & Not directly evidenced by retained artifacts & Subsequent Ansible execution result \\
-\hline
-Operational and audit record creation & Created for $16/16$ completed runs & Status and audit records \\
+Repeated-run idempotency & $0$ & --- & --- & not attempted \\
 \hline
 \end{tabular}
 \end{table}
 
-This experiment concerns integration of an existing Linux virtual machine through the
-Ansible path of the prototype, reached over a mesh-VPN connection and treated as the
-private side of the hybrid environment. The same risk engine and decision thresholds
-applied to public-cloud changes govern this private-side target. Evidence is collected at
-the connectivity, assessment, decision, execution, state-verification, and
-operational-recording stages. The on-premises target is addressed in the checked-in
-inventory (\texttt{examples/hybrid-webapp-demo/ansible/inventory.ini}) by its Tailscale
-mesh address, consistent with the architecture in Section~\ref{subsec:arch-components}.
-Evidence is drawn from the 15 Ansible-branch invocations within the hybrid-pipeline run
-history reported in Section~\ref{subsec:results-rq1}, of which 7 proceeded to an actual
-deployment attempt against the target host. Table~\ref{tab:rq2-results-frame} reports the
-observed outcomes; two checkpoints for which the retained artifacts contain no direct
-evidence are marked accordingly rather than assigned an unsupported result.
+No run recorded a failure of any attempted checkpoint; all 59 runs were
+classified in the failure class \texttt{none}. Three checkpoints were never
+attempted, because the registered campaign is deliberately offline: the two
+scenarios that deploy against a live node are skipped unless that capability is
+explicitly granted at invocation. The consequence is stated plainly rather than
+glossed: the campaign establishes that the on-premises path validates, gates,
+and dry-runs reliably, and it establishes nothing about apply-time behaviour,
+post-apply state, or idempotency. Those three checkpoints remain evidence gaps.
 
+\subsubsection{Decision Parity}
+\label{subsec:evaluation-results-parity}
 
+Checkpoint attainment shows that the on-premises path \emph{runs} the same
+workflow. Whether it \emph{decides} the same way is a separate question, and the
+one on which RQ2 turns. Four matched fixture pairs each express a single
+weakness class twice, once as cloud infrastructure code and once as on-premises
+configuration.
 
-The checkpoint records show that every recorded Ansible-branch attempt produced a
-security assessment with zero findings and a pass decision, and that six of the seven
-attempts that proceeded to a deployment step completed successfully against the
-mesh-VPN-connected host, while one returned a non-zero exit code whose specific cause
-(connectivity, authentication, or a task-level condition) cannot be distinguished from
-the retained artifacts. Because every observed Ansible-branch decision in this sample was
-a pass, the experiment demonstrates that the gate executes ahead of deployment but does
-not yet provide direct evidence that a review or reject decision on this path is enforced
-in the same way as on the CDK path; that enforcement is inferred from the shared decision
-function (Section~\ref{subsec:rs-additive}) rather than observed directly for the
-on-premises target. Post-deployment state verification and repeated-run idempotency were
-not captured by the retained artifacts and are reported as evidence gaps rather than as
-results, motivating a dedicated verification step in a future execution of this
-experiment.
+The first measurement was taken before any on-premises semantic detection
+existed, and is reported here as the baseline arm. Its result was unambiguous:
+zero of the four pairs agreed. Every cloud fixture reached \emph{review}; every
+on-premises counterpart passed. Inspection of the finding breakdowns showed why.
+The private-side path carried no scanner with semantic security coverage ---
+\texttt{ansible-lint} enforces style, Checkov's Ansible framework returned no
+findings on any of these fixtures, and the regex secret scan matches only
+credential-shaped strings. An \texttt{iptables} rule accepting SSH from
+\texttt{0.0.0.0/0}, a \texttt{NOPASSWD: ALL} sudoers entry, and a filesystem
+created with no encryption layer were all invisible to it. Only the plaintext
+credential was detected at all, and even then the resulting score of $20$ landed
+exactly on the \emph{pass} ceiling.
+
+This finding motivated a semantic configuration-rule scanner for the
+on-premises path (\texttt{security\_gate/scanners/ansible\_rules\_adapter.py}),
+which applies the same classes of check the cloud path already had, emitting the
+same finding categories and severities so that both branches deduplicate and
+score through identical logic. Because the rules were built in response to the
+measurement, reporting only the post-rule figures would present a capability as
+though it had been designed in from the start. Both arms are therefore declared
+in the campaign specification and executed under one code state, one
+environment, and one provenance record; the baseline arm is reproduced by
+disabling the rules at invocation. Table~\ref{tab:rq2-parity} reports both.
+
+\begin{table}[ht]
+\centering
+\small
+\caption{Cross-boundary treatment of the same weakness, before and after the
+on-premises semantic rules. Scores are medians over three replicates, which were
+identical.}
+\label{tab:rq2-parity}
+\begin{tabular}{|L{2.5cm}|L{3.5cm}|C{1.9cm}|C{1.9cm}|C{1.1cm}|C{1.1cm}|}
+\hline
+\textbf{Arm} & \textbf{Weakness} & \textbf{Cloud} & \textbf{On-prem} &
+\textbf{Gap} & \textbf{Agree} \\
+\hline
+Baseline & Open ingress          & review ($24$) & pass ($0$)  & $24$ & No \\
+\hline
+Baseline & Over-privileged access & review ($59$) & pass ($0$)  & $59$ & No \\
+\hline
+Baseline & Plaintext secret      & review ($44$) & pass ($20$) & $24$ & No \\
+\hline
+Baseline & Unencrypted storage   & review ($34$) & pass ($10$) & $24$ & No \\
+\hline
+\multicolumn{4}{|l|}{\textbf{Baseline agreement}} &
+\multicolumn{2}{c|}{$0/4$, Wilson $[0.00, 0.49]$} \\
+\hline
+Rules & Open ingress          & review ($24$) & pass ($20$)   & $4$  & No  \\
+\hline
+Rules & Over-privileged access & review ($59$) & review ($30$) & $29$ & Yes \\
+\hline
+Rules & Plaintext secret      & review ($44$) & pass ($20$)   & $24$ & No  \\
+\hline
+Rules & Unencrypted storage   & review ($34$) & review ($25$) & $9$  & Yes \\
+\hline
+\multicolumn{4}{|l|}{\textbf{Agreement with rules enabled}} &
+\multicolumn{2}{c|}{$2/4$, Wilson $[0.15, 0.85]$} \\
+\hline
+\end{tabular}
+\end{table}
+
+Agreement improved from zero pairs to two. The Wilson intervals overlap heavily
+--- $[0.00, 0.49]$ against $[0.15, 0.85]$ --- so with only four pairs this
+comparison does not establish the improvement statistically, and it is not
+claimed to. What the run-level records do establish is the mechanism: the
+per-fixture score changes are deterministic and attributable to specific
+findings. Over-privileged access moved from $0$ to $30$ points because the
+sudoers entry and the world-writable directory became visible; unencrypted
+storage moved from $10$ to $25$ because the filesystem creation and the
+persistent mount became visible. These are not statistical effects but direct
+consequences of detection capability that previously did not exist.
+
+The two remaining disagreements share a single cause, and it is a different one
+from the baseline gap. Both on-premises fixtures now score exactly $20$ --- the
+\emph{pass} ceiling, since the threshold is inclusive --- while their cloud
+counterparts score $24$ and $44$. The open-ingress pair is separated by four
+points and the plaintext-secret pair by twenty-four, and in both cases the cloud
+side clears the threshold in part through the learned code-risk component, which
+contributes $4$ and $19$ points respectively. That component is computed from
+Python source and has no analogue for a playbook. The residual gap is therefore
+no longer a detection gap --- both weaknesses are now seen on both sides --- but
+a scoring asymmetry: one branch has access to a score component the other
+structurally cannot have.
+
+It would have been straightforward to close the plaintext-secret pair by adding
+a rule for credential files readable by all users, and to close the open-ingress
+pair by raising the severity of the ingress rule by one level. Neither was done.
+The rules were written to cover the weakness classes the fixtures express, with
+severities mirroring the existing cloud heuristics, and were not adjusted
+afterwards to move any pair across a threshold. Tuning them until the pairs
+agreed would have manufactured exactly the result RQ2 exists to test, and the
+two pairs were left sitting on the boundary rather than nudged over it.
 
 \subsection{RQ3: Unified Risk-Evaluation Capability}
 \label{subsec:results-rq3}

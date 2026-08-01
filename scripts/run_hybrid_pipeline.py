@@ -32,6 +32,8 @@ import json
 import logging
 import os
 import sys
+import time
+import traceback
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -57,12 +59,18 @@ from pipeline.ansible_pipeline import (
     extract_node_name,
     find_inventory,
     find_playbook,
+    find_verify_playbook,
+    classify_ansible_failure,
     make_ansible_run_id,
+    ping_target,
     run_ansible_command,
     run_ansible_gate,
+    run_idempotence_check,
+    run_verification,
 )
 from pipeline.aws_credentials import get_session
 from pipeline.notifier import get_notifier
+from evaluation.provenance import collect_provenance
 from security_gate.iac_security_gate import THRESHOLDS, COST_BANDS
 from security_gate.scanners.ml_risk_adapter import ML_MAX_POINTS
 from pipeline.ssm_store import list_monitored_stacks, read_gate_result, write_gate_result
@@ -102,6 +110,44 @@ def _configure_logger(log_path: Path, verbose: bool) -> None:
 
 def _stream_line(line: str, _output_lines: list) -> None:
     print(line, end="", flush=True)
+
+
+# --------------------------------------------------------------------------- #
+# Evaluation instrumentation
+# --------------------------------------------------------------------------- #
+_OUTPUT_TAIL_CHARS = 2000
+
+
+def _record_stage(
+    stages: list[dict],
+    name: str,
+    started: float,
+    result: dict | None = None,
+    keep_output: bool = False,
+    **extra,
+) -> dict:
+    """Append one timed stage record and return it.
+
+    *keep_output* retains a truncated tail so a non-zero exit can be diagnosed
+    from the run summary alone rather than only from the console transcript.
+    """
+    entry: dict = {"stage": name, "duration_s": round(time.monotonic() - started, 3)}
+    if result is not None:
+        entry["return_code"] = int(result.get("return_code", 1))
+        if keep_output and entry["return_code"] != 0:
+            entry["output_tail"] = (result.get("output") or "")[-_OUTPUT_TAIL_CHARS:]
+    entry.update(extra)
+    stages.append(entry)
+    return entry
+
+
+def _gate_evidence(gate_report: dict) -> dict:
+    """Extract the fields an evaluation needs without re-opening the report file."""
+    return {
+        "scanner_status": gate_report.get("scanner_status") or {},
+        "components": gate_report.get("components") or {},
+        "finding_count": len(gate_report.get("findings") or []),
+    }
 
 
 def _emit_observability(gate_report: dict, name: str) -> None:
@@ -145,27 +191,40 @@ def _notify(event_type: str, gate_report: dict, extra: dict | None = None) -> No
 # --------------------------------------------------------------------------- #
 def run_cdk_branch(args: argparse.Namespace, run_id: str, env: dict) -> dict:
     project_dir = Path(args.cdk_path).resolve()
-    summary: dict = {"target": "cdk", "project_dir": str(project_dir), "run_id": run_id}
+    stages: list[dict] = []
+    summary: dict = {
+        "target": "cdk",
+        "project_dir": str(project_dir),
+        "run_id": run_id,
+        "stages": stages,
+    }
 
     if not project_dir.exists():
-        summary.update(status="error", error=f"CDK path not found: {project_dir}")
+        summary.update(status="error", error=f"CDK path not found: {project_dir}",
+                       failure_class="fixture_missing")
         print(json.dumps({"stage": "cdk", **summary}, indent=2))
         return summary
 
     if args.bootstrap:
+        t = time.monotonic()
         bootstrap = run_bootstrap(project_dir, env=env)
+        _record_stage(stages, "cdk.bootstrap", t, bootstrap, keep_output=True)
         print(json.dumps({"stage": "cdk.bootstrap", **bootstrap}, indent=2))
         if bootstrap["return_code"] != 0:
-            summary.update(status="error", error="bootstrap failed")
+            summary.update(status="error", error="bootstrap failed",
+                           failure_class="bootstrap_failure")
             return summary
 
     clear_cdk_out(project_dir)
+    t = time.monotonic()
     synth = run_cdk_command(project_dir, "synth", env=env)
+    _record_stage(stages, "cdk.synth", t, synth, keep_output=True)
     print(json.dumps({"stage": "cdk.synth", **synth}, indent=2))
     if synth["return_code"] != 0:
-        summary.update(status="error", error="synth failed")
+        summary.update(status="error", error="synth failed", failure_class="synth_failure")
         return summary
 
+    t = time.monotonic()
     gate_report = run_iac_gate(
         project_dir,
         cost_delta_usd=args.cost_delta_usd,
@@ -184,6 +243,7 @@ def run_cdk_branch(args: argparse.Namespace, run_id: str, env: dict) -> dict:
         cost_med_points=args.cost_med_points,
         ml_max_points=args.ml_max_points,
     )
+    _record_stage(stages, "cdk.gate", t)
     print(json.dumps({"stage": "cdk.gate", "gate": gate_report}, indent=2))
     stack_name = extract_stack_name(gate_report)
     _emit_observability(gate_report, stack_name)
@@ -192,9 +252,12 @@ def run_cdk_branch(args: argparse.Namespace, run_id: str, env: dict) -> dict:
         score=gate_report.get("score"),
         report_path=gate_report.get("report_path"),
         stack_name=stack_name,
+        **_gate_evidence(gate_report),
     )
 
+    t = time.monotonic()
     diff = run_cdk_command(project_dir, "diff", env=env)
+    _record_stage(stages, "cdk.diff", t, diff)
     print(json.dumps({"stage": "cdk.diff", "return_code": diff["return_code"]}, indent=2))
 
     allowed, reason = can_deploy(gate_report, manual_review_approved=args.manual_approve)
@@ -207,25 +270,31 @@ def run_cdk_branch(args: argparse.Namespace, run_id: str, env: dict) -> dict:
             _notify("review_required", gate_report)
             summary["status"] = "review"
         else:
-            write_rejection_record(run_id, gate_report)
+            summary["rejection_record"] = write_rejection_record(run_id, gate_report)
             _notify("reject", gate_report)
             summary["status"] = "reject"
         return summary
 
     if args.manual_approve and str(gate_report.get("decision", "")).lower() == "review":
-        write_approval(run_id, gate_report, approver="hybrid-cli")
+        summary["approval_record"] = write_approval(run_id, gate_report, approver="hybrid-cli")
 
     if not args.deploy:
         summary["status"] = "gated_ok"
         return summary
 
     print(json.dumps({"stage": "cdk.deploy", "status": "started"}), flush=True)
+    t = time.monotonic()
     deploy = run_cdk_command(project_dir, "deploy", env=env, line_handler=_stream_line)
+    _record_stage(stages, "cdk.deploy", t, deploy, keep_output=True)
     deploy_ok = deploy["return_code"] == 0
+    summary["deploy_return_code"] = deploy["return_code"]
     _notify("deploy_success" if deploy_ok else "deploy_failure", gate_report,
             extra={"deploy_return_code": deploy["return_code"]})
     if deploy_ok:
         setup_stack_monitoring(stack_name, project_dir / "cdk.out")
+    else:
+        summary["failure_class"] = "deploy_failure"
+        summary["deploy_output_tail"] = (deploy.get("output") or "")[-_OUTPUT_TAIL_CHARS:]
     summary["status"] = "deployed" if deploy_ok else "deploy_failed"
     return summary
 
@@ -243,31 +312,57 @@ def _resolve_inventory(args: argparse.Namespace, ansible_dir: Path):
 
 def run_ansible_branch(args: argparse.Namespace, run_id: str, env: dict) -> dict:
     ansible_dir = Path(args.ansible_path).resolve()
-    summary: dict = {"target": "ansible", "project_dir": str(ansible_dir), "run_id": run_id}
+    stages: list[dict] = []
+    summary: dict = {
+        "target": "ansible",
+        "project_dir": str(ansible_dir),
+        "run_id": run_id,
+        "stages": stages,
+    }
 
     if not ansible_dir.exists():
-        summary.update(status="error", error=f"Ansible path not found: {ansible_dir}")
+        summary.update(status="error", error=f"Ansible path not found: {ansible_dir}",
+                       failure_class="fixture_missing")
         print(json.dumps({"stage": "ansible", **summary}, indent=2))
         return summary
 
     playbook = find_playbook(ansible_dir, args.playbook)
     if playbook is None:
-        summary.update(status="error", error="No playbook found (looked for site.yml/playbook.yml/main.yml).")
+        summary.update(status="error", error="No playbook found (looked for site.yml/playbook.yml/main.yml).",
+                       failure_class="fixture_missing")
         print(json.dumps({"stage": "ansible", **summary}, indent=2))
         return summary
 
     inventory = _resolve_inventory(args, ansible_dir)
     node_name = "ansible-" + extract_node_name(ansible_dir, playbook)
 
+    # 0. Connectivity / authenticated access (RQ2 checkpoint 1).
+    if inventory is not None and not args.no_connectivity_check:
+        t = time.monotonic()
+        ping = ping_target(ansible_dir, inventory, env=env)
+        _record_stage(stages, "ansible.connectivity", t, ping,
+                      keep_output=True, classification=ping["classification"])
+        summary["connectivity"] = {
+            "reachable": ping["return_code"] == 0,
+            "classification": ping["classification"],
+        }
+        print(json.dumps({"stage": "ansible.connectivity",
+                          "return_code": ping["return_code"],
+                          "classification": ping["classification"]}, indent=2))
+
     # 1. Local validate (Zone 1): syntax-check.
+    t = time.monotonic()
     syntax = run_ansible_command(ansible_dir, "syntax-check", playbook, inventory, env=env)
+    _record_stage(stages, "ansible.syntax", t, syntax, keep_output=True)
     print(json.dumps({"stage": "ansible.syntax", "return_code": syntax["return_code"]}, indent=2))
     if syntax["return_code"] != 0:
         print(json.dumps({"stage": "ansible.syntax", "output": syntax["output"][-1200:]}, indent=2))
-        summary.update(status="error", error="ansible syntax-check failed")
+        summary.update(status="error", error="ansible syntax-check failed",
+                       failure_class="validation")
         return summary
 
     # 2. Security gate (Zone 2): scan git-changed YAML (or all).
+    t = time.monotonic()
     gate_report = run_ansible_gate(
         ansible_dir,
         base_ref=args.base_ref,
@@ -275,6 +370,7 @@ def run_ansible_branch(args: argparse.Namespace, run_id: str, env: dict) -> dict
         use_ansible_lint=not args.no_ansible_lint,
         use_checkov=not args.no_checkov,
         use_secret_scan=not args.no_secret_scan,
+        use_ansible_rules=not args.no_ansible_rules,
         aws_config_violations=args.aws_config_violations,
         pass_max=args.pass_max,
         review_max=args.review_max,
@@ -283,6 +379,7 @@ def run_ansible_branch(args: argparse.Namespace, run_id: str, env: dict) -> dict
         cost_med_usd=args.cost_med_usd,
         cost_med_points=args.cost_med_points,
     )
+    _record_stage(stages, "ansible.gate", t)
     print(json.dumps({"stage": "ansible.gate", "gate": gate_report}, indent=2))
     _emit_observability(gate_report, node_name)
     summary.update(
@@ -291,6 +388,7 @@ def run_ansible_branch(args: argparse.Namespace, run_id: str, env: dict) -> dict
         report_path=gate_report.get("report_path"),
         node_name=node_name,
         playbook=str(playbook),
+        **_gate_evidence(gate_report),
     )
 
     allowed, reason = can_deploy(gate_report, manual_review_approved=args.manual_approve)
@@ -303,16 +401,18 @@ def run_ansible_branch(args: argparse.Namespace, run_id: str, env: dict) -> dict
             _notify("review_required", gate_report)
             summary["status"] = "review"
         else:
-            write_rejection_record(run_id, gate_report)
+            summary["rejection_record"] = write_rejection_record(run_id, gate_report)
             _notify("reject", gate_report)
             summary["status"] = "reject"
         return summary
 
     if args.manual_approve and str(gate_report.get("decision", "")).lower() == "review":
-        write_approval(run_id, gate_report, approver="hybrid-cli")
+        summary["approval_record"] = write_approval(run_id, gate_report, approver="hybrid-cli")
 
     # 3. Dry-run (Zone 2): ansible-playbook --check --diff.
+    t = time.monotonic()
     check = run_ansible_command(ansible_dir, "check", playbook, inventory, env=env)
+    _record_stage(stages, "ansible.check", t, check)
     print(json.dumps({"stage": "ansible.check", "return_code": check["return_code"]}, indent=2))
     # --check can fail when a task cannot predict changes without connectivity;
     # treat as advisory unless deploying.
@@ -321,15 +421,51 @@ def run_ansible_branch(args: argparse.Namespace, run_id: str, env: dict) -> dict
         return summary
 
     if inventory is None:
-        summary.update(status="error", error="Deploy requested but no inventory/--target-host provided.")
+        summary.update(status="error", error="Deploy requested but no inventory/--target-host provided.",
+                       failure_class="fixture_missing")
         return summary
 
     print(json.dumps({"stage": "ansible.deploy", "status": "started"}), flush=True)
+    t = time.monotonic()
     deploy = run_ansible_command(ansible_dir, "deploy", playbook, inventory, env=env, line_handler=_stream_line)
     deploy_ok = deploy["return_code"] == 0
+    deploy_class = classify_ansible_failure(deploy)
+    _record_stage(stages, "ansible.deploy", t, deploy, keep_output=True, classification=deploy_class)
+    summary["deploy_return_code"] = deploy["return_code"]
     _notify("deploy_success" if deploy_ok else "deploy_failure", gate_report,
             extra={"deploy_return_code": deploy["return_code"]})
     summary["status"] = "deployed" if deploy_ok else "deploy_failed"
+    if not deploy_ok:
+        summary["failure_class"] = deploy_class
+        summary["deploy_output_tail"] = (deploy.get("output") or "")[-_OUTPUT_TAIL_CHARS:]
+        return summary
+
+    # 4. Target-state verification (RQ2 checkpoint 5).
+    verify_playbook = find_verify_playbook(ansible_dir, args.verify_playbook)
+    if verify_playbook is not None:
+        t = time.monotonic()
+        verification = run_verification(ansible_dir, verify_playbook, inventory, env=env)
+        _record_stage(stages, "ansible.verify", t,
+                      {"return_code": verification["return_code"]},
+                      classification=verification["classification"])
+        summary["verification"] = verification
+        print(json.dumps({"stage": "ansible.verify",
+                          "verified": verification["verified"]}, indent=2))
+    elif args.verify_playbook:
+        summary["verification"] = {"verified": False, "error": "verify playbook not found"}
+
+    # 5. Repeated-run idempotency (RQ2 checkpoint 6).
+    if args.idempotence_check:
+        t = time.monotonic()
+        idempotence = run_idempotence_check(ansible_dir, playbook, inventory, env=env)
+        _record_stage(stages, "ansible.idempotence", t,
+                      {"return_code": idempotence["return_code"]},
+                      classification=idempotence["classification"])
+        summary["idempotence"] = idempotence
+        print(json.dumps({"stage": "ansible.idempotence",
+                          "idempotent": idempotence["idempotent"],
+                          "changed": idempotence["recap"]["totals"]["changed"]}, indent=2))
+
     return summary
 
 
@@ -408,6 +544,15 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--manual-approve", action="store_true", help="Approve review-band (21-80) decisions for deploy.")
     p.add_argument("--deploy", action="store_true", help="Deploy each branch that the gate allows.")
     p.add_argument("--bootstrap", action="store_true", help="Run cdk bootstrap before synth (CDK branch).")
+    p.add_argument("--verify-playbook", default=None, help="Post-deploy assertion playbook (default: auto-detect verify.yml).")
+    p.add_argument("--idempotence-check", action="store_true", help="Re-apply the playbook after a successful deploy and assert changed=0.")
+    p.add_argument("--no-connectivity-check", action="store_true", help="Skip the ansible ping reachability/auth precheck.")
+    p.add_argument("--scenario", default=None, help="Evaluation scenario identifier recorded in the run summary.")
+    p.add_argument("--scenario-class", default=None, help="Scenario class (pass/review/reject/degraded/parity).")
+    p.add_argument("--expect-decision", default=None, help="Expected gate decision, for conformance scoring.")
+    p.add_argument("--expect-status", default=None, help="Expected terminal branch status, for conformance scoring.")
+    p.add_argument("--campaign-id", default=None, help="Campaign identifier grouping runs of one experiment.")
+    p.add_argument("--replicate", type=int, default=None, help="Replicate index within the scenario.")
     p.add_argument("--no-checkov", action="store_true", help="Skip checkov on both branches.")
     p.add_argument("--no-cfn-lint", action="store_true", help="Skip cfn-lint (CDK branch).")
     p.add_argument("--no-infracost", action="store_true", help="Skip infracost (CDK branch).")
@@ -415,11 +560,62 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--no-aws-config", action="store_true", help="Skip AWS Config fetch (CDK branch).")
     p.add_argument("--no-ansible-lint", action="store_true", help="Skip ansible-lint (Ansible branch).")
     p.add_argument("--no-secret-scan", action="store_true", help="Skip secret scan (Ansible branch).")
+    p.add_argument("--no-ansible-rules", action="store_true", help="Skip the semantic configuration rules (Ansible branch).")
     p.add_argument("--query-status", action="store_true", help="Print last gate result per target from SSM and exit.")
     p.add_argument("--hybrid-status", action="store_true", help="Print on-prem mesh status (SSM nodes, compliance, Tailscale) and exit.")
     p.add_argument("--log-file", default=None, help="Override log file path.")
     p.add_argument("--verbose", action="store_true", help="Also print logs to stderr.")
     return p.parse_args()
+
+
+def _write_hybrid_report(
+    run_id: str,
+    branches: list[dict],
+    args: argparse.Namespace,
+    started: float,
+    aborted: dict | None = None,
+) -> Path:
+    """Persist the combined hybrid report, including for an aborted run."""
+    hybrid_report = {
+        "run_id": run_id,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "duration_s": round(time.monotonic() - started, 3),
+        "status": "aborted" if aborted else "completed",
+        "experiment": {
+            "scenario": args.scenario,
+            "scenario_class": args.scenario_class,
+            "expect_decision": args.expect_decision,
+            "expect_status": args.expect_status,
+            "campaign_id": args.campaign_id,
+            "replicate": args.replicate,
+        },
+        "conditions": {
+            "deploy": bool(args.deploy),
+            "manual_approve": bool(args.manual_approve),
+            "idempotence_check": bool(args.idempotence_check),
+            "disabled": sorted(
+                name for name, off in {
+                    "checkov": args.no_checkov,
+                    "cfn_lint": args.no_cfn_lint,
+                    "infracost": args.no_infracost,
+                    "aws_config": args.no_aws_config,
+                    "ml_risk": args.no_ml_risk,
+                    "ansible_lint": args.no_ansible_lint,
+                    "secret_scan": args.no_secret_scan,
+                    "ansible_rules": args.no_ansible_rules,
+                }.items() if off
+            ),
+            "thresholds": {"pass_max": args.pass_max, "review_max": args.review_max},
+        },
+        "provenance": collect_provenance(),
+        "branches": branches,
+    }
+    if aborted:
+        hybrid_report["abort"] = aborted
+    report_path = _log_dir() / f"{run_id}.json"
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+    report_path.write_text(json.dumps(hybrid_report, indent=2), encoding="utf-8")
+    return report_path
 
 
 def main() -> int:
@@ -445,20 +641,27 @@ def main() -> int:
 
     branches: list[dict] = []
     ts = run_id.replace("hybrid_", "")
+    started = time.monotonic()
 
-    if args.cdk_path:
-        branches.append(run_cdk_branch(args, f"cdk_{ts}", env))
-    if args.ansible_path:
-        branches.append(run_ansible_branch(args, make_ansible_run_id(), env))
+    try:
+        if args.cdk_path:
+            branches.append(run_cdk_branch(args, f"cdk_{ts}", env))
+        if args.ansible_path:
+            branches.append(run_ansible_branch(args, make_ansible_run_id(), env))
+    except BaseException as exc:  # noqa: BLE001 — an aborted run must still leave evidence
+        abort = {
+            "exception": type(exc).__name__,
+            "message": str(exc),
+            "traceback": traceback.format_exc(),
+        }
+        logger.exception("hybrid pipeline aborted")
+        report_path = _write_hybrid_report(run_id, branches, args, started, aborted=abort)
+        print(json.dumps({"stage": "hybrid", "status": "aborted",
+                          "report_path": str(report_path),
+                          "exception": abort["exception"]}, indent=2))
+        return 3
 
-    hybrid_report = {
-        "run_id": run_id,
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-        "branches": branches,
-    }
-    report_path = _log_dir() / f"{run_id}.json"
-    report_path.parent.mkdir(parents=True, exist_ok=True)
-    report_path.write_text(json.dumps(hybrid_report, indent=2), encoding="utf-8")
+    report_path = _write_hybrid_report(run_id, branches, args, started)
     print(json.dumps({"stage": "hybrid", "report_path": str(report_path), "branches": [
         {k: b.get(k) for k in ("target", "status", "decision", "score")} for b in branches
     ]}, indent=2))

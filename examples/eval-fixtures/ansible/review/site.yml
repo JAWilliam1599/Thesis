@@ -1,0 +1,71 @@
+---
+# REVIEW-band fixture — deliberately weakened.  Do not copy into real projects.
+#
+# Injected weaknesses (moderate, individually remediable):
+#   * a plaintext service password and API key in group_vars
+#   * a world-readable configuration file containing that password
+#   * TLS certificate validation disabled on a download
+#   * unpinned package installation and an unqualified change signal
+#
+# Expected gate decision: review (21-80).
+- name: Provision the application node
+  hosts: appservers
+  become: true
+  gather_facts: true
+
+  tasks:
+    - name: Ensure the application group exists
+      ansible.builtin.group:
+        name: "{{ app_group }}"
+        state: present
+
+    - name: Ensure the application user exists
+      ansible.builtin.user:
+        name: "{{ app_user }}"
+        group: "{{ app_group }}"
+        shell: /bin/bash
+        state: present
+
+    # WEAKNESS: unpinned install, so the deployed version is not reproducible.
+    - name: Install the application package
+      ansible.builtin.package:
+        name: "{{ app_package }}"
+        state: latest
+
+    - name: Ensure the application directory exists
+      ansible.builtin.file:
+        path: "{{ app_root }}"
+        state: directory
+        owner: "{{ app_user }}"
+        group: "{{ app_group }}"
+        mode: "0755"
+
+    # WEAKNESS: the rendered file is world-readable and embeds a credential.
+    - name: Write the application configuration
+      ansible.builtin.copy:
+        content: |
+          listen_address={{ app_listen_address }}
+          listen_port={{ app_listen_port }}
+          db_host={{ app_db.host }}
+          db_user={{ app_db.user }}
+          db_password={{ app_db.password }}
+          api_key={{ app_service.api_key }}
+        dest: "{{ app_root }}/app.conf"
+        owner: "{{ app_user }}"
+        group: "{{ app_group }}"
+        mode: "0644"
+
+    # WEAKNESS: certificate validation disabled, so the artifact source is
+    # not authenticated.
+    - name: Fetch the application artifact
+      ansible.builtin.get_url:
+        url: "{{ app_artifact_url }}"
+        dest: "{{ app_root }}/app.tar.gz"
+        validate_certs: false
+        mode: "0644"
+
+    # WEAKNESS: the command reports a change on every run, so drift cannot be
+    # distinguished from a no-op.
+    - name: Reload the application
+      ansible.builtin.command:
+        cmd: "systemctl reload {{ app_package }}"

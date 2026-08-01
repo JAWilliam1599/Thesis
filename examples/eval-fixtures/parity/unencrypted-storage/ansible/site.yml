@@ -1,0 +1,35 @@
+---
+# Parity fixture: data stored without encryption at rest (on-prem side).
+#
+# Paired with ../cdk, which creates an unencrypted bucket and EBS volume.
+# Weakness class: unencrypted-storage
+- name: Provision application data storage
+  hosts: appservers
+  become: true
+  gather_facts: false
+
+  tasks:
+    - name: Create the data mount point
+      ansible.builtin.file:
+        path: /srv/appdata
+        state: directory
+        owner: root
+        group: root
+        mode: '0755'
+
+    # WEAKNESS (unencrypted-storage): the data filesystem is created and
+    # mounted with no encryption layer (no LUKS / dm-crypt).
+    - name: Create the data filesystem
+      ansible.builtin.command: mkfs.ext4 -F /dev/sdb1
+      changed_when: true
+
+    - name: Mount the data filesystem at boot
+      ansible.builtin.lineinfile:
+        path: /etc/fstab
+        line: /dev/sdb1 /srv/appdata ext4 defaults 0 2
+        state: present
+        create: false
+
+    - name: Mount the data filesystem now
+      ansible.builtin.command: mount /srv/appdata
+      changed_when: true

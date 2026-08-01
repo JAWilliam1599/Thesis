@@ -1,0 +1,92 @@
+Slide 1. Title
+- Thesis Title
+- Student Information
+- Supervisor
+- Department
+- Date
+
+Slide 2. Research Background
+- Growth of Cloud Computing
+- Emergence of Hybrid Cloud
+- Motivation for Hybrid Cloud Adoption
+
+Slide 3. Research Challenges
+- Challenge 1: Managing heterogeneous infrastructure
+- Challenge 2: Integrating continuous security into the software lifecycle
+- Challenge 3: Assessing security findings and prioritizing risks
+- Challenge 4: Establishing an integrated SysSecOps process
+
+Slide 4. Research Gaps
+- Gap 1: Limited Operational Frameworks for Hybrid Cloud Security
+- Gap 2: Insufficient Integration of Continuous Security Throughout Hybrid Cloud Operations
+- Gap 3: Limited Orchestration of Heterogeneous Security Tools and Security Findings
+- Gap 4: Limited Empirical Validation of Integrated Security Operational Processes
+
+Slide 5. Research Objectives
+- Objective 1: To investigate the operational and security challenges associated with hybrid cloud environments and analyze the limitations of existing approaches in integrating system administration, software development, and continuous security
+
+- Objective 2: To design a SysSecOps operational process that incorporates continuous security throughout the software operational lifecycle by integrating infrastructure management, automated security assessment, policy enforcement, and deployment activities into a unified workflow.
+
+- Objective 3: To establish a unified security assessment mechanism capable of aggregating security findings from heterogeneous security tools and supporting risk evaluation to facilitate security analysis and remediation prioritization
+
+Slide 6. Research Contributions
+- Contribution 1: A SysSecOps operational process for hybrid cloud environments is proposed, integrating system administration, continuous security, and software delivery into a unified workflow. The proposed process addresses the operational challenges of heterogeneous infrastructure management, continuous security integration, and security automation identified in current hybrid cloud environments.
+
+- Contribution 2:  A unified security assessment mechanism is developed by integrating multiple security analysis tools into a common security evaluation process. The proposed mechanism aggregates heterogeneous security findings and supports risk evaluation to improve security analysis and vulnerability prioritization. Its effectiveness is validated using a security dataset containing both vulnerable and secure software samples.
+
+- Contribution 3: A prototype SysSecOps system is designed and implemented to realize the proposed operational process within a hybrid cloud environment. The prototype integrates infrastructure automation, continuous security assessment, and automated deployment workflows. Furthermore, representative experimental scenarios are conducted to evaluate the feasibility and effectiveness of the proposed approach in improving continuous security integration and operational security management.
+
+Slide 7. Proposed SysSecOps Process
+- Overall Workflow
+- Operational Pipeline
+- Continuous Security Integration
+- Risk Evaluation Workflow
+
+Slide 8. System Architecture
+- Hybrid Cloud Architecture
+- On-premises Environment
+- Cloud Environment
+- Communication Between Components
+- Technology Stack
+
+Slide 9. Unified Security Assessment
+- Security Assessment Workflow
+- Bandit
+- Semgrep
+- OWASP Dependency-Check
+- Feature Aggregation
+- Logistic Regression Risk Scoring
+
+Slide 10. Evaluation Methodology
+- Research Question 1
+- Research Question 2
+- Research Question 3
+- Evaluation Scenarios
+- Evaluation Dataset
+
+Slide 11. Experimental Setup
+- Prototype Environment
+- Hybrid Cloud Deployment
+- SecurityEval Dataset
+- Safe Software Dataset (Click, Rich, Typer)
+
+Slide 12. Experimental Results
+- Results for RQ1
+- Results for RQ2
+- Results for RQ3
+
+Slide 13. Security Assessment Results
+- Classification Report
+- Confusion Matrix
+- Feature Importance
+- Risk Score Interpretation
+
+Slide 14. Conclusion
+- Research Summary
+- Research Contributions
+- Future Work
+
+Slide 15. Questions
+- Thank You
+- Questions and Discussion
+

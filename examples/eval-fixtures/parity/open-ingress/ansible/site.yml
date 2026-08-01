@@ -1,0 +1,32 @@
+---
+# Parity fixture: administrative ingress open to the whole internet (on-prem side).
+#
+# Paired with ../cdk, which opens the same port to the same source range in a
+# security group.  Everything else here is deliberately unremarkable so that any
+# difference in the gate's verdict is attributable to the one weakness.
+#
+# Weakness class: open-ingress
+- name: Configure application host firewall
+  hosts: appservers
+  become: true
+  gather_facts: false
+
+  tasks:
+    - name: Install the host firewall
+      ansible.builtin.package:
+        name: iptables
+        state: present
+
+    # WEAKNESS (open-ingress): SSH reachable from any address on the internet.
+    - name: Allow SSH from anywhere
+      ansible.builtin.iptables:
+        chain: INPUT
+        protocol: tcp
+        destination_port: '22'
+        source: 0.0.0.0/0
+        jump: ACCEPT
+
+    - name: Default-deny the remaining inbound traffic
+      ansible.builtin.iptables:
+        chain: INPUT
+        policy: DROP

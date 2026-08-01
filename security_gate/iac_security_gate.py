@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from security_gate.scanners.ansible_lint_adapter import run_ansible_lint
+from security_gate.scanners.ansible_rules_adapter import run_ansible_rules
 from security_gate.scanners.aws_config_adapter import fetch_violations
 from security_gate.scanners.checkov_adapter import run_checkov
 from security_gate.scanners.cfn_lint_adapter import run_cfn_lint
@@ -593,6 +594,7 @@ class IaCSecurityGate:
         use_ansible_lint: bool = True,
         use_checkov: bool = True,
         use_secret_scan: bool = True,
+        use_ansible_rules: bool = True,
         run_id: str | None = None,
         pass_max: int = THRESHOLDS["pass_max"],
         review_max: int = THRESHOLDS["review_max"],
@@ -630,14 +632,18 @@ class IaCSecurityGate:
             framework="ansible",
         )
         secret_findings, secret_status = run_secret_scan(target_files, enabled=use_secret_scan)
+        rule_findings, rules_status = run_ansible_rules(target_files, enabled=use_ansible_rules)
 
-        deduped = _dedupe_findings(ansible_findings + checkov_findings + secret_findings)
+        deduped = _dedupe_findings(
+            ansible_findings + checkov_findings + secret_findings + rule_findings
+        )
 
         scanner_warnings: list[str] = []
         for label, status in (
             ("ansible-lint", ansible_status),
             ("checkov", checkov_status),
             ("secret-scan", secret_status),
+            ("ansible-rules", rules_status),
         ):
             if status == "not_installed":
                 scanner_warnings.append(f"{label} not installed — scan skipped.")
@@ -695,6 +701,7 @@ class IaCSecurityGate:
                 "ansible_lint": ansible_status,
                 "checkov": checkov_status,
                 "secret_scan": secret_status,
+                "ansible_rules": rules_status,
             },
             "scanner_warnings": scanner_warnings,
             "findings": deduped,

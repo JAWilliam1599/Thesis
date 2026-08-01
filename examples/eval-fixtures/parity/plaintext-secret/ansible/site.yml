@@ -1,0 +1,18 @@
+---
+# Parity fixture: a credential written in clear text (on-prem side).
+#
+# Paired with ../cdk, which bakes the same credential into a Lambda environment
+# variable.  Weakness class: plaintext-secret
+- name: Deploy application configuration
+  hosts: appservers
+  become: true
+  gather_facts: false
+
+  tasks:
+    - name: Write the application configuration
+      ansible.builtin.template:
+        src: app.conf.j2
+        dest: /etc/app/app.conf
+        owner: root
+        group: root
+        mode: '0640'

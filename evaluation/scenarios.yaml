@@ -1,0 +1,334 @@
+# Pre-registered campaign matrix for RQ1 and RQ2.
+#
+# Every run the campaign will perform is declared here *before* execution,
+# together with the outcome it is expected to produce.  Results are therefore
+# scored against a fixed hypothesis rather than described after the fact.
+#
+# Fields
+#   fixture          fixture id from examples/eval-fixtures/expectations.yaml
+#   expect_decision  overrides the fixture's declared decision.  Only used for
+#                    degraded-scanner cells, where losing a scanner legitimately
+#                    moves the score across a band boundary.
+#   expect_status    expected terminal branch status under these conditions
+#   flags            extra orchestrator flags defining the run conditions
+#   degradation      label for the assurance component removed in this cell
+#   requires         capabilities the run needs; skipped unless granted with
+#                    --allow on the campaign runner
+#
+# Terminal statuses: gated_ok | review | reject | deployed | deploy_failed | error
+
+campaign:
+  id_prefix: rq12
+  description: >-
+    Decision conformance, enforcement correctness and evidence completeness of
+    the hybrid security gate across the public-cloud (CDK) and on-premises
+    (Ansible) branches, including behaviour under degraded assurance.
+
+scenarios:
+  # ======================================================================== #
+  # RQ1 — decision conformance and enforcement correctness
+  # ======================================================================== #
+  - id: cdk-pass-gate
+    fixture: cdk-pass
+    expect_status: gated_ok
+    replicates: 5
+    purpose: Compliant cloud change is not obstructed.
+
+  - id: cdk-review-hold
+    fixture: cdk-review
+    expect_status: review
+    replicates: 5
+    purpose: >-
+      A review-band decision halts the pipeline when no human approval is
+      supplied — the gate does not fail open.
+
+  - id: cdk-review-approved
+    fixture: cdk-review
+    flags: ["--manual-approve"]
+    expect_status: gated_ok
+    replicates: 5
+    purpose: >-
+      An explicitly approved review-band decision proceeds, and the approval is
+      recorded in the audit trail.
+
+  - id: cdk-reject-block
+    fixture: cdk-reject
+    expect_status: reject
+    replicates: 5
+    purpose: >-
+      A reject-band decision blocks deployment and writes a rejection record.
+
+  - id: ans-pass-gate
+    fixture: ans-pass
+    flags: ["--no-connectivity-check"]
+    expect_status: gated_ok
+    replicates: 5
+    purpose: Compliant on-prem change is not obstructed.
+
+  - id: ans-review-hold
+    fixture: ans-review
+    flags: ["--no-connectivity-check"]
+    expect_status: review
+    replicates: 5
+    purpose: Review-band on-prem change halts without approval.
+
+  - id: ans-review-approved
+    fixture: ans-review
+    flags: ["--no-connectivity-check", "--manual-approve"]
+    expect_status: gated_ok
+    replicates: 5
+    purpose: Approved review-band on-prem change proceeds with an approval record.
+
+  - id: ans-reject-block
+    fixture: ans-reject
+    flags: ["--no-connectivity-check"]
+    expect_status: reject
+    replicates: 5
+    purpose: Reject-band on-prem change is blocked with a rejection record.
+
+  # ======================================================================== #
+  # RQ1 — behaviour under degraded assurance
+  #
+  # Expectations below are derived from the per-scanner score contributions
+  # measured during fixture calibration, and were fixed before the campaign.
+  # A cell whose decision moves band is not a failure: it quantifies how much
+  # of the decision rests on each individual scanner.
+  # ======================================================================== #
+  - id: cdk-reject-no-checkov
+    fixture: cdk-reject
+    flags: ["--no-checkov"]
+    degradation: checkov_unavailable
+    expect_decision: review
+    expect_status: review
+    replicates: 3
+    purpose: >-
+      Quantifies Checkov's share of a reject decision on the cloud branch and
+      confirms the gate degrades to review rather than to pass.
+
+  - id: cdk-reject-no-ml
+    fixture: cdk-reject
+    flags: ["--no-ml-risk"]
+    degradation: ml_model_unavailable
+    expect_decision: reject
+    expect_status: reject
+    replicates: 3
+    purpose: The reject decision does not depend on the learned risk component.
+
+  - id: cdk-review-no-cfn-lint
+    fixture: cdk-review
+    flags: ["--no-cfn-lint"]
+    degradation: cfn_lint_unavailable
+    expect_decision: review
+    expect_status: review
+    replicates: 3
+    purpose: Losing cfn-lint does not silently downgrade a review decision.
+
+  # The registered campaign already runs with Infracost and AWS Config disabled
+  # for determinism, so removing them again would be a vacuous cell.  These two
+  # cells probe the components that actually carry the offline score.
+
+  - id: cdk-review-no-checkov
+    fixture: cdk-review
+    flags: ["--no-checkov"]
+    degradation: checkov_unavailable
+    expect_decision: pass
+    expect_status: gated_ok
+    replicates: 3
+    purpose: >-
+      The adverse case for graceful degradation: Checkov contributes almost all
+      of this fixture's score, so losing it silently downgrades a review to an
+      auto-pass. Declared in advance so the resulting deployment of an
+      unreviewed change is reported as designed behaviour, not as a surprise.
+
+  - id: cdk-pass-no-cfn-lint
+    fixture: cdk-pass
+    flags: ["--no-cfn-lint"]
+    degradation: cfn_lint_unavailable
+    expect_decision: pass
+    expect_status: gated_ok
+    replicates: 3
+    purpose: >-
+      A missing linter is reported as unavailable and does not block an
+      otherwise compliant change.
+
+  - id: ans-reject-no-secret-scan
+    fixture: ans-reject
+    flags: ["--no-connectivity-check", "--no-secret-scan"]
+    degradation: secret_scan_unavailable
+    expect_decision: review
+    expect_status: review
+    replicates: 3
+    purpose: >-
+      Measures how much of the on-prem reject decision rests on secret
+      detection alone.
+
+  - id: ans-reject-no-ansible-lint
+    fixture: ans-reject
+    flags: ["--no-connectivity-check", "--no-ansible-lint"]
+    degradation: ansible_lint_unavailable
+    expect_decision: reject
+    expect_status: reject
+    replicates: 3
+    purpose: The on-prem reject decision survives the loss of ansible-lint.
+
+  - id: ans-review-no-ansible-lint
+    fixture: ans-review
+    flags: ["--no-connectivity-check", "--no-ansible-lint"]
+    degradation: ansible_lint_unavailable
+    expect_decision: review
+    expect_status: review
+    replicates: 3
+    purpose: Losing ansible-lint does not silently downgrade a review decision.
+
+  - id: ans-review-no-secret-scan
+    fixture: ans-review
+    flags: ["--no-connectivity-check", "--no-secret-scan"]
+    degradation: secret_scan_unavailable
+    expect_decision: review
+    expect_status: review
+    replicates: 3
+    purpose: Losing secret detection does not silently downgrade a review decision.
+
+  - id: ans-pass-no-checkov
+    fixture: ans-pass
+    flags: ["--no-connectivity-check", "--no-checkov"]
+    degradation: checkov_unavailable
+    expect_decision: pass
+    expect_status: gated_ok
+    replicates: 3
+    purpose: A degraded scanner set does not obstruct a compliant on-prem change.
+
+  # ======================================================================== #
+  # RQ2 — on-premises target-state evidence
+  #
+  # These reach a real host and are skipped unless explicitly allowed with
+  #   python -m evaluation.run_campaign --allow target-host
+  # ======================================================================== #
+  - id: ans-pass-deploy
+    fixture: ans-pass
+    flags: ["--deploy", "--idempotence-check"]
+    expect_status: deployed
+    replicates: 3
+    requires: ["target-host"]
+    purpose: >-
+      End-to-end on-prem checkpoints: reachability, authenticated access, gate,
+      dry-run, apply, post-apply verification, and repeated-run idempotency.
+
+  - id: ans-reject-deploy-blocked
+    fixture: ans-reject
+    flags: ["--deploy"]
+    expect_status: reject
+    replicates: 3
+    requires: ["target-host"]
+    purpose: >-
+      Enforcement correctness on the on-prem branch: a reject decision must
+      prevent the playbook from ever being applied, even when deployment was
+      explicitly requested.
+
+  # ---------------------------------------------------------------- parity --
+  #
+  # RQ2: does the same weakness receive the same treatment on both sides of the
+  # hybrid boundary?  Each pair contributes one cloud run and one on-prem run so
+  # the two verdicts can be compared directly.  Expected decisions here are the
+  # bands measured during calibration; the analysis reports cross-branch
+  # agreement, which is the quantity actually under test.
+
+  - id: par-open-ingress-cdk
+    fixture: par-open-ingress-cdk
+    expect_status: review
+    replicates: 3
+    purpose: Cloud-side treatment of SSH exposed to 0.0.0.0/0.
+
+  - id: par-open-ingress-ansible
+    fixture: par-open-ingress-ansible
+    flags: ["--no-connectivity-check"]
+    expect_status: gated_ok
+    replicates: 3
+    purpose: On-premises treatment of SSH exposed to 0.0.0.0/0.
+
+  - id: par-plaintext-secret-cdk
+    fixture: par-plaintext-secret-cdk
+    expect_status: review
+    replicates: 3
+    purpose: Cloud-side treatment of a credential stored in clear text.
+
+  - id: par-plaintext-secret-ansible
+    fixture: par-plaintext-secret-ansible
+    flags: ["--no-connectivity-check"]
+    expect_status: gated_ok
+    replicates: 3
+    purpose: On-premises treatment of a credential stored in clear text.
+
+  - id: par-overprivileged-access-cdk
+    fixture: par-overprivileged-access-cdk
+    expect_status: review
+    replicates: 3
+    purpose: Cloud-side treatment of unrestricted administrative privilege.
+
+  - id: par-overprivileged-access-ansible
+    fixture: par-overprivileged-access-ansible
+    flags: ["--no-connectivity-check"]
+    expect_status: review
+    replicates: 3
+    purpose: On-premises treatment of unrestricted administrative privilege.
+
+  - id: par-unencrypted-storage-cdk
+    fixture: par-unencrypted-storage-cdk
+    expect_status: review
+    replicates: 3
+    purpose: Cloud-side treatment of storage without encryption at rest.
+
+  - id: par-unencrypted-storage-ansible
+    fixture: par-unencrypted-storage-ansible
+    flags: ["--no-connectivity-check"]
+    expect_status: review
+    replicates: 3
+    purpose: On-premises treatment of storage without encryption at rest.
+
+  # The parity measurement is reported for two arms so that the effect of the
+  # on-premises semantic rules is visible rather than assumed.  These four
+  # scenarios reproduce the pre-rule baseline by disabling them; the paired
+  # cloud scenarios above are unaffected and are shared by both arms.
+  - id: par-open-ingress-ansible-baseline
+    fixture: par-open-ingress-ansible
+    flags: ["--no-connectivity-check", "--no-ansible-rules"]
+    degradation: ansible_rules_unavailable
+    expect_decision: pass
+    expect_status: gated_ok
+    replicates: 3
+    purpose: >-
+      Baseline arm: open ingress as the on-prem path scored it before the
+      semantic rules were added.
+
+  - id: par-plaintext-secret-ansible-baseline
+    fixture: par-plaintext-secret-ansible
+    flags: ["--no-connectivity-check", "--no-ansible-rules"]
+    degradation: ansible_rules_unavailable
+    expect_decision: pass
+    expect_status: gated_ok
+    replicates: 3
+    purpose: >-
+      Baseline arm: the credential is found by the secret scanner, so this pair
+      is unaffected by the semantic rules.
+
+  - id: par-overprivileged-access-ansible-baseline
+    fixture: par-overprivileged-access-ansible
+    flags: ["--no-connectivity-check", "--no-ansible-rules"]
+    degradation: ansible_rules_unavailable
+    expect_decision: pass
+    expect_status: gated_ok
+    replicates: 3
+    purpose: >-
+      Baseline arm: passwordless sudo and a world-writable directory scored
+      zero before the semantic rules existed.
+
+  - id: par-unencrypted-storage-ansible-baseline
+    fixture: par-unencrypted-storage-ansible
+    flags: ["--no-connectivity-check", "--no-ansible-rules"]
+    degradation: ansible_rules_unavailable
+    expect_decision: pass
+    expect_status: gated_ok
+    replicates: 3
+    purpose: >-
+      Baseline arm: only a style rule fired before the semantic rules were
+      added.

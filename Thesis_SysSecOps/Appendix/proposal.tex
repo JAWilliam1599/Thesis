@@ -1,10 +1,25 @@
+\tikzset{
+    zone/.style={draw, rounded corners, thick, fill=blue!4, inner sep=6pt},
+    proc/.style={draw, rounded corners, align=center, fill=white,
+                 minimum height=8mm, minimum width=22mm, font=\small},
+    io/.style={draw, trapezium, trapezium left angle=70, trapezium right angle=110,
+               align=center, fill=green!6, minimum height=8mm, font=\small},
+    store/.style={draw, cylinder, shape border rotate=90, aspect=0.25, align=center,
+                  fill=orange!8, minimum height=10mm, minimum width=14mm, font=\footnotesize},
+    dec/.style={draw, diamond, aspect=2, align=center, fill=yellow!12,
+                inner sep=1pt, font=\small},
+    flow/.style={-{Stealth[length=2.4mm]}, thick},
+    flowback/.style={-{Stealth[length=2.4mm]}, thick, dashed},
+}
+
+
+\chapter*{Thesis Proposal}
+\addcontentsline{toc}{section}{Thesis Proposal}
+
 \begin{center}
 \textbf{UNIVERSITY OF SCIENCE}\\
 \textbf{ADVANCED PROGRAM IN COMPUTER SCIENCE}
 \end{center}
-
-\chapter*{Đề cương chi tiết}
-\addcontentsline{toc}{section}{Thesis Proposal}
 
 \begin{center}
 \textbf{THESIS PROPOSAL}
@@ -103,15 +118,55 @@ deployment across heterogeneous cloud infrastructures.
 \section*{4. System Architecture and Technology Stack}
 \addcontentsline{toc}{subsection}{4. System Architecture and Technology Stack}
 
+\begin{figure}[ht]
+\centering
+\begin{tikzpicture}[node distance=6mm]
+% Zone 1
+\node[proc] (ui) {UI / CLI};
+\node[proc, below=10mm of ui] (gen) {AI generation\\(Bedrock / OpenRouter)};
+\node[io, below=10mm of gen] (app) {IaC\\(CDK / Ansible)};
+\begin{scope}[on background layer]
+  \node[zone, fit=(ui)(gen)(app), label=above:{\footnotesize\textbf{Generation}}] (z1) {};
+\end{scope}
+% Zone 2
+\node[proc, right=36mm of ui] (synth) {Synthesize\\(\texttt{cdk synth})};
+\node[proc, below=10mm of synth] (gate) {Multi-scanner\\gate};
+\node[dec, below=10mm of gate] (dec) {score?};
+\begin{scope}[on background layer]
+  \node[zone, fit=(synth)(gate)(dec), label=above:{\footnotesize\textbf{Security gate}}] (z2) {};
+\end{scope}
+% Zone 3
+\node[proc, right=24mm of synth] (deploy) {Deploy\\(AWS + on-prem)};
+\node[proc, below=10mm of deploy] (mon) {Monitor\\(operational loop)};
+\node[store, below=10mm of mon] (audit) {Audit\\\& metrics};
+\begin{scope}[on background layer]
+  \node[zone, fit=(deploy)(mon)(audit), label=above:{\footnotesize\textbf{Hybrid infra \& ops}}] (z3) {};
+\end{scope}
+% Edges
+\draw[flow] (ui) -- (gen);
+\draw[flow] (gen) -- (app);
+\draw[flow] (app.east) -| (3,0) |- (synth.west) node[pos=0.7,above, font=\scriptsize]{templates};
+\draw[flow] (synth) -- (gate);
+\draw[flow] (gate) -- (dec);
+\draw[flow] (dec.east) -| (8.6,0) |- (deploy.west) node[pos=0.75,left,font=\scriptsize,rotate=90]{pass / approved};
+\draw[flow] (deploy) -- (mon);
+\draw[flow] (mon) -- (audit);
+\draw[flowback] (dec.west) -| (3.5,-3) |- (gen.east)
+      node[pos=0.25,below,rotate=90,font=\scriptsize]{reject: inject findings};
+\end{tikzpicture}
+\label{fig:arch-overview}
+\end{figure}
+
 The system is organised into three cooperating zones. Zone~1 produces IaC; Zone~2 evaluates and
 gates it; Zone~3 provisions the hybrid infrastructure and continuously observes it. The
 risk-scoring engine sits at the boundary of Zone~1 and Zone~2, consuming scanner output and emitting
 the decision that governs whether code proceeds to deployment or returns to Zone~1 for
 regeneration.
 
+
+
 \bigskip
-\noindent\textit{The architecture diagram is the same three-zone diagram presented in Chapter~3
-(Figure~\ref{fig:arch-overview}). It shows the three zones and the principal flow of control between
+\noindent\textit{The diagram shows the three zones and the principal flow of control between
 them: the solid arrows denote the forward path of a change from prompt to deployed and monitored
 infrastructure, and the dashed arrow denotes the remediation feedback that returns rejected
 generated code to Zone~1.}

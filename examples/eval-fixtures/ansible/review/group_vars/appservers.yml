@@ -1,0 +1,21 @@
+---
+# REVIEW-band fixture variables.  Every credential below is a deliberate,
+# non-functional placeholder used to trigger the secret scanner.
+app_user: appsvc
+app_group: appsvc
+app_root: /opt/appsvc
+app_listen_address: 0.0.0.0
+app_listen_port: 8080
+app_artifact_url: http://artifacts.internal.example/app.tar.gz
+app_package: appsvc
+
+# WEAKNESS: service credentials committed in plaintext rather than vaulted or
+# resolved from the controller environment at run time.
+app_db:
+  host: db.internal.example
+  name: appdb
+  user: appsvc
+  password: FIXTURE-not-a-real-password-1
+
+app_service:
+  api_key: FIXTUREnotarealapikey0000

@@ -1,0 +1,174 @@
+# Declared expectations for the evaluation fixtures.
+#
+# This file is the single source of truth for what each fixture *should*
+# provoke.  The campaign harness compares observed gate behaviour against these
+# declarations; a mismatch is reported as a conformance failure, never
+# reconciled by relabelling the fixture.
+#
+# expect_decision is a property of the fixture alone (it depends only on the
+# code being scanned).  The expected terminal *status* additionally depends on
+# the run conditions, so it is declared per scenario in scenarios.yaml.
+
+fixtures:
+  # ---------------------------------------------------------------- ansible --
+  - id: ans-pass
+    branch: ansible
+    path: examples/eval-fixtures/ansible/pass
+    band: pass
+    expect_decision: pass
+    rationale: >-
+      Clean playbook: fully-qualified modules, named tasks, restrictive file
+      modes, no embedded credentials.  Establishes that the gate does not
+      block compliant on-prem change.
+
+  - id: ans-review
+    branch: ansible
+    path: examples/eval-fixtures/ansible/review
+    band: review
+    expect_decision: review
+    rationale: >-
+      Moderate weaknesses: a plaintext service password, a world-readable
+      config file carrying it, and TLS validation disabled on an artifact
+      download.  Should require human adjudication, not auto-rejection.
+
+  - id: ans-reject
+    branch: ansible
+    path: examples/eval-fixtures/ansible/reject
+    band: reject
+    expect_decision: reject
+    rationale: >-
+      Severe, compounding weaknesses: hardcoded cloud credentials and private
+      key material, remote script piped to a shell, world-writable secret
+      files, and unrestricted passwordless sudo.
+
+  # -------------------------------------------------------------------- cdk --
+  - id: cdk-pass
+    branch: cdk
+    path: examples/eval-fixtures/cdk/pass
+    band: pass
+    expect_decision: pass
+    rationale: >-
+      Encrypted, private, logged storage with least-privilege access and no
+      public ingress.
+
+  - id: cdk-review
+    branch: cdk
+    path: examples/eval-fixtures/cdk/review
+    band: review
+    expect_decision: review
+    rationale: >-
+      Moderate weaknesses: missing access logging and versioning, an
+      over-broad but non-public security-group rule.
+
+  - id: cdk-reject
+    branch: cdk
+    path: examples/eval-fixtures/cdk/reject
+    band: reject
+    expect_decision: reject
+    rationale: >-
+      Severe weaknesses: SSH open to the internet, unencrypted public
+      storage, and a wildcard IAM policy.
+
+  # ----------------------------------------------------------------- parity --
+  #
+  # Each parity pair encodes *one* weakness class on both sides of the hybrid
+  # boundary: once as cloud infrastructure-as-code and once as on-premises
+  # configuration.  Everything else in each fixture is deliberately
+  # unremarkable, so a difference in verdict is attributable to the boundary
+  # rather than to incidental differences in the surrounding code.
+  #
+  # The RQ2 claim under test is agreement: the same weakness should land in the
+  # same band on both sides.  The band recorded below is therefore *descriptive*
+  # — it is the value measured during calibration, not a target that the fixture
+  # was tuned to hit.  Pairs that disagree are reported as parity gaps; the
+  # plaintext-secret pair is expected to disagree, because the cloud path runs
+  # no secret scanner at all.
+
+  - id: par-open-ingress-cdk
+    branch: cdk
+    path: examples/eval-fixtures/parity/open-ingress/cdk
+    parity_pair: open-ingress
+    band: review
+    expect_decision: review
+    rationale: >-
+      Security group permitting SSH from 0.0.0.0/0.  Measured at 24 points: the
+      gate's own resource heuristic raises this as critical.
+
+  - id: par-open-ingress-ansible
+    branch: ansible
+    path: examples/eval-fixtures/parity/open-ingress/ansible
+    parity_pair: open-ingress
+    band: pass
+    expect_decision: pass
+    rationale: >-
+      Host firewall rule permitting SSH from 0.0.0.0/0, expressed with
+      ansible.builtin.iptables.  Measured at 20 points from the semantic
+      ingress rule, which is exactly the pass ceiling, so the decision stays
+      pass while the paired cloud fixture reaches review at 24.  Before the
+      semantic rules existed this fixture measured 0.
+
+  - id: par-plaintext-secret-cdk
+    branch: cdk
+    path: examples/eval-fixtures/parity/plaintext-secret/cdk
+    parity_pair: plaintext-secret
+    band: review
+    expect_decision: review
+    rationale: >-
+      Credential baked into a function's environment in clear text.  Measured at
+      44 points, of which 19 come from the learned code-risk model rather than
+      from a secret scanner — the cloud path has no secret scanner, so detection
+      here is incidental to the ML component.
+
+  - id: par-plaintext-secret-ansible
+    branch: ansible
+    path: examples/eval-fixtures/parity/plaintext-secret/ansible
+    parity_pair: plaintext-secret
+    band: pass
+    expect_decision: pass
+    rationale: >-
+      Credential committed to a variable file in clear text.  Measured at 20
+      points from the regex secret scan — detected, but exactly at the pass
+      ceiling, so it is auto-passed rather than adjudicated.
+
+  - id: par-overprivileged-access-cdk
+    branch: cdk
+    path: examples/eval-fixtures/parity/overprivileged-access/cdk
+    parity_pair: overprivileged-access
+    band: review
+    expect_decision: review
+    rationale: >-
+      IAM policy granting Action "*" on Resource "*".  Measured at 59 points
+      from the wildcard heuristic plus seven Checkov findings.
+
+  - id: par-overprivileged-access-ansible
+    branch: ansible
+    path: examples/eval-fixtures/parity/overprivileged-access/ansible
+    parity_pair: overprivileged-access
+    band: review
+    expect_decision: review
+    rationale: >-
+      Passwordless unrestricted sudo and a world-writable directory.  Measured
+      at 30 points: the semantic rules raise NOPASSWD:ALL as critical and mode
+      0777 as high.  Before those rules existed this fixture measured 0.
+
+  - id: par-unencrypted-storage-cdk
+    branch: cdk
+    path: examples/eval-fixtures/parity/unencrypted-storage/cdk
+    parity_pair: unencrypted-storage
+    band: review
+    expect_decision: review
+    rationale: >-
+      Object and block storage created without encryption at rest.  Measured at
+      34 points from the encryption heuristics plus three Checkov findings.
+
+  - id: par-unencrypted-storage-ansible
+    branch: ansible
+    path: examples/eval-fixtures/parity/unencrypted-storage/ansible
+    parity_pair: unencrypted-storage
+    band: review
+    expect_decision: review
+    rationale: >-
+      Data filesystem created and mounted with no encryption layer.  Measured
+      at 25 points: a style rule (10), an unencrypted filesystem creation (10)
+      and an unencrypted persistent mount (5).  Before the semantic rules
+      existed this fixture measured 10, entirely from the style rule.

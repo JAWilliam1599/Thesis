@@ -24,26 +24,40 @@ evaluation.
 The evaluation was guided by the following research questions:
 
 \begin{description}
-    \item[\textbf{RQ1.}] \textbf{Operational feasibility and reliability:} To what
-    extent can the proposed SysSecOps prototype execute the complete operational
-    workflow, from infrastructure generation or intake, through synthesis or
-    validation, the multi-scanner risk gate placed between synthesis and deployment,
-    the deployment decision, policy-enforced deployment, and post-deployment
-    monitoring, without unexpected pipeline failures, including when an optional
+    \item[\textbf{RQ1.}] \textbf{Decision conformance and enforcement correctness:}
+    When infrastructure of a known risk band is submitted, does the prototype
+    reach the decision that band warrants, and does that decision actually
+    govern what happens next --- such that a \emph{reject} never deploys, a
+    \emph{review} never deploys without a recorded approval, and every run
+    leaves a machine-readable account of itself, including when an optional
     assessment component or credential is unavailable?
 
-    \item[\textbf{RQ2.}] \textbf{Hybrid infrastructure applicability:} To what extent
-    can the proposed process apply a common security assessment, risk-scoring,
-    deployment-control, and operational-traceability workflow to an existing
-    on-premises Linux node over a mesh-VPN connection,
-    using the same risk engine and decision thresholds as the public-cloud side of
-    the hybrid environment?
+    \item[\textbf{RQ2.}] \textbf{Cross-boundary enforcement equivalence:} When the
+    same class of weakness is expressed once as public-cloud infrastructure code
+    and once as on-premises configuration, does the shared risk engine assign it
+    the same decision band on both sides of the hybrid boundary, and does the
+    on-premises path attain the same operational checkpoints --- reachability,
+    validation, gating, dry run, apply, post-apply verification, and repeated-run
+    idempotency --- as the cloud path?
 
     \item[\textbf{RQ3.}] \textbf{Unified risk-evaluation capability:} To what extent
     can the proposed risk-scoring mechanism integrate findings from multiple security
     tools and a logistic-regression code-risk estimate to distinguish insecure code and
     produce consistent, interpretable deployment decisions?
 \end{description}
+
+Two aspects of this formulation deserve comment. First, RQ1 deliberately does
+not ask whether runs \emph{complete}. A gate that never blocks anything
+completes every run, so a completion rate cannot by itself distinguish a working
+security control from an inert one. Conformance to a declared expectation, and
+enforcement of the resulting decision, are the properties that carry evidential
+weight; completion is reported only as a supporting measure. Second, RQ2 is
+stated as a question about equivalence rather than as an assumption of it. An
+earlier formulation asked only whether the process \emph{could be applied} to an
+on-premises node, which the prototype's existence already answers. Asking
+whether the two boundaries treat the same weakness alike admits a negative
+answer, and Section~\ref{subsec:evaluation-results-parity} reports one.
+
 
 Table~\ref{tab:rq-evaluation-map} presents the relationship between the research
 questions, the corresponding evaluation methods, and the principal measurements.
@@ -59,15 +73,18 @@ questions, the corresponding evaluation methods, and the principal measurements.
 \textbf{RQ} & \textbf{Evaluation method} & \textbf{Collected evidence} &
 \textbf{Measures} \\
 \hline
-RQ1 & Execution of representative end-to-end pipeline scenarios, including a
-degraded-component scenario & Stage results, gate reports, deployment records,
-monitoring records, and execution logs & Completion rate, stage completion,
-unexpected failures, graceful degradation, and decision enforcement \\
+RQ1 & Replicated execution of pre-registered scenarios spanning three risk bands
+on both branches, plus scanner-removal scenarios & Gate reports, per-stage timing
+records, enforcement outcomes, and campaign run records & Decision conformance,
+confusion matrix, enforcement-invariant satisfaction, degradation behaviour, and
+gate overhead \\
 \hline
-RQ2 & Integration and configuration of an existing Linux node through Ansible using
-the shared risk engine over a mesh-VPN connection & Connectivity results, playbook
-analysis, execution records, gate reports, and target-state observations & Integration
-success, configuration success, policy enforcement, and state verification \\
+RQ2 & Paired cloud/on-premises fixtures expressing the same weakness class, and
+checkpoint attainment on an existing Linux node reached over a mesh-VPN
+connection & Paired gate decisions and scores, connectivity results, dry-run and
+apply records, verification results, and idempotency counters & Decision
+agreement per pair, score gap, checkpoint attainment rate, and failure-class
+distribution \\
 \hline
 RQ3 & Held-out classifier evaluation and controlled risk-decision cases & True labels,
 predicted probabilities, confusion matrix, component scores, deduplicated findings, and
@@ -102,6 +119,104 @@ represented correct execution of the security process. An unexpected failure was
 as an unhandled exception, premature pipeline termination, absent or malformed decision
 report, incorrect transition between stages, or deployment that violated the gate and
 approval policy.
+
+\subsection{Pre-Registered Evaluation Campaign}
+\label{subsec:evaluation-campaign}
+
+The measurements reported in Section~\ref{sec:evaluation-results} were not
+gathered by reading back the operational logs the prototype happened to
+accumulate during development. Such logs are a convenience sample: they
+over-represent whatever was being debugged at the time, they contain runs of
+incomplete projects, and the analyst chooses after the fact which of them to
+count. To avoid this, the evaluation was restructured around a campaign whose
+scenarios, expected outcomes, and replicate counts were declared in a
+version-controlled specification \emph{before} any of the reported runs were
+executed, and whose results were then computed from the persisted artifacts by a
+single analysis program.
+
+\subsubsection{Calibrated Fixtures}
+
+Fourteen infrastructure fixtures were constructed under
+\texttt{examples/eval-fixtures/}. Six are \emph{band fixtures}: for each branch
+--- AWS CDK for the cloud path and Ansible for the on-premises path --- one
+fixture was authored to sit in each of the \emph{pass}, \emph{review}, and
+\emph{reject} bands. The remaining eight form four \emph{parity pairs}, each
+pair expressing one weakness class twice, once in CDK and once in Ansible:
+unrestricted network ingress, a plaintext credential, over-privileged access,
+and unencrypted storage.
+
+Each fixture carries a declared band in \texttt{expectations.yaml} together with
+the finding breakdown that produces it. A calibration utility re-scores every
+fixture and fails if any has drifted outside its declared band, so a scanner
+upgrade that silently changes the arithmetic is caught rather than absorbed. An
+important methodological constraint applies to the parity pairs: their declared
+bands are \emph{descriptive}, recorded from measurement, and were not adjusted
+to make the two branches agree. Tuning the fixtures until both sides returned
+the same decision would have manufactured precisely the result that RQ2 exists
+to test.
+
+\subsubsection{Scenario Matrix}
+
+The specification in \texttt{evaluation/scenarios.yaml} declares 30 scenarios
+totalling 106 offline runs, organised in five groups. Eight \emph{conformance}
+scenarios, replicated five times each, submit the six band fixtures and
+additionally exercise the \emph{review} band twice per branch --- once withheld
+and once with an operator approval supplied --- so that the approval gate is
+observed in both states. Ten \emph{degradation} scenarios, replicated three
+times each, remove one scanner from an otherwise identical run; each declares
+the decision that the remaining evidence should support, derived arithmetically
+from the calibrated breakdown, so the scenario tests a prediction rather than
+merely recording whatever occurs. Eight \emph{parity} scenarios, replicated
+three times each, submit the four pairs, and four \emph{parity baseline}
+scenarios repeat the on-premises half of each pair with the semantic
+configuration rules disabled, for the reason given below. Two further scenarios
+exercise real deployment against a live node and are skipped unless that
+capability is explicitly granted, keeping the offline campaign self-contained.
+
+The baseline arm exists because the on-premises detection rules were written
+\emph{in response to} the first parity measurement, which found that the private
+side of the boundary could not see three of the four weakness classes at all.
+Reporting only the post-rule figures would present a capability as though it had
+been designed in from the start, and would make the improvement unverifiable.
+Declaring both arms in one specification instead lets a single campaign produce
+the before and after measurements under an identical code state, environment,
+and provenance record, so the difference between them is attributable to the
+rules rather than to anything that changed between two separate campaigns.
+
+\subsubsection{Controlling Non-Determinism}
+
+Two components make a run's score depend on the day it executes: the cost
+estimator prices against a live feed, and the cloud configuration check reports
+live account state. During pilot execution this was not hypothetical --- a
+\emph{reject} fixture scored 119 against a calibrated 114 because live pricing
+contributed an additional cost band. The registered campaign therefore disables
+both components by default and records that fact in each run's manifest, so that
+a reported score is reproducible from the repository alone. A separate,
+explicitly non-deterministic arm can be requested when the interaction with live
+pricing is itself of interest.
+
+\subsubsection{Recorded Artifacts and Analysis}
+
+Every run writes a self-describing report containing the run identifier,
+wall-clock duration, terminal status, the scenario and campaign it belongs to,
+the conditions in force --- deployment enabled, approval supplied, scanners
+disabled, and the numeric thresholds --- the provenance of the environment, and
+a per-stage record giving each stage's outcome, duration, and, on failure, a
+classified failure reason. Provenance capture includes the repository commit,
+whether the working tree was dirty, the interpreter version, the host, and the
+resolved version of every external tool, so that a table can be traced to the
+exact software state that produced it. The campaign runner appends one row per
+run to a line-delimited record and copies each report into the campaign
+directory.
+
+All reported statistics are computed by \texttt{evaluation/analyze\_campaign.py}
+from those persisted records alone; the analysis program never re-executes the
+pipeline. Proportions are reported with Wilson score intervals at the 95\%
+level, which behave sensibly at the small sample sizes and boundary proportions
+this campaign produces, where a normal approximation would give intervals
+extending below zero or collapsing to zero width. Durations are reported as
+medians with inter-quartile ranges rather than means, because pipeline stage
+times are right-skewed by occasional tool start-up costs.
 
 \subsection{End-to-End Pipeline Evaluation}
 \label{subsec:evaluation-rq1}
@@ -141,24 +256,67 @@ For $n$ pipeline runs, the end-to-end completion rate was calculated as
 \end{equation}
 
 where $n_{\mathrm{terminal}}$ denotes the number of runs that reached a valid and
-persisted terminal decision without an unexpected failure. Stage-level completion was
-reported in addition to the aggregate rate to identify whether failures occurred during
-generation, validation, assessment, scoring, deployment, or monitoring. Policy
-enforcement was verified by confirming that a rejected change was not deployed and that
-a review decision could proceed only after an explicit approval record had been created.
+persisted terminal decision without an unexpected failure. This rate is reported
+as a supporting measure only. The primary measure for RQ1 is \emph{decision
+conformance}, the proportion of runs whose observed decision equals the decision
+declared for that scenario in advance:
 
-\subsection{Existing On-Premises Virtual Machine Evaluation}
+\begin{equation}
+\label{eq:decision-conformance}
+\mathrm{Conformance} =
+\frac{|\{r : d_{\mathrm{obs}}(r) = d_{\mathrm{exp}}(r)\}|}{n} \times 100\%,
+\end{equation}
+
+where $d_{\mathrm{obs}}(r)$ and $d_{\mathrm{exp}}(r)$ denote the observed and
+pre-declared decision for run $r$. Conformance is reported both in aggregate,
+with a Wilson interval, and as a confusion matrix over the three decision bands,
+so that a systematic bias towards permissiveness or towards over-blocking would
+be visible rather than averaged away.
+
+Stage-level completion was reported in addition to the aggregate rate to identify
+whether failures occurred during generation, validation, assessment, scoring,
+deployment, or monitoring. Enforcement was then evaluated against a set of
+invariants that must hold for every run regardless of its decision: a
+\emph{reject} decision is never followed by a deployment; a \emph{review}
+decision is followed by a deployment only when an approval record exists; every
+run persists a decision report; every non-passing decision persists a
+corresponding rejection or approval record; and every report carries the
+provenance needed to reproduce it. Each invariant is reported as a satisfaction
+rate over the runs to which it applies, so a single violation is visible rather
+than diluted by the aggregate.
+
+Finally, gate overhead was measured, since a control that is correct but
+prohibitively slow will not survive contact with a real delivery process. The
+duration of the gate stage and its share of total run wall-clock time were
+recorded per run and reported as medians with inter-quartile ranges.
+
+\subsection{Cross-Boundary Equivalence Evaluation}
 \label{subsec:evaluation-rq2}
 
-RQ2 examined the use of the proposed process with infrastructure that existed before the
-pipeline run and was located outside the public-cloud provisioning workflow. The target
-was a Linux virtual machine represented in an Ansible inventory and configured through
-an Ansible playbook, reached over a mesh-VPN connection between the public-cloud and
-on-premises domains. The virtual machine retained its existing operating environment and
-was therefore treated as the private-side target of the hybrid case study. The same risk
-engine, scoring rules, and decision thresholds applied to public-cloud changes governed
-this private-side target, so that both sides of the hybrid environment were subject to a
-single, common security process.
+RQ2 examined whether the two sides of the hybrid boundary are governed alike.
+This has two parts, which are measured separately: whether the on-premises path
+can attain the same operational checkpoints as the cloud path, and whether the
+shared risk engine reaches the same decision when confronted with the same class
+of weakness on either side.
+
+The on-premises target was a Linux virtual machine represented in an Ansible
+inventory and configured through an Ansible playbook, reached over a mesh-VPN
+connection between the public-cloud and on-premises domains. The virtual machine
+retained its existing operating environment and was therefore treated as the
+private-side target of the hybrid case study. The same risk engine, scoring
+rules, and decision thresholds applied to public-cloud changes governed this
+private-side target.
+
+\subsubsection{Checkpoint Attainment}
+
+Seven operational checkpoints were defined, corresponding to the stages a change
+must pass to move from submission to a verified deployed state: target
+reachability, syntax validation, security gating, dry run, apply, post-apply
+verification, and repeated-run idempotency. For each run, a checkpoint was
+recorded as attained, failed, or not attempted. Attainment rates were computed
+over attempted checkpoints only. This distinction matters: when the gate returns
+\emph{reject}, the dry-run checkpoint is never attempted, and counting that as a
+failure would penalise the system for behaving correctly.
 
 The evaluation procedure comprised six stages. First, network reachability and
 authenticated Ansible access to the target were verified. Second, the inventory and
@@ -181,6 +339,32 @@ Observed failures were classified as connectivity, authentication, validation,
 assessment, gate-enforcement, configuration-execution, or target-verification failures.
 This classification separated failures caused by the external infrastructure from those
 caused by the implementation of the proposed process.
+
+\subsubsection{Decision Parity}
+
+Checkpoint attainment establishes that the on-premises path \emph{runs} the same
+workflow. It does not establish that the workflow \emph{decides} the same way.
+To test the latter, four weakness classes were selected that have a faithful
+expression in both technologies: unrestricted network ingress, a plaintext
+credential committed to the repository, over-privileged access, and unencrypted
+storage. Each was authored twice --- once as CDK infrastructure code and once as
+an Ansible role --- forming a matched pair in which the intended security defect
+is held constant and only the boundary varies.
+
+For each pair, the modal decision and the median score of each branch were taken
+across replicates, and the pair was scored as agreeing when both branches
+returned the same decision band. Agreement across pairs is reported as a
+proportion with a Wilson interval, together with the absolute score gap per pair,
+which indicates how far apart the two assessments are even when the band happens
+to coincide.
+
+The interpretation of a disagreement requires care. A pair may disagree because
+one branch over-reports, because the other under-reports, or because the two
+scanner sets simply address different aspects of a system. The analysis
+therefore reports, alongside each disagreement, the finding breakdown that
+produced each side's score, so that the cause can be attributed to a specific
+presence or absence of detection capability rather than left as an unexplained
+numeric difference.
 
 \subsection{Risk-Scoring Evaluation}
 \label{subsec:evaluation-rq3}
@@ -344,3 +528,30 @@ the prototype implements this policy consistently, but cannot demonstrate that t
 thresholds are appropriate for every organisation. Evaluation in additional hybrid
 environments and calibration using organisation-specific risk preferences would be
 required to support broader generalisation.
+
+The evaluation fixtures were authored by the same researchers who built the
+prototype, which is a threat to internal validity: a fixture can be written, even
+unintentionally, to trigger the checks the authors know exist. Three measures
+limit this. The expected band of every fixture is declared in a version-controlled
+specification before the reported runs execute, so an unexpected result cannot be
+reinterpreted after the fact. The degradation scenarios declare an outcome derived
+arithmetically from the calibrated breakdown, so they test a prediction that can
+fail. Most importantly, the parity fixtures were deliberately \emph{not} adjusted
+to agree; had they been tuned until both branches returned the same band, the
+resulting agreement figure would have measured the tuning rather than the system.
+
+The parity design covers four weakness classes. This is sufficient to demonstrate
+that a systematic difference exists between the two boundaries, but not to
+quantify its full extent, and a different selection of weakness classes could
+yield a different agreement rate. Relatedly, any parity gap observed is a
+property of the particular scanner set assembled in this prototype, not an
+inherent property of the process architecture; substituting a scanner with
+broader on-premises coverage would change the measurement without changing the
+design.
+
+Finally, replicates in this campaign measure the reproducibility of the pipeline
+under fixed conditions rather than its variability across environments. Because
+the cost estimator and live compliance check are disabled in the registered arm,
+repeated runs are expected to reproduce identical scores, and the replicate
+counts should be read as a check on determinism and on timing dispersion, not as
+a sample from a population of deployment environments.

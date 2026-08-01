@@ -1,0 +1,47 @@
+---
+# Clean baseline: fully-qualified module names, named tasks, explicit modes,
+# no embedded credentials.  Expected gate decision: pass (score 0).
+- name: Provision the application node
+  hosts: appservers
+  become: true
+  gather_facts: true
+
+  tasks:
+    - name: Ensure the application group exists
+      ansible.builtin.group:
+        name: "{{ app_group }}"
+        state: present
+
+    - name: Ensure the application user exists
+      ansible.builtin.user:
+        name: "{{ app_user }}"
+        group: "{{ app_group }}"
+        shell: /usr/sbin/nologin
+        create_home: false
+        state: present
+
+    - name: Ensure the application directory exists
+      ansible.builtin.file:
+        path: "{{ app_root }}"
+        state: directory
+        owner: "{{ app_user }}"
+        group: "{{ app_group }}"
+        mode: "0750"
+
+    - name: Ensure the configuration file is present
+      ansible.builtin.copy:
+        content: |
+          listen_address={{ app_listen_address }}
+          listen_port={{ app_listen_port }}
+        dest: "{{ app_root }}/app.conf"
+        owner: "{{ app_user }}"
+        group: "{{ app_group }}"
+        mode: "0640"
+
+    - name: Ensure the firewall permits only the application port
+      ansible.builtin.command:
+        cmd: "iptables -C INPUT -p tcp --dport {{ app_listen_port }} -j ACCEPT"
+      register: app_firewall_rule
+      changed_when: false
+      failed_when: false
+      check_mode: false

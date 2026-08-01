@@ -1,0 +1,34 @@
+---
+# Parity fixture: unrestricted administrative privilege (on-prem side).
+#
+# Paired with ../cdk, which grants Action "*" on Resource "*" in an IAM policy.
+# Weakness class: overprivileged-access
+- name: Provision the application account
+  hosts: appservers
+  become: true
+  gather_facts: false
+
+  tasks:
+    - name: Create the application account
+      ansible.builtin.user:
+        name: appuser
+        shell: /bin/bash
+        state: present
+
+    # WEAKNESS (overprivileged-access): unrestricted passwordless root.
+    - name: Grant unrestricted passwordless sudo
+      ansible.builtin.copy:
+        dest: /etc/sudoers.d/appuser
+        content: "appuser ALL=(ALL) NOPASSWD: ALL\n"
+        owner: root
+        group: root
+        mode: '0440'
+
+    # WEAKNESS (overprivileged-access): world-writable application directory.
+    - name: Create the application directory
+      ansible.builtin.file:
+        path: /opt/app
+        state: directory
+        owner: appuser
+        group: appuser
+        mode: '0777'

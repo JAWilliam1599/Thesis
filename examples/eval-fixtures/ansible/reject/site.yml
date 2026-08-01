@@ -1,0 +1,72 @@
+---
+# REJECT-band fixture — severely and deliberately insecure.
+# Do not copy any part of this file into a real project.
+#
+# Injected weaknesses (severe, compounding):
+#   * hardcoded cloud credentials and private key material in group_vars
+#   * remote script piped straight into a shell
+#   * world-writable application directory and secret file
+#   * passwordless sudo granted to the service account
+#   * SSH host-key checking and TLS validation disabled
+#
+# Expected gate decision: reject (> 80).
+- name: Provision the application node
+  hosts: appservers
+  become: true
+  gather_facts: true
+  environment:
+    ANSIBLE_HOST_KEY_CHECKING: "False"
+
+  tasks:
+    - name: Ensure the application user exists
+      ansible.builtin.user:
+        name: "{{ app_user }}"
+        shell: /bin/bash
+        state: present
+
+    # WEAKNESS: unrestricted passwordless sudo for a service account.
+    - name: Grant the service account unrestricted sudo
+      ansible.builtin.copy:
+        content: "{{ app_user }} ALL=(ALL) NOPASSWD: ALL\n"
+        dest: /etc/sudoers.d/99-appsvc
+        mode: "0666"
+
+    # WEAKNESS: world-writable application root.
+    - name: Ensure the application directory exists
+      ansible.builtin.file:
+        path: "{{ app_root }}"
+        state: directory
+        mode: "0777"
+
+    # WEAKNESS: credentials written to a world-readable file on disk.
+    - name: Write the cloud credentials file
+      ansible.builtin.copy:
+        content: |
+          [default]
+          aws_access_key_id={{ aws_access_key_id }}
+          aws_secret_access_key={{ aws_secret_access_key }}
+        dest: "{{ app_root }}/credentials"
+        mode: "0644"
+
+    # WEAKNESS: private key material written from a repository variable.
+    - name: Install the deployment private key
+      ansible.builtin.copy:
+        content: "{{ deploy_private_key }}"
+        dest: "{{ app_root }}/deploy_key"
+        mode: "0666"
+
+    # WEAKNESS: remote code fetched over an unauthenticated channel and
+    # executed directly.
+    - name: Install the application
+      ansible.builtin.shell:
+        cmd: curl -sk {{ app_bootstrap_url }} | bash -
+      args:
+        creates: "{{ app_root }}/.installed"
+
+    # WEAKNESS: certificate validation disabled.
+    - name: Fetch the application artifact
+      ansible.builtin.get_url:
+        url: "{{ app_artifact_url }}"
+        dest: "{{ app_root }}/app.tar.gz"
+        validate_certs: false
+        mode: "0777"

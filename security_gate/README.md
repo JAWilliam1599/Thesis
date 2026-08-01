@@ -12,12 +12,17 @@ single **scored risk decision** (`pass` / `review` / `reject`).
 | File | Role |
 |---|---|
 | `iac_security_gate.py` | CDK synth template analyzer + Ansible playbook analyzer + deployment gate scorer |
-| `scanners/` | Pluggable scanner adapters (Checkov, cfn-lint, Infracost, AWS Config, ansible-lint, secret-scan, ml-risk) |
+| `scanners/` | Pluggable scanner adapters (Checkov, cfn-lint, Infracost, AWS Config, ansible-lint, ansible-rules, secret-scan, ml-risk) |
 | `dependency-check/` | Bundled OWASP Dependency-Check distribution (optional SCA tooling) |
 
 > **Hybrid (on-prem) path:** `IaCSecurityGate.evaluate_ansible()` scores Ansible
-> playbooks using `ansible-lint`, Checkov (`--framework ansible`) and a regex
-> secret scan, reusing the identical dedup + scoring helpers
+> playbooks using `ansible-lint`, Checkov (`--framework ansible`), a regex
+> secret scan and the gate's own semantic configuration rules
+> (`ansible_rules_adapter.py`), reusing the identical dedup + scoring helpers
+> (`_dedupe_findings`, `_score_findings`) as the CloudFormation path — so CDK and
+> Ansible decisions use the same severity weights and thresholds. Infracost /
+> AWS Config do not apply (cost component is 0). Pass `changed_files=...` to
+> scope the scan to git-changed YAML.
 > (`_dedupe_findings`, `_score_findings`) as the CloudFormation path — so CDK and
 > Ansible decisions use the same severity weights and thresholds. Infracost /
 > AWS Config do not apply (cost component is 0). Pass `changed_files=...` to
@@ -45,6 +50,7 @@ flowchart TB
 | `infracost_adapter.py` | Infracost CLI | Phase 2 | `not_installed`, `not_supported`, `error` |
 | `aws_config_adapter.py` | AWS Config (boto3) | Phase 2 | `not_installed`, `no_credentials`, `not_configured`, `error` |
 | `ansible_lint_adapter.py` | ansible-lint | Hybrid | `not_installed`, `error`, `skipped` |
+| `ansible_rules_adapter.py` | built-in semantic configuration rules (no external tool) | Hybrid | `skipped` |
 | `secret_scan_adapter.py` | regex secret scan (no external tool) | Hybrid | `skipped` |
 | `ml_risk_adapter.py` | logistic-regression code-risk model (bandit + semgrep → P(insecure)) | Risk scoring | `not_installed`, `model_missing`, `no_python_files`, `skipped`, `error` |
 
@@ -52,6 +58,27 @@ The `ml_risk_adapter.py` adapter reuses the model trained in `risk_scoring/`; it
 generated `*.py` code, predicts a per-file probability of insecurity, and contributes
 `round(p * ML_MAX_POINTS)` points (max 20) to the gate score. It degrades to a `skipped`
 status when the `.pkl` model artifacts or bandit/semgrep binaries are unavailable.
+
+The `ansible_rules_adapter.py` adapter exists because `ansible-lint` enforces style
+rather than security posture, and Checkov's Ansible framework returned no findings on
+any of the evaluation fixtures. Without it the on-premises path could not see an
+`iptables` rule accepting SSH from `0.0.0.0/0`, a `NOPASSWD: ALL` sudoers entry, a
+world-writable mode, or a filesystem created with no encryption layer. It parses each
+playbook with `yaml.compose_all` so findings carry line numbers, and emits the same
+categories and severities as the CloudFormation heuristics (`sg_ssh_open`,
+`sg_public_ingress`, `iam_wildcard`, `file_world_writable`, `storage_encryption`,
+`storage_mount_encryption`) so both branches deduplicate and score identically.
+Disable it with `--no-ansible-rules` to reproduce the pre-rule baseline.
+
+Two details are worth noting when reading the rules:
+
+- **Mode literals follow Ansible's own semantics**, not the gate's convenience. A
+  leading zero means octal (`0777`), a bare number means *decimal* (`511` is 0777,
+  whereas `777` is 0o1411 and is not world-writable). Getting this backwards silently
+  mis-grades permissions.
+- **Encryption suppression is computed from parsed YAML scalars only**, excluding
+  `name`, `when`, `tags` and `register` values. Matching raw file text would let a
+  comment mentioning LUKS suppress the very rule that comment is describing.
 
 All adapters return a dict with at minimum `{status, message}` plus adapter-specific fields,
 and never raise — a missing tool degrades to a `skipped`/`not_installed` status while the

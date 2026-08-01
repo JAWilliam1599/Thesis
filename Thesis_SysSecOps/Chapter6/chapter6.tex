@@ -1,2 +1,223 @@
 \chapter{Conclusion}
 \label{Chapter6}
+
+\section{Research Summary}
+\label{sec:conclusion-summary}
+
+Hybrid cloud environments combine the flexibility of public-cloud services with the
+control of private infrastructure, but this combination also increases operational
+complexity. Infrastructure provisioning, system administration, software delivery, and
+security assessment are frequently performed through separate tools and workflows. This
+separation makes it difficult to maintain consistent policies, coordinate changes, and
+preserve traceability across heterogeneous infrastructure. The central objective of this
+research was therefore to design and implement a SysSecOps operational process that
+integrates these activities into a unified workflow for hybrid cloud environments.
+
+The research first examined the operational and security challenges associated with
+hybrid cloud management. The analysis identified fragmented tooling, inconsistent
+assessment outputs, delayed security feedback, limited coordination between public and
+private infrastructure, and insufficient empirical evaluation of integrated operational
+processes. These challenges motivated an approach in which security is not treated as a
+separate final activity, but as a continuous decision function within infrastructure
+generation, assessment, deployment, and monitoring.
+
+The proposed process organises the operational lifecycle into a sequence that begins
+with an infrastructure request or existing project. Infrastructure artifacts are
+generated or accepted, validated, and transformed into the concrete representations used
+for deployment. Multiple assessment components then examine the artifacts from
+complementary perspectives. Their outputs are normalised, deduplicated, and converted
+into a unified risk score. The resulting pass, review, or reject decision controls
+whether deployment is permitted. After an accepted deployment, monitoring and audit
+records connect the operational state of the target to the evidence and decision that
+preceded it.
+
+The process was implemented as a Python-based prototype. Public-cloud infrastructure was
+represented through AWS CDK and CloudFormation, while private infrastructure was
+represented through Ansible-managed Linux nodes. The prototype incorporated
+infrastructure validation, security scanning, cost information, live compliance state,
+a learned code-risk signal, deployment governance, and operational monitoring. Although
+these technologies provided the implementation environment, the principal research
+contribution is the operational sequence and decision structure rather than the use of a
+particular tool.
+
+The risk-scoring mechanism combines deduplicated severity findings, estimated cost,
+live-compliance observations, and a machine-learning code-risk contribution. This
+additive structure was selected to preserve transparency: each component contributes an
+explicit number of points, and the total is mapped to a defined operational action. The
+gate report retains the original findings, component execution states, score breakdown,
+and final decision so that an operator can trace the decision to its supporting evidence.
+
+The evaluation was structured around three research questions. RQ1 concerns whether
+the pipeline reaches the decision each change warrants and whether that decision
+constrains what follows. RQ2 concerns whether the two sides of the hybrid boundary
+are governed alike by the shared risk engine. RQ3 concerns the use of multiple
+analysis signals and logistic regression within the unified risk mechanism. RQ1 and
+RQ2 were evaluated through a pre-registered campaign of 106 runs across 30 scenarios
+whose expected outcomes were fixed in a version-controlled specification before
+execution. All 106 runs produced the declared decision, the confusion matrix over the
+three bands was exactly diagonal, and six enforcement invariants --- including that
+no rejection was ever deployed and no review was deployed without an approval record
+--- held on every applicable run. On the on-premises path, syntax validation, security
+gating and dry run were attained on all 59 runs, while apply, post-apply verification
+and idempotency were not attempted because the campaign is deliberately offline. RQ3
+is partially evaluated through the held-out performance of the learned code-risk
+component.
+
+Two findings emerged that the pipeline's own success criteria would not have
+surfaced. First, the additive score \emph{fails open}: removing one scanner moved a
+\emph{review}-band change to \emph{pass}, because an unavailable scanner and a
+scanner that found nothing contribute identically. Second, decision parity across the
+hybrid boundary was initially zero of four weakness pairs --- not from a threshold
+mismatch, since both branches share one decision function, but because the
+on-premises scanner set could not see the weaknesses at all. Adding semantic
+configuration rules for that path raised agreement to two of four; both arms are
+reported so the improvement is measured rather than assumed.
+
+The classifier evaluation used a filtered corpus containing vulnerable Python examples
+from SecurityEval and reference negative files from maintained Python projects. On the
+31-file held-out partition, the logistic-regression model achieved an accuracy of
+$0.8710$, a precision of $0.8667$, a recall of $0.8667$, an F1-score of $0.8667$, and a
+ROC--AUC of $0.8792$. The confusion matrix contained two false positives and two false
+negatives. These findings indicate that the combined Bandit and Semgrep features provide
+a useful learned signal within the detector-visible evaluation scope. They do not,
+however, establish complete vulnerability detection or full validation of the unified
+deployment gate.
+
+\section{Research Contributions}
+\label{sec:conclusion-contributions}
+
+This research makes three principal contributions.
+
+First, it proposes a SysSecOps operational process for hybrid cloud environments. The
+process integrates infrastructure management, software delivery, continuous assessment,
+deployment governance, and operational monitoring. Its main distinction is the use of a
+common decision path across public and private targets, reducing the separation between
+system administration, development, and security activities. The process also defines
+the evidence that must be retained at each stage, supporting traceability from an
+infrastructure change to its deployed operational state.
+
+Second, the research develops a unified risk-evaluation mechanism for heterogeneous
+assessment outputs. Scanner findings are converted into a common representation and
+deduplicated before they contribute to the score. Severity is combined with operational
+context in the form of cost, live compliance, and a learned code-risk probability. This
+mechanism transforms several independent outputs into a single operational decision while
+retaining a component-level explanation. The preliminary classifier results demonstrate
+the feasibility of incorporating a learned multi-tool signal, although the complete
+decision mechanism requires further validation.
+
+Third, the research provides a working prototype and a reproducible evaluation framework.
+The prototype demonstrates how generation, infrastructure automation, assessment
+adapters, scoring, approval control, deployment, and monitoring can be connected through
+shared artifacts and machine-readable reports. The evaluation framework defines separate
+criteria for pipeline completion, private-target integration, classifier performance,
+score aggregation, decision boundaries, and deduplication. This separation prevents a
+successful command execution or an intentional security rejection from being
+misinterpreted as evidence for a broader research claim.
+
+Together, these contributions shift the focus from isolated security-tool execution to
+the coordination of the complete cloud operational lifecycle. The proposed process does
+not replace established cloud reference architectures, IaC practices, or continuous-
+security approaches. Instead, it connects these concerns through an explicit sequence of
+artifacts, decisions, and operational records tailored to hybrid infrastructure.
+
+\section{Current Scope and Findings}
+\label{sec:conclusion-scope}
+
+The findings remain bounded by the prototype and evaluation scope. The available RQ3
+evidence concerns a small Python corpus and vulnerabilities observable through Bandit and
+Semgrep. The public-side implementation is centred on AWS, while the private side uses
+Ansible-managed Linux nodes; portability and large-scale operation have not been
+demonstrated. The scoring weights and thresholds also require calibration using expert
+judgement, historical incidents, and organisational risk preferences. The RQ1 and RQ2
+evidence rests on fixtures authored by the same work that built the gate, so it
+establishes that the implementation satisfies its own specification on cases whose
+correct treatment is known, not that the specification grades arbitrary real
+infrastructure correctly. Several invariants rest on small denominators, decision parity
+rests on four weakness pairs, and the apply, post-apply verification, and idempotency
+checkpoints were never attempted. The current results therefore indicate internal
+correctness under pre-declared conditions rather than general operational effectiveness
+at scale.
+
+\section{Future Work}
+\label{sec:conclusion-future-work}
+
+The immediate priority is to remove the fail-open condition, since it is the one
+deficiency that weakens the control while the system reports success. The gate already
+records which scanners were unavailable; the decision function should consume that
+record, either as an assurance penalty proportional to missing coverage or as a
+configurable fail-closed policy that forces \emph{review} when coverage falls below a
+threshold. The existing degradation scenarios provide ready-made test cases for
+verifying such a change, since each declares in advance what the remaining evidence
+ought to support.
+
+The second priority is to close the residual cross-boundary gap at its source. The two
+weakness pairs that still disagree both sit exactly on the \emph{pass} ceiling, and
+their cloud counterparts clear it partly through the learned code-risk component, which
+is computed from Python source and has no playbook analogue. Two routes are available:
+develop an equivalent learned signal over configuration artifacts, or normalise scores
+explicitly across branches whose available components differ. Either addresses the
+asymmetry directly, whereas adding detection rules until the pairs happen to agree would
+manufacture the result. The semantic configuration rules should also be broadened beyond
+the six categories currently implemented, and the parity set extended well beyond four
+weakness classes, since four pairs yield intervals too wide to support a statistical
+claim.
+
+The evaluation should then be extended to the deployment side by granting the campaign
+live-target capability, which would close the apply, post-apply verification, and
+idempotency checkpoints. This requires a verification playbook that asserts the intended
+end state and a repeated execution confirming no further change. Independently authored
+fixtures would address the self-authorship dependency in the present results.
+
+The evaluation should subsequently be extended to larger repositories, more
+infrastructure resources, concurrent pipelines, and multiple private targets. Relevant
+measures include synthesis time, scan duration, total pipeline latency, resource
+consumption, cloud-service cost, storage growth, and recovery from interrupted or partial
+execution. The measured gate overhead indicates where that cost will concentrate: the
+cloud gate consumed roughly seven-tenths of run wall-clock time and scales with the
+number of synthesised templates rather than with the size of the change, so incremental
+scanning of changed templates is a natural optimisation. A controlled comparison with
+manual cloud operations and IaC automation without the unified gate would determine
+whether the process improves lead time, operator effort, policy compliance, traceability,
+and remediation time.
+
+The learned code-risk component should be validated using a larger multi-project corpus,
+project-aware data partitioning, repeated cross-validation, and an independent external
+test set. Vulnerabilities that cannot be detected by the current static analysers should
+be retained as a challenge set to quantify the model's blind spots. Support for other
+programming and IaC languages requires new labelled datasets, language-specific feature
+extractors, and independently trained models.
+
+The scoring mechanism should be calibrated using expert assessments, historical changes,
+incident records, and organisational risk preferences. Sensitivity and ablation analyses
+can determine the effect of each score component and whether the learned contribution
+provides value beyond severity-only or scanner-only baselines. Exposure, asset
+criticality, data sensitivity, dependency risk, and compensating controls should be
+incorporated where reliable evidence is available. Missing assessment components should
+produce an assurance penalty or a configurable fail-closed outcome for high-risk
+environments.
+
+Finally, the prototype should be extended to additional public-cloud providers,
+private-cloud platforms, and orchestration technologies. Evaluation with system
+administrators, developers, and security practitioners would determine whether the score
+breakdown assists decision-making and remediation. Versioned policy bundles,
+role-separated approval, signed audit records, and longitudinal deployment would further
+improve governance and support practical adoption.
+
+\section{Concluding Remarks}
+\label{sec:conclusion-remarks}
+
+This research presents a structured approach to coordinating infrastructure management,
+software delivery, security assessment, and operational monitoring in a hybrid cloud
+environment. Its central proposition is that security should function as an explicit,
+auditable operational decision rather than as an isolated activity after deployment.
+The proposed process, unified scoring mechanism, and prototype provide a foundation for
+this integration. The pre-registered campaign showed that the implemented gate decides
+and enforces as specified; it also showed that the specification itself permits a change
+to be released when evidence is missing, and that a shared decision function does not by
+itself produce equal treatment across a hybrid boundary when detection coverage differs.
+Those two findings are as much a result of this work as the conformance figures, and
+they define the agenda for further validation. With broader evaluation, calibration, and
+platform coverage, the approach can provide a basis for more consistent and traceable
+SysSecOps practice across heterogeneous cloud infrastructure.
+
+\endinput

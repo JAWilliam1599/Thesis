@@ -1,0 +1,10 @@
+---
+# WEAKNESS (plaintext-secret): credentials committed in clear text.
+# All values are deliberately fake, non-functional placeholders.
+app_db:
+  host: db.internal.example
+  user: appuser
+  password: FIXTURE-not-a-real-password-p1
+
+app_service:
+  api_key: FIXTUREnotarealapikey0001

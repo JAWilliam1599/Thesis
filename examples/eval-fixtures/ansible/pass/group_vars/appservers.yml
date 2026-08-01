@@ -1,0 +1,9 @@
+---
+# No credentials: the database password is resolved from the environment of the
+# controller at run time, never stored in the repository.
+app_user: appsvc
+app_group: appsvc
+app_root: /opt/appsvc
+app_listen_address: 127.0.0.1
+app_listen_port: 8080
+app_db_password: "{{ lookup('env', 'APP_DB_PASSWORD') }}"
