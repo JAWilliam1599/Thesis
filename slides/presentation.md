@@ -13,6 +13,9 @@ style: |
   code { font-size: 21px; }
   section.lead { text-align: center; }
   .small { font-size: 20px; color: #555; }
+  section.dense { font-size: 21px; }
+  section.dense table, section.dense code { font-size: 18px; }
+  section.dense h2 { font-size: 30px; }
 ---
 
 <!-- _class: lead -->
@@ -105,8 +108,8 @@ University of Science, VNU-HCM — 2026
 
 | Gap | Objective | RQ | Contribution |
 |---|---|---|---|
-| G1, G4 | Design a SysSecOps operational process integrating infra management, assessment, enforcement and deployment | **RQ1** Operational feasibility and reliability | **C1** SysSecOps operational process |
-| G2 | Extend continuous security across *both* sides of the hybrid | **RQ2** Hybrid infrastructure applicability | **C1 / C3** |
+| G1, G4 | Design a SysSecOps operational process integrating infra management, assessment, enforcement and deployment | **RQ1** Decision conformance and enforcement correctness | **C1** SysSecOps operational process |
+| G2 | Extend continuous security across *both* sides of the hybrid | **RQ2** Cross-boundary enforcement equivalence | **C1 / C3** |
 | G3 | Establish a unified security assessment mechanism over heterogeneous tools | **RQ3** Unified risk-evaluation capability | **C2** Unified risk mechanism |
 | G4 | Implement and evaluate a prototype | RQ1–RQ3 | **C3** Prototype + evaluation framework |
 
@@ -164,7 +167,7 @@ Zone 1 ──templates──▶ Zone 2 ──pass / approved──▶ Zone 3
 Zones are **loosely coupled**: Zone 1 knows nothing of the scoring rules, Zone 3 knows nothing of how the decision was reached.
 
 <!--
-1:00. Zone 2 is the contribution. Point out the dashed feedback edge: rejected generated code is regenerated with the findings injected into the next prompt.
+0:50. Zone 2 is the contribution. Point out the dashed feedback edge: rejected generated code is regenerated with the findings injected into the next prompt.
 -->
 
 ---
@@ -186,7 +189,7 @@ prompt / project ──▶ generated code ──▶ synthesized template ──�
 - **Gate-decision event** — `(target, score, decision, timestamp)` → SSM Parameter Store + EventBridge
 
 <!--
-1:00. Each stage transforms its input into a more concrete representation. The contracts are why the generator, the scanner set and the monitoring stack can evolve independently.
+0:50. Each stage transforms its input into a more concrete representation. The contracts are why the generator, the scanner set and the monitoring stack can evolve independently.
 -->
 
 ---
@@ -202,7 +205,7 @@ prompt / project ──▶ generated code ──▶ synthesized template ──�
 > The choice of link changes nothing in the gate, the scoring or the governance behaviour.
 
 <!--
-0:50. Stress the portability argument: connectivity is orthogonal to the contribution.
+0:45. Stress the portability argument: connectivity is orthogonal to the contribution.
 -->
 
 ---
@@ -247,7 +250,7 @@ prompt / project ──▶ generated code ──▶ synthesized template ──�
 **Deduplication key:** `(resource_id, template, category)` — colliding findings merge, keeping the highest severity and unioning the source labels.
 
 <!--
-0:50. Without deduplication, an issue reported by three tools triples its contribution and can push an acceptable change over a threshold.
+0:45. Without deduplication, an issue reported by three tools triples its contribution and can push an acceptable change over a threshold.
 -->
 
 ---
@@ -289,7 +292,7 @@ The additive form is what makes the report **explainable**: every point is attri
 <span class="small">Scope statement: the model estimates **detector-visible** insecurity, not semantic flaws invisible to Bandit and Semgrep.</span>
 
 <!--
-0:50. Volunteer the scope statement. Roughly half of the original SecurityEval samples contain logic errors the analysers cannot see; retaining them capped recall near 0.46.
+0:45. Volunteer the scope statement. Roughly half of the original SecurityEval samples contain logic errors the analysers cannot see; retaining them capped recall near 0.46.
 -->
 
 ---
@@ -307,7 +310,7 @@ Since $20 < 35 \le 80$ → **review**: routed to a human approver, whose decisio
 The per-component breakdown — severity 20, cost 10, compliance 5, ML 0 — tells the approver that the **open administrative port and the cost increase** dominate, directing remediation precisely instead of handing over an opaque number.
 
 <!--
-0:50. This is the answer to "why not just use a black-box model?" — the operator can act on the breakdown.
+0:40. This is the answer to "why not just use a black-box model?" — the operator can act on the breakdown.
 -->
 
 ---
@@ -332,59 +335,110 @@ The console and the CLI invoke **the same orchestration logic** — a GUI operat
 
 ---
 
-## Evaluation methodology
+<!-- _class: dense -->
 
-| RQ | Method | Evidence | Measures |
+## Evaluation methodology — a pre-registered campaign
+
+| RQ | Method | Measures |
+|---|---|---|
+| **RQ1** Decision conformance and enforcement correctness | 30 declared scenarios, **106 offline runs**, incl. 10 that remove one scanner | Decision conformance, enforcement invariants, score deltas, stage latency |
+| **RQ2** Cross-boundary enforcement equivalence | Same engine on an on-prem Linux node via mesh VPN; 4 weakness classes expressed twice | Checkpoint attainment, **detection coverage** across the boundary |
+| **RQ3** Unified risk-evaluation capability | Held-out classifier evaluation + controlled boundary cases | Accuracy, P/R/F1, ROC-AUC, score & decision correctness |
+
+- **Declared first.** Scenarios, expected decisions and replicate counts were fixed in a version-controlled specification *before* any reported run executed; every statistic is computed from the persisted records by one analysis program
+- **14 calibrated fixtures** — 6 band + 4 parity pairs. Live pricing and live account state are disabled: in the pilot they moved a *reject* fixture from 114 to 119
+- **A security rejection is not a pipeline failure** — a valid *reject* that blocks deployment is *correct* execution. Denominators are reported in place of confidence intervals
+
+<!--
+0:45. The methodological point that carries the chapter: the specification came first, so there was no freedom to choose after the fact which runs to count. Flag the deliberate choice of detection coverage over decision equality for RQ2 — you will justify it in two slides' time.
+-->
+
+---
+
+<!-- _class: dense -->
+
+## RQ1 — Decision conformance and enforcement correctness
+
+**106 runs · 30 pre-declared scenarios.** Decision conformance **100 % (106/106)**, and **1.0 for every scenario individually**, so the aggregate hides no scenario that failed consistently. The confusion matrix is **exactly diagonal** (Ansible 26 / 25 / 8, CDK 11 / 28 / 8) — neither a permissive nor an over-blocking tendency. Replicates were identical: all five `cdk-reject-block` runs scored exactly **114**, all five `ans-reject-block` runs exactly **155**.
+
+| Enforcement invariant | $n$ | Held | Rate |
 |---|---|---|---|
-| **RQ1** | End-to-end pipeline scenarios incl. a degraded-component case | Stage results, gate reports, deployment & monitoring records | Completion rate, unexpected failures, decision enforcement |
-| **RQ2** | Existing on-prem Linux node via Ansible over a mesh VPN, shared risk engine | Connectivity, playbook analysis, gate reports, execution records | Integration & configuration success, policy enforcement |
-| **RQ3** | Held-out classifier evaluation + controlled boundary cases | Labels, probabilities, confusion matrix, component scores | Accuracy, P/R/F1, ROC-AUC, score & decision correctness |
+| Run produces a persisted summary | 106 | 106 | 1.00 |
+| Gate reports a status for every scanner | 106 | 106 | 1.00 |
+| Unapproved *review* halts | 43 | 43 | 1.00 |
+| Approved *review* writes an approval record | 10 | 10 | 1.00 |
+| *Reject* blocks deployment | 16 | 16 | 1.00 |
+| *Reject* writes a rejection record | 16 | 16 | 1.00 |
 
-**A security rejection is not a pipeline failure.** A run that identifies an unacceptable change, emits a valid *reject* and blocks deployment is *correct* execution.
+**Gate overhead** — median 102.50 s on the cloud branch (69.35 % of run wall-clock) against 7.04 s on-premises (24.80 %); under two minutes on the slower branch.
 
 <!--
-0:45. This definition is essential — otherwise the reliability metric would be gamed by counting rejections as errors.
+0:50. Two things to own. First, the denominators are not comparable: 1.00 over ten approved-review runs is a far weaker statement than 1.00 over 106 — read the last four rows as "the mechanism works when exercised", not as a failure-rate estimate. Second, conformance is against a specification the same work authored, so it shows the implementation satisfies its own spec, not that the spec grades real infrastructure correctly.
 -->
 
 ---
 
-## RQ1 — Operational feasibility and reliability
+## Finding 1 — the additive score fails **open**
 
-| Measure | Result |
-|---|---|
-| Total pipeline runs | **17** |
-| Runs reaching a valid terminal decision | **16** → **94.1 %** completion |
-| Branch-level decisions ($n = 24$: 9 CDK, 15 Ansible) | **18 pass / 4 review / 2 reject** |
-| Rejected changes incorrectly deployed | **0 of 2** |
-| Review cases executed without approval | **0 of 4** |
-| Degraded-component runs reaching a terminal state | **5 of 5 (100 %)** |
-| Unexpected pipeline failures | **2** |
+Ten scenarios removed exactly one scanner from an otherwise identical run. Every resulting decision matched the arithmetic prediction, so the gate degrades *predictably*. That is precisely the problem.
 
-The two failures were **not** gate decisions: one invocation terminated after writing only a log header; one Ansible branch passed its gate (score 0) then returned a non-zero exit at deploy.
+| Component removed | Full | Degraded | Δ | Decision change |
+|---|---|---|---|---|
+| Checkov (from *review*, CDK) | 54 | 9 | **45** | review → **pass** |
+| Checkov (from *reject*, CDK) | 114 | 64 | 50 | reject → review |
+| Secret scan (from *reject*, Ansible) | 155 | 75 | **80** | reject → review |
+| ML risk model (from *reject*, CDK) | 114 | 110 | 4 | reject → reject |
+
+**An absent scanner and a scanner that found nothing contribute identically.** The run still reports a clean terminal status. The scanner-status record makes the degradation visible to an auditor afterwards, but nothing in the decision function acts on it — a design deficiency inherent to any purely additive score, not an implementation defect.
 
 <!--
-0:50. Own the two failures. State plainly that the sample was accumulated during iterative development, so this is an initial operational indication, not a statistically powered trial.
+0:45. This is a negative result and it is deliberately foregrounded. The gate conformed to its specification on every one of these rows; the specification is what permits a change to be released because the evidence that would have held it was never collected. Chapter 6 proposes an assurance penalty as the remedy — mention that the existing degradation scenarios are already the test cases for it.
 -->
 
 ---
 
-## RQ2 — Hybrid infrastructure applicability
+<!-- _class: dense -->
 
-An **existing** Linux VM, reached over a **mesh-VPN** link, governed by the **same** risk engine and thresholds as the cloud side.
+## RQ2 — Cross-boundary equivalence: checkpoint attainment
 
-| Checkpoint | Result |
-|---|---|
-| Playbook syntax validation | Passed **15/15** |
-| Security assessment & gate decision | Pass **15/15** (score 0) |
-| Gate executed **before** deployment | **15/15** |
-| Requested configuration applied | **6 of 7** deployment attempts |
-| Operational & audit records created | **16/16** completed runs |
-| Post-deployment state verification · idempotency | **Not captured** — reported as evidence gaps |
+**65 Ansible-branch runs** — 59 offline, plus a 6-run live arm against a disposable Ubuntu 22.04 VM. Attainment counts *attempted* checkpoints only: a *reject* never reaches a dry run, and scoring that as a failure would penalise correct behaviour.
 
-Every recorded private-side decision was a *pass*, so review/reject enforcement on this path is **inferred from the shared decision function**, not directly observed.
+| Checkpoint | Offline (59) | Live target (6) |
+|---|---|---|
+| Target reachability | — | 6/6 |
+| Syntax validation | 59/59 | 6/6 |
+| Security gate | 59/59 | 6/6 |
+| Dry run | 31/31 | 3/3 |
+| Apply | — | 3/3 |
+| Post-apply verification | — | 3/3 |
+| Repeated-run idempotency | — | 3/3 |
+
+**Nine assertions** read state back off the host — zero failures on every apply; all three repeat applies recorded `changed=0`. All three `ans-reject-deploy-blocked` runs stopped at `ansible.gate` — **no dry run, no apply** — against a live, reachable host.
 
 <!--
-0:45. Reporting the gaps as gaps rather than assigning an unsupported result is a deliberate methodological choice; say so.
+0:45. The live arm produces three kinds of evidence the offline campaign structurally could not. Stress that verification asserts literal expected values rather than re-reading the fixture's own variables — otherwise a wrong variable would be accepted as correct. Then concede the counts: the last four rows rest on three runs each, against one host from one fresh image.
+-->
+
+---
+
+<!-- _class: dense -->
+
+## Finding 2 — one decision function, **unequal detection**
+
+Decision *equality* is the wrong property to demand: an `iptables` rule is not a security group. The property that matters is weaker — a weakness class the gate can see on one side must not be **invisible** on the other.
+
+| Weakness | Cloud branch | On-premises branch |
+|---|---|---|
+| Open ingress | `sg_ssh_open` (critical) | `sg_ssh_open` (critical) |
+| Over-privileged access | `iam_wildcard` (critical) | `iam_wildcard` (critical); `file_world_writable` (high) |
+| Plaintext secret | **— no finding names the credential** | `secret_password`; `secret_token` (high) |
+| Unencrypted storage | `ebs_encryption` (medium) | `storage_encryption` (high); `storage_mount_encryption` (medium) |
+| **Coverage** | **3/4** | **4/4** |
+
+The identifiers are the **same on both sides** — that is the substantive result, not the counts. But the cloud path has **no secret scanner**: the fixture reaches *review* only because the learned model scores the surrounding Python, so nothing an operator reads says a credential was committed. **No threshold repairs this.**
+
+<!--
+0:45. The gap breaks on the side nobody predicts — the cloud branch, not the private one. Its report contains five Lambda-hygiene findings and a cfn-lint warning, none of which mention the secret. Note the converse too: the learned component has no playbook analogue, so each side keeps a blind spot the other does not, and both were found only by expressing the same weakness twice.
 -->
 
 ---
@@ -406,49 +460,59 @@ Every recorded private-side decision was a *pass*, so review/reject enforcement 
 **Controlled gate-decision check:** $S=20 \to$ pass · $S=21 \to$ review · $S=80 \to$ review · $S=81 \to$ reject · duplicate finding across tools → **counted once**. All five cases agreed with the specification.
 
 <!--
-1:00. The model draws on both analysers, not one. The two false negatives matter operationally: labelled-insecure files that receive a lower learned contribution.
+0:50. The model draws on both analysers, not one. The two false negatives matter operationally: labelled-insecure files that receive a lower learned contribution.
 -->
 
 ---
+
+<!-- _class: dense -->
 
 ## Limitations and threats to validity
 
-1. **Small, informally sampled evaluation** — 17 pipeline runs and 15 Ansible branches accumulated during development; only 2 reject and 4 review outcomes
-2. **Restricted implementation scope** — Python + Bandit/Semgrep; AWS CDK/CloudFormation + Ansible. No claim of transfer to other languages, providers or vulnerability classes
-3. **Dataset and model validity** — 31 held-out samples from one split; undetectable categories excluded; negatives are *reference secure*, not verified secure
-4. **Uncalibrated risk assumptions** — weights, cost bands and thresholds are an **operational policy**, not a universal definition of risk
-5. **Fail-open risk** — a skipped scanner contributes 0 points; an assurance penalty or fail-closed mode is needed for high-risk environments
+1. **Self-authored fixtures, limited scale** — pre-registration removes selection freedom, not the dependency: the gate's own authors wrote the fixtures. Ten approved-review runs, sixteen rejections, three replicates per deployment checkpoint
+2. **Narrow deployment-side evidence** — apply, verification and idempotency measured against *one* fresh VM, one OS image: nothing on host heterogeneity, concurrency or partial failure
+3. **Restricted implementation scope** — Python + Bandit/Semgrep; AWS CDK/CloudFormation + Ansible. No claim of transfer to other languages, providers or vulnerability classes
+4. **Dataset and model validity** — 31 held-out samples from one split; undetectable categories excluded; negatives are *reference secure*, not verified secure
+5. **Risk assumptions and the fail-open score** — weights, bands and thresholds uncalibrated; missing evidence is read as low risk
+6. **Unequal detection coverage** — a shared decision function over unshared scanner sets, established on four hand-authored classes rather than a catalogue
+7. **Limited comparative measures** — no manual baseline; no operator effort, lead time, change-failure rate or remediation time
 
 <!--
-0:45. Deliver this confidently and quickly. Volunteering limitation 5 in particular pre-empts the sharpest likely question.
+0:45. Deliver confidently and quickly. Items 5 and 6 are the two findings you already presented, so this slide should read as consolidation rather than confession.
 -->
 
 ---
+
+<!-- _class: dense -->
 
 ## Conclusion
 
 - Hybrid cloud fragments provisioning, administration, delivery and security; this work makes **security an explicit, auditable operational decision** inside that lifecycle
 - **One process, one engine, both sides** of the hybrid — the same weights, deduplication and thresholds govern a CloudFormation template and an Ansible play
 - The **additive score** converts heterogeneous tool output into a single decision *without* losing the per-component explanation
-- The prototype demonstrates end-to-end feasibility on an initial operational sample: **94.1 %** completion, **0** policy violations, **0.87** classifier accuracy
-- Findings establish **prototype and component feasibility**, not general operational effectiveness at scale
+- The pre-registered campaign shows the implemented gate **decides and enforces as specified**: 106/106 conformance, six enforcement invariants at rate 1.00
+- It also shows the **specification itself permits a release when evidence is missing**, and that a shared decision function does not by itself produce equal treatment when detection coverage differs
+- Those two findings are **as much a result of this work as the conformance figures** — internal correctness under pre-declared conditions, not operational effectiveness at scale
 
 <!--
-0:45. Restate the central proposition: security as a decision function, not a post-deployment activity.
+0:45. Restate the central proposition: security as a decision function, not a post-deployment activity. Then land the honest close — the negative findings define the agenda for further validation.
 -->
 
 ---
 
+<!-- _class: dense -->
+
 ## Future work
 
-- **Controlled evaluation campaign** — predetermined counts of pass / review / reject / degraded runs; instrument the orchestrator so an unattributed `deploy_failed` can be diagnosed
-- **Close the RQ2 gaps** — direct target-state verification, repeated-run idempotency, deliberate review/reject scenarios on the private-side path
-- **Strengthen the model** — larger multi-project corpus, project-aware partitioning, repeated cross-validation, external test set, and a retained *challenge set* of analyser-invisible flaws
-- **Calibrate the score** — expert judgement, historical incidents, sensitivity and ablation analysis; configurable fail-closed behaviour
-- **Broaden coverage** — more cloud providers, more languages, and an operator study on whether the breakdown genuinely aids remediation
+1. **Close the fail-open condition** *(first priority)* — make the decision function consume the scanner-status record it already writes: an assurance penalty proportional to missing coverage, or a fail-closed policy forcing *review* below a coverage threshold. The existing degradation scenarios are ready-made test cases
+2. **Close the coverage gaps at source** — give the cloud path the same secret scan; give the private path an equivalent learned signal or an explicit *not applicable*; extend well beyond four weakness classes, drawn from an external catalogue
+3. **Broaden deployment-side evidence** — divergent prior state, concurrent targets, induced partial failures, so failure attribution has something other than `none` to classify; independently authored fixtures
+4. **Validate the model** — larger multi-project corpus, project-aware partitioning, repeated cross-validation, external holdout, and a retained *challenge set* of analyser-invisible flaws
+5. **Calibrate the score** — expert judgement and historical incidents; sensitivity and ablation against severity-only and scanner-only baselines
+6. **Extend platform coverage** — more providers, languages and orchestrators; an operator study on whether the breakdown genuinely aids remediation
 
 <!--
-0:30. Frame these as the concrete agenda the limitations imply, not as a wish list.
+0:30. Frame as the concrete agenda the two findings imply, not a wish list. The ordering is the point: items 1 and 2 are repairs to a system that already works, not extensions of it.
 -->
 
 ---
