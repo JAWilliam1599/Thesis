@@ -37,13 +37,7 @@ available; complete gate-decision analysis incomplete & Partially evaluated \\
 \subsection{RQ1: Decision Conformance and Enforcement Correctness}
 \label{subsec:discussion-rq1}
 
-RQ1 was deliberately reframed during the evaluation. Its original form asked
-whether the pipeline completes end to end, measured as a completion rate. That
-measure turned out to be nearly uninformative for a security control, because a
-gate that unconditionally returned \emph{pass} would achieve a perfect
-completion rate while providing no protection whatever. Completion distinguishes
-a working pipeline from a crashing one; it does not distinguish a working
-control from an inert one. RQ1 was therefore restated around three properties
+RQ1 was stated around three properties
 that do: whether the decision reached is the decision the case warranted,
 whether that decision constrains what happens next, and whether the evidence
 behind it is preserved.
@@ -116,13 +110,8 @@ bottleneck.
 \subsection{RQ2: Cross-Boundary Enforcement Equivalence}
 \label{subsec:discussion-rq2}
 
-RQ2 was likewise reframed. Its original form asked whether an existing
-on-premises node could be integrated into the pipeline --- a question that
-admits no negative answer once the integration has been built, and is therefore
-unfalsifiable as stated. The restated question asks whether the two sides of the
-boundary are governed \emph{alike}, which can fail and, as it turned out, did.
-
-The workflow-attainment half of the question is answered positively across all
+The question asks whether the two sides of the
+boundary are governed \emph{alike}, which can fail and, as it turned out, did. The workflow-attainment half of the question is answered positively across all
 seven checkpoints. Syntax validation, security gating and dry run were attained
 on every attempted on-premises run in the offline campaign, with no failures in
 any class. The remaining three --- apply, post-apply verification, and

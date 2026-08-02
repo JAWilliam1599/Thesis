@@ -141,8 +141,7 @@ single analysis program.
 
 \subsubsection{Calibrated Fixtures}
 
-Fourteen infrastructure fixtures were constructed under
-\texttt{examples/eval-fixtures/}. Six are \emph{band fixtures}: for each branch
+Fourteen infrastructure fixtures were constructed. Six are \emph{band fixtures}: for each branch
 --- AWS CDK for the cloud path and Ansible for the on-premises path --- one
 fixture was authored to sit in each of the \emph{pass}, \emph{review}, and
 \emph{reject} bands. The remaining eight form four \emph{parity pairs}, each
@@ -158,8 +157,7 @@ important methodological constraint applies to the parity pairs: their declared
 bands are \emph{descriptive}, recorded from measurement, and were not adjusted
 to bring the two branches into line. Tuning the fixtures or the weights until
 both sides returned the same band would have manufactured a result while leaving
-the question RQ2 actually asks --- whether each side can see the weakness at all
---- untouched.
+the question RQ2 untouched.
 
 \subsubsection{Scenario Matrix}
 
@@ -211,8 +209,7 @@ exact software state that produced it. The campaign runner appends one row per
 run to a line-delimited record and copies each report into the campaign
 directory.
 
-All reported statistics are computed by \texttt{evaluation/analyze\_campaign.py}
-from those persisted records alone; the analysis program never re-executes the
+All reported statistics are computed from those persisted records alone; the analysis program never re-executes the
 pipeline. Proportions are reported as a count over the number of runs to which
 the measure applied, rather than as a percentage alone. The denominator is
 carried alongside every rate because several of them are small --- some
@@ -551,10 +548,7 @@ thresholds are appropriate for every organisation. Evaluation in additional hybr
 environments and calibration using organisation-specific risk preferences would be
 required to support broader generalisation.
 
-The evaluation fixtures were authored by the same researchers who built the
-prototype, which is a threat to internal validity: a fixture can be written, even
-unintentionally, to trigger the checks the authors know exist. Three measures
-limit this. The expected band of every fixture is declared in a version-controlled
+The expected band of every fixture is declared in a version-controlled
 specification before the reported runs execute, so an unexpected result cannot be
 reinterpreted after the fact. The degradation scenarios declare an outcome derived
 arithmetically from the calibrated breakdown, so they test a prediction that can

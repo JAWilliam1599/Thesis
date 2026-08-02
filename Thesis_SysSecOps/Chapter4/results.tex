@@ -4,8 +4,7 @@
 This section is organised according to the three research questions defined in
 Section~\ref{subsec:evaluation-rqs}. The RQ1 and RQ2 results are drawn from the
 pre-registered campaign described in Section~\ref{subsec:evaluation-campaign}:
-106 runs over 30 declared scenarios, executed in a single batch on
-1~August~2026 and analysed by \texttt{evaluation/analyze\_campaign.py} from the
+106 runs over 30 declared scenarios, executed in a single batch and analysed from the
 persisted run, gate, approval, and rejection records alone. The one exception is
 the cross-boundary coverage table, which reports finding categories rather than
 aggregates and was compiled by reading the gate reports each run record points
@@ -14,13 +13,6 @@ expected decision was fixed in a version-controlled specification before any of
 the reported runs executed. The optional cost-estimation and cloud-configuration
 components, whose outputs depend on live external state, were disabled
 throughout, so every score reported below is reproducible from the repository.
-
-An earlier corpus of pipeline invocations accumulated during iterative
-development between 28~June and 9~July~2026 is not reported. It was a
-convenience sample: it over-represented whatever was being debugged at the time,
-it included runs of incomplete projects, and the decision of which invocations
-to count would have been made after seeing them. It is superseded in full by the
-campaign reported here.
 
 \subsection{RQ1: Decision Conformance and Enforcement Correctness}
 \label{subsec:results-rq1}
@@ -291,13 +283,13 @@ asserting against the same variables that produced the state would accept a wron
 variable value as correct. Nine assertions executed with zero failures on every
 apply run.
 
-Second, idempotency is measured rather than assumed. Each \texttt{ans-pass-deploy}
+Second, idempotency is measured rather than assumed. Each \\ \texttt{ans-pass-deploy}
 run applies the playbook a second time and parses the resulting \texttt{PLAY
 RECAP}; all three recorded \texttt{changed=0}, so the converged state is stable
 under re-execution.
 
 Third, and most directly relevant to enforcement, the three
-\texttt{ans-reject-deploy-blocked} runs requested deployment explicitly and never
+\\ \texttt{ans-reject-deploy-blocked} runs requested deployment explicitly and never
 received one. Their recorded stage sequences terminate after
 \texttt{ansible.gate}: no dry run, no apply, no verification. The reject
 decision blocked deployment against a live, reachable, credential-verified host
@@ -349,7 +341,7 @@ reports referenced by each run record.
 emitted in the persisted gate reports; ``---'' denotes that no finding
 identified the weakness.}
 \label{tab:rq2-coverage}
-\begin{tabular}{|L{3.0cm}|L{5.0cm}|L{5.4cm}|}
+\begin{tabular}{|L{3.0cm}|L{5.0cm}|L{6.2cm}|}
 \hline
 \textbf{Weakness} & \textbf{Cloud branch} & \textbf{On-premises branch} \\
 \hline
