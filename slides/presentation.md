@@ -7,8 +7,8 @@ header: 'SysSecOps for Hybrid Cloud'
 footer: 'University of Science, VNU-HCM · APCS · 2026'
 style: |
   section { font-size: 26px; }
-  h1 { font-size: 44px; color: #123a75; }
-  h2 { font-size: 34px; color: #123a75; }
+  h1 { font-size: 40px; color: #123a75; }
+  h2 { font-size: 30px; color: #123a75; }
   table { font-size: 21px; }
   code { font-size: 21px; }
   section.lead { text-align: center; }
@@ -152,7 +152,7 @@ End-to-end implementation plus separate acceptance criteria per research questio
 
 ## Three-zone reference architecture
 
-| Zone | Name | Responsibility |
+<!-- | Zone | Name | Responsibility |
 |---|---|---|
 | **1** | AI + IaC local development | Generate IaC from a prompt; local validation (`cdk synth`, `cdk diff`, `--syntax-check`) |
 | **2** | **IaC security gate** | Multi-scanner analysis, cross-source deduplication, risk scoring, deploy decision |
@@ -164,7 +164,9 @@ Zone 1 ──templates──▶ Zone 2 ──pass / approved──▶ Zone 3
    └──reject: inject findings back into the prompt◀─┘
 ```
 
-Zones are **loosely coupled**: Zone 1 knows nothing of the scoring rules, Zone 3 knows nothing of how the decision was reached.
+Zones are **loosely coupled**: Zone 1 knows nothing of the scoring rules, Zone 3 knows nothing of how the decision was reached. -->
+
+![3 zone architecture](architecture.png)
 
 <!--
 0:50. Zone 2 is the contribution. Point out the dashed feedback edge: rejected generated code is regenerated with the findings injected into the next prompt.
@@ -174,19 +176,22 @@ Zones are **loosely coupled**: Zone 1 knows nothing of the scoring rules, Zone 3
 
 ## End-to-end artefact flow
 
-```
+<!-- ```
 prompt / project ──▶ generated code ──▶ synthesized template ──▶ normalized findings
                                                                         │
                           telemetry ◀── deploy ◀── gate report ◀── score & decision
                                                                         │
                               └────────── reject: regenerate ───────────┘
-```
+``` -->
+
+![End-to-end artefact flow](flow.png)
 
 **Three stable data contracts hold the system together**
 
 - **Gate report** — `score`, `decision`, `components`, deduplicated `findings`, `scanner_status`
-- **Execution result** — every external command returns `{return_code, output}` (streams merged to preserve ordering)
-- **Gate-decision event** — `(target, score, decision, timestamp)` → SSM Parameter Store + EventBridge
+- **Execution result** — every external command returns `{return_code, output}`
+- **Gate-decision event** → SSM Parameter Store + EventBridge
+<!-- - **Gate-decision event** — `(target, score, decision, timestamp)` → SSM Parameter Store + EventBridge -->
 
 <!--
 0:50. Each stage transforms its input into a more concrete representation. The contracts are why the generator, the scanner set and the monitoring stack can evolve independently.
