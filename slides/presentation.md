@@ -104,20 +104,20 @@ University of Science, VNU-HCM — 2026
 
 ---
 
-## Gaps → Objectives → Research questions → Contributions
+<!-- ## Gaps → Objectives → Research questions → Contributions
 
 | Gap | Objective | RQ | Contribution |
 |---|---|---|---|
 | G1, G4 | Design a SysSecOps operational process integrating infra management, assessment, enforcement and deployment | **RQ1** Decision conformance and enforcement correctness | **C1** SysSecOps operational process |
 | G2 | Extend continuous security across *both* sides of the hybrid | **RQ2** Cross-boundary enforcement equivalence | **C1 / C3** |
 | G3 | Establish a unified security assessment mechanism over heterogeneous tools | **RQ3** Unified risk-evaluation capability | **C2** Unified risk mechanism |
-| G4 | Implement and evaluate a prototype | RQ1–RQ3 | **C3** Prototype + evaluation framework |
+| G4 | Implement and evaluate a prototype | RQ1–RQ3 | **C3** Prototype + evaluation framework | -->
 
 <!--
 0:45. This is the logical spine of the thesis. Walk one row end to end, then say the rest follows the same pattern.
 -->
 
----
+<!-- --- -->
 
 ## Contributions
 
@@ -202,7 +202,7 @@ prompt / project ──▶ generated code ──▶ synthesized template ──�
 ## Hybrid deployment topology
 
 - **Public side** — AWS: CDK → CloudFormation (VPC, EC2, S3, RDS), SSM, EventBridge, CloudWatch, CloudTrail, Lambda ops-loop, SNS
-- **Private side** — on-premises Linux nodes configured by **Ansible**, registered via **SSM hybrid activation** as `mi-*` managed instances
+- **Private side** — on-premises Linux nodes configured by **Ansible**, registered via **SSM hybrid activation**
 - **No public inbound administrative access**: the control plane traverses the encrypted link
 
 **Connectivity is a pluggable concern** — mesh overlay VPN (Tailscale/WireGuard) · AWS Site-to-Site VPN (IPsec) · Direct Connect · Transit Gateway · SSM over public endpoints
@@ -215,30 +215,30 @@ prompt / project ──▶ generated code ──▶ synthesized template ──�
 
 ---
 
-## Governance and enforcement
+<!-- ## Governance and enforcement
 
 - **pass** → auto-deploy · **review** → deployment blocked until an explicit approval record exists · **reject** → not deployed; regenerate or return to the author
 - Every decision persisted as an **immutable record with the acting identity** (append-only audit trail)
 - **Graceful degradation contract** — a missing scanner binary or absent credential degrades to a well-defined `skipped` status; the gate still produces a decision, and the report records *which* sources actually ran
-- Credentials are **never** passed as command-line arguments — resolved through provider chains, injected via the environment
+- Credentials are **never** passed as command-line arguments — resolved through provider chains, injected via the environment -->
 
 <!--
 0:45. Note that the "skipped" status is recorded in the report, so a weakly-evidenced decision is visible rather than silent.
 -->
 
----
+<!-- --- -->
 
-## Why severity-only scoring is not enough
+<!-- ## Why severity-only scoring is not enough
 
 - **Severity ignores blast radius and cost.** The same open security-group rule on an internet-facing load balancer and on an isolated subnet share a severity label but not an exposure.
 - **Every single tool has blind spots.** A policy scanner, a template linter, a cost estimator, a live-compliance service and a code model each see a different slice — relying on one yields systematic false negatives.
-- **AI generation shifts the risk profile.** The dominant failure mode is not a novel exploit but a *plausible misconfiguration*, so a learned probability of insecurity is as useful as any single rule.
+- **AI generation shifts the risk profile.** The dominant failure mode is not a novel exploit but a *plausible misconfiguration*, so a learned probability of insecurity is as useful as any single rule. -->
 
 <!--
 0:40. This slide justifies why a purpose-built score exists at all instead of reusing CVSS.
 -->
 
----
+<!-- --- -->
 
 ## Multi-scanner assessment and normalisation
 
@@ -302,7 +302,7 @@ The additive form is what makes the report **explainable**: every point is attri
 
 ---
 
-## Worked example: traceability in practice
+<!-- ## Worked example: traceability in practice
 
 A change with **1 high** + **2 medium** deduplicated findings, a **medium cost band**, **1 non-compliant live rule**, and model output $p = 0$:
 
@@ -312,13 +312,13 @@ $$
 
 Since $20 < 35 \le 80$ → **review**: routed to a human approver, whose decision enters the audit trail.
 
-The per-component breakdown — severity 20, cost 10, compliance 5, ML 0 — tells the approver that the **open administrative port and the cost increase** dominate, directing remediation precisely instead of handing over an opaque number.
+The per-component breakdown — severity 20, cost 10, compliance 5, ML 0 — tells the approver that the **open administrative port and the cost increase** dominate, directing remediation precisely instead of handing over an opaque number. -->
 
 <!--
 0:40. This is the answer to "why not just use a black-box model?" — the operator can act on the breakdown.
 -->
 
----
+<!-- --- -->
 
 ## Prototype
 
@@ -364,7 +364,7 @@ The console and the CLI invoke **the same orchestration logic** — a GUI operat
 
 ## RQ1 — Decision conformance and enforcement correctness
 
-**106 runs · 30 pre-declared scenarios.** Decision conformance **100 % (106/106)**, and **1.0 for every scenario individually**, so the aggregate hides no scenario that failed consistently. The confusion matrix is **exactly diagonal** (Ansible 26 / 25 / 8, CDK 11 / 28 / 8) — neither a permissive nor an over-blocking tendency. Replicates were identical: all five `cdk-reject-block` runs scored exactly **114**, all five `ans-reject-block` runs exactly **155**.
+<!-- **106 runs · 30 pre-declared scenarios.** Decision conformance **100 % (106/106)**, and **1.0 for every scenario individually**, so the aggregate hides no scenario that failed consistently. The confusion matrix is **exactly diagonal** (Ansible 26 / 25 / 8, CDK 11 / 28 / 8) — neither a permissive nor an over-blocking tendency. Replicates were identical: all five `cdk-reject-block` runs scored exactly **114**, all five `ans-reject-block` runs exactly **155**. -->
 
 | Enforcement invariant | $n$ | Held | Rate |
 |---|---|---|---|
@@ -375,17 +375,17 @@ The console and the CLI invoke **the same orchestration logic** — a GUI operat
 | *Reject* blocks deployment | 16 | 16 | 1.00 |
 | *Reject* writes a rejection record | 16 | 16 | 1.00 |
 
-**Gate overhead** — median 102.50 s on the cloud branch (69.35 % of run wall-clock) against 7.04 s on-premises (24.80 %); under two minutes on the slower branch.
+<!-- **Gate overhead** — median 102.50 s on the cloud branch (69.35 % of run wall-clock) against 7.04 s on-premises (24.80 %); under two minutes on the slower branch. -->
 
 <!--
 0:50. Two things to own. First, the denominators are not comparable: 1.00 over ten approved-review runs is a far weaker statement than 1.00 over 106 — read the last four rows as "the mechanism works when exercised", not as a failure-rate estimate. Second, conformance is against a specification the same work authored, so it shows the implementation satisfies its own spec, not that the spec grades real infrastructure correctly.
 -->
 
----
+<!-- ---
 
 ## Finding 1 — the additive score fails **open**
 
-Ten scenarios removed exactly one scanner from an otherwise identical run. Every resulting decision matched the arithmetic prediction, so the gate degrades *predictably*. That is precisely the problem.
+Ten scenarios removed exactly one scanner from an otherwise identical run. Every resulting decision matched the arithmetic prediction, so the gate degrades *predictably*. That is precisely the problem. -->
 
 | Component removed | Full | Degraded | Δ | Decision change |
 |---|---|---|---|---|
@@ -394,7 +394,7 @@ Ten scenarios removed exactly one scanner from an otherwise identical run. Every
 | Secret scan (from *reject*, Ansible) | 155 | 75 | **80** | reject → review |
 | ML risk model (from *reject*, CDK) | 114 | 110 | 4 | reject → reject |
 
-**An absent scanner and a scanner that found nothing contribute identically.** The run still reports a clean terminal status. The scanner-status record makes the degradation visible to an auditor afterwards, but nothing in the decision function acts on it — a design deficiency inherent to any purely additive score, not an implementation defect.
+<!-- **An absent scanner and a scanner that found nothing contribute identically.** The run still reports a clean terminal status. The scanner-status record makes the degradation visible to an auditor afterwards, but nothing in the decision function acts on it — a design deficiency inherent to any purely additive score, not an implementation defect. -->
 
 <!--
 0:45. This is a negative result and it is deliberately foregrounded. The gate conformed to its specification on every one of these rows; the specification is what permits a change to be released because the evidence that would have held it was never collected. Chapter 6 proposes an assurance penalty as the remedy — mention that the existing degradation scenarios are already the test cases for it.
@@ -406,7 +406,7 @@ Ten scenarios removed exactly one scanner from an otherwise identical run. Every
 
 ## RQ2 — Cross-boundary equivalence: checkpoint attainment
 
-**65 Ansible-branch runs** — 59 offline, plus a 6-run live arm against a disposable Ubuntu 22.04 VM. Attainment counts *attempted* checkpoints only: a *reject* never reaches a dry run, and scoring that as a failure would penalise correct behaviour.
+<!-- **65 Ansible-branch runs** — 59 offline, plus a 6-run live arm against a disposable Ubuntu 22.04 VM. Attainment counts *attempted* checkpoints only: a *reject* never reaches a dry run, and scoring that as a failure would penalise correct behaviour. -->
 
 | Checkpoint | Offline (59) | Live target (6) |
 |---|---|---|
@@ -418,7 +418,7 @@ Ten scenarios removed exactly one scanner from an otherwise identical run. Every
 | Post-apply verification | — | 3/3 |
 | Repeated-run idempotency | — | 3/3 |
 
-**Nine assertions** read state back off the host — zero failures on every apply; all three repeat applies recorded `changed=0`. All three `ans-reject-deploy-blocked` runs stopped at `ansible.gate` — **no dry run, no apply** — against a live, reachable host.
+<!-- **Nine assertions** read state back off the host — zero failures on every apply; all three repeat applies recorded `changed=0`. All three `ans-reject-deploy-blocked` runs stopped at `ansible.gate` — **no dry run, no apply** — against a live, reachable host. -->
 
 <!--
 0:45. The live arm produces three kinds of evidence the offline campaign structurally could not. Stress that verification asserts literal expected values rather than re-reading the fixture's own variables — otherwise a wrong variable would be accepted as correct. Then concede the counts: the last four rows rest on three runs each, against one host from one fresh image.
@@ -430,7 +430,7 @@ Ten scenarios removed exactly one scanner from an otherwise identical run. Every
 
 ## Finding 2 — one decision function, **unequal detection**
 
-Decision *equality* is the wrong property to demand: an `iptables` rule is not a security group. The property that matters is weaker — a weakness class the gate can see on one side must not be **invisible** on the other.
+<!-- Decision *equality* is the wrong property to demand: an `iptables` rule is not a security group. The property that matters is weaker — a weakness class the gate can see on one side must not be **invisible** on the other. -->
 
 | Weakness | Cloud branch | On-premises branch |
 |---|---|---|
@@ -440,7 +440,7 @@ Decision *equality* is the wrong property to demand: an `iptables` rule is not a
 | Unencrypted storage | `ebs_encryption` (medium) | `storage_encryption` (high); `storage_mount_encryption` (medium) |
 | **Coverage** | **3/4** | **4/4** |
 
-The identifiers are the **same on both sides** — that is the substantive result, not the counts. But the cloud path has **no secret scanner**: the fixture reaches *review* only because the learned model scores the surrounding Python, so nothing an operator reads says a credential was committed. **No threshold repairs this.**
+<!-- The identifiers are the **same on both sides** — that is the substantive result, not the counts. But the cloud path has **no secret scanner**: the fixture reaches *review* only because the learned model scores the surrounding Python, so nothing an operator reads says a credential was committed. **No threshold repairs this.** -->
 
 <!--
 0:45. The gap breaks on the side nobody predicts — the cloud branch, not the private one. Its report contains five Lambda-hygiene findings and a cfn-lint warning, none of which mention the secret. Note the converse too: the learned component has no playbook analogue, so each side keeps a blind spot the other does not, and both were found only by expressing the same weakness twice.
