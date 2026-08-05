@@ -104,11 +104,16 @@ def _run_once(scenario: Scenario, replicate: int, campaign_id: str,
     branches = data.get("branches") or []
     branch = branches[0] if branches else {}
 
+    # The hybrid summary references the gate report but does not embed its
+    # findings, and detection coverage is computed from individual findings.
+    gate_saved = _copy_gate_report(branch.get("report_path"), saved)
+
     row.update(
         run_id=data.get("run_id"),
         run_status=data.get("status"),
         duration_s=data.get("duration_s"),
         report_path=str(saved.relative_to(ROOT_DIR)),
+        gate_report_path=(str(gate_saved.relative_to(ROOT_DIR)) if gate_saved else None),
         report_missing=False,
         observed_decision=branch.get("decision"),
         observed_status=branch.get("status"),
@@ -130,6 +135,20 @@ def _run_once(scenario: Scenario, replicate: int, campaign_id: str,
     row["decision_conformant"] = row["observed_decision"] == scenario.expect_decision
     row["status_conformant"] = row["observed_status"] == scenario.expect_status
     return row
+
+
+def _copy_gate_report(gate_path: str | None, saved_hybrid: Path) -> Path | None:
+    """Copy the per-branch gate report next to its hybrid summary."""
+    if not gate_path:
+        return None
+    source = Path(gate_path)
+    if not source.is_absolute():
+        source = ROOT_DIR / source
+    if not source.is_file():
+        return None
+    destination = saved_hybrid.with_name(f"{saved_hybrid.stem}_gate.json")
+    shutil.copy2(source, destination)
+    return destination
 
 
 def _locate_report(stdout: str) -> Path | None:

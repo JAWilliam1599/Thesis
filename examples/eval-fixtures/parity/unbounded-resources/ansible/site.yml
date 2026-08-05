@@ -1,0 +1,51 @@
+---
+# Coverage fixture: work accepted without any ceiling (on-prem side).
+#
+# Paired with ../cdk, which exposes a function with no concurrency reservation
+# behind an unthrottled API stage.  Everything else here is deliberately
+# unremarkable so that any difference in the gate's verdict is attributable to
+# the one weakness.
+#
+# Weakness class: unbounded-resources (CWE-770)
+- name: Install the report builder service
+  hosts: appservers
+  become: true
+  gather_facts: false
+
+  tasks:
+    # WEAKNESS (CWE-770): every limit the service manager would otherwise apply
+    # is explicitly removed, so a single request storm can exhaust the host.
+    - name: Install the report builder service unit
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/reportsvc.service
+        owner: root
+        group: root
+        mode: '0644'
+        content: |
+          [Unit]
+          Description=Report builder
+
+          [Service]
+          ExecStart=/usr/local/bin/reportsvc
+          User=reportsvc
+          LimitNOFILE=infinity
+          LimitNPROC=infinity
+          TasksMax=infinity
+          MemoryMax=infinity
+
+          [Install]
+          WantedBy=multi-user.target
+
+    # WEAKNESS (CWE-770): the same removal is applied to the account itself, so
+    # nothing constrains the process even outside the service manager.
+    - name: Remove resource limits for the service account
+      ansible.builtin.copy:
+        dest: /etc/security/limits.d/reportsvc.conf
+        owner: root
+        group: root
+        mode: '0644'
+        content: |
+          reportsvc soft nofile unlimited
+          reportsvc hard nofile unlimited
+          reportsvc soft nproc unlimited
+          reportsvc hard nproc unlimited

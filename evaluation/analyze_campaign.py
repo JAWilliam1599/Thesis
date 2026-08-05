@@ -14,6 +14,8 @@ Outputs (written under the campaign directory, in ``analysis/``):
     rq1_degradation.csv      behaviour with each assurance component removed
     rq1_latency.csv          per-stage duration distribution
     rq2_checkpoints.csv      on-prem checkpoint attainment
+    rq2_coverage.csv         detection coverage over the CWE-1008 catalogue
+    rq2_discordance.csv      cross-branch agreement on seeing each class
     tables.tex               the same tables as LaTeX (with --latex)
 """
 from __future__ import annotations
@@ -33,7 +35,11 @@ if str(ROOT_DIR) not in sys.path:
 
 EXPERIMENTS_DIR = ROOT_DIR / "logs" / "experiments"
 
-from evaluation.scenarios import load_fixtures  # noqa: E402
+from evaluation.scenarios import (  # noqa: E402
+    load_controls,
+    load_coverage_catalogue,
+    load_fixtures,
+)
 
 DECISIONS = ("pass", "review", "reject")
 
@@ -423,6 +429,182 @@ def rq2_parity(rows: list[dict], *, arm: str = "rules enabled") -> list[dict]:
 
 
 # --------------------------------------------------------------------------- #
+# RQ2 — detection coverage
+# --------------------------------------------------------------------------- #
+def _findings(row: dict) -> list[dict] | None:
+    """Findings from a run's copied gate report, or None if unavailable.
+
+    An unreadable report is not the same as a report containing no matching
+    finding, so it is propagated as None rather than as an empty list.
+    """
+    path = row.get("gate_report_path")
+    if not path:
+        return None
+    full = ROOT_DIR / path
+    if not full.is_file():
+        return None
+    try:
+        return json.loads(full.read_text(encoding="utf-8")).get("findings") or []
+    except (json.JSONDecodeError, OSError):
+        return None
+
+
+def _detected_in(runs: list[dict], klass) -> tuple[int, int, set, set]:
+    """Runs in which the class was named, plus the categories and sources doing so."""
+    considered = matched = 0
+    categories: set[str] = set()
+    sources: set[str] = set()
+    for row in runs:
+        findings = _findings(row)
+        if findings is None:
+            continue
+        considered += 1
+        hits = klass.matching(findings)
+        if hits:
+            matched += 1
+            categories.update(str(h.get("category") or "?") for h in hits)
+            sources.update(str(h.get("source") or "?") for h in hits)
+    return considered, matched, categories, sources
+
+
+def rq2_coverage(rows: list[dict]) -> list[dict]:
+    """Is each catalogued weakness class named by the gate, on each branch?
+
+    Coverage rather than decision agreement is the measured quantity.  Two
+    artifacts on opposite sides of the boundary are not equivalent — a host
+    firewall rule and a security group differ in blast radius and in how many
+    controls they can violate — so requiring identical bands would assert an
+    equivalence that does not hold, and could be satisfied by reweighting
+    rather than by detecting anything new.  A weakness that produces no finding
+    at all, by contrast, cannot be scored, reviewed or audited at any
+    threshold.
+
+    Detection is credited only when the class matcher fires on the weakness
+    fixture *and* stays silent on that branch's control fixture; a rule that
+    fires unconditionally therefore earns nothing.
+    """
+    try:
+        classes = load_coverage_catalogue()
+        controls = load_controls()
+        fixtures = {f.id: f for f in load_fixtures()}
+    except (FileNotFoundError, ValueError, KeyError):
+        return []
+
+    by_fixture: dict[str, list[dict]] = defaultdict(list)
+    for row in rows:
+        # Degraded-scanner cells deliberately remove a component, so including
+        # them would understate the coverage of the configuration under test.
+        if not row.get("degradation"):
+            by_fixture[row["fixture"]].append(row)
+
+    wired: dict[str, dict[str, str]] = defaultdict(dict)
+    for fixture in fixtures.values():
+        if fixture.weakness_class:
+            wired[fixture.weakness_class][fixture.branch] = fixture.id
+
+    out: list[dict] = []
+    tally: dict[str, list[bool]] = defaultdict(list)
+
+    for klass in classes:
+        for branch in ("cdk", "ansible"):
+            fixture_id = wired.get(klass.id, {}).get(branch)
+            runs = by_fixture.get(fixture_id or "", [])
+            control_runs = by_fixture.get(controls.get(branch, ""), [])
+
+            considered, matched, categories, sources = _detected_in(runs, klass)
+            control_seen, control_hits, control_categories, _ = _detected_in(control_runs, klass)
+
+            measured = bool(fixture_id) and considered > 0 and control_seen > 0
+            fired = matched > 0 if fixture_id and considered else None
+            # An unexamined control cannot testify to silence, so specificity
+            # is unknown rather than satisfied.
+            control_silent = control_hits == 0 if control_seen else None
+            detected = bool(fired and control_silent) if measured else None
+            if measured:
+                tally[branch].append(detected)
+
+            out.append({
+                "weakness_class": klass.id,
+                "cwe": klass.label,
+                "cwe_name": klass.cwe_name,
+                "cwe_category": klass.category,
+                "branch": branch,
+                "fixture": fixture_id or "",
+                "n_runs": considered,
+                "runs_naming_class": matched,
+                "fired": fired,
+                "control_silent": control_silent,
+                "detected": detected,
+                "categories": "; ".join(sorted(categories)),
+                "sources": "; ".join(sorted(sources)),
+                "control_categories": "; ".join(sorted(control_categories)),
+            })
+
+    for branch, results in sorted(tally.items()):
+        low, high = wilson_interval(sum(results), len(results))
+        out.append({
+            "weakness_class": "COVERAGE",
+            "cwe": "", "cwe_name": "", "cwe_category": "",
+            "branch": branch,
+            "fixture": "",
+            "n_runs": len(results),
+            "runs_naming_class": sum(results),
+            "fired": "", "control_silent": "",
+            "detected": f"{sum(results)}/{len(results)}",
+            "categories": f"[{round(low, 3)}, {round(high, 3)}]",
+            "sources": "", "control_categories": "",
+        })
+    return out
+
+
+def rq2_discordance(rows: list[dict]) -> list[dict]:
+    """Where the two branches disagree about seeing the same weakness class.
+
+    Reported as a contingency over classes rather than as two ratios: with a
+    catalogue this size the individual discordant classes carry the finding,
+    and a pair of proportions invites a reader to treat the class count as a
+    sample size.
+    """
+    coverage = [r for r in rq2_coverage(rows) if r["weakness_class"] != "COVERAGE"]
+    if not coverage:
+        return []
+
+    seen: dict[str, dict[str, bool | None]] = defaultdict(dict)
+    label: dict[str, str] = {}
+    for row in coverage:
+        seen[row["weakness_class"]][row["branch"]] = row["detected"]
+        label[row["weakness_class"]] = f'{row["cwe"]} {row["cwe_name"]}'
+
+    cells: Counter = Counter()
+    detail: list[dict] = []
+    for class_id, sides in seen.items():
+        cloud, onprem = sides.get("cdk"), sides.get("ansible")
+        if cloud is None or onprem is None:
+            cell = "not measured"
+        elif cloud and onprem:
+            cell = "both branches"
+        elif cloud:
+            cell = "cloud only"
+        elif onprem:
+            cell = "on-premises only"
+        else:
+            cell = "neither branch"
+        cells[cell] += 1
+        detail.append({"cell": cell, "weakness_class": class_id, "cwe": label[class_id]})
+
+    total = sum(cells.values())
+    summary = [
+        {"cell": cell, "classes": count,
+         "share": round(count / total, 4) if total else None,
+         "members": "; ".join(
+             d["cwe"] for d in detail if d["cell"] == cell
+         )}
+        for cell, count in cells.most_common()
+    ]
+    return summary
+
+
+# --------------------------------------------------------------------------- #
 # Output
 # --------------------------------------------------------------------------- #
 def write_csv(path: Path, rows: list[dict]) -> None:
@@ -539,6 +721,17 @@ def main() -> int:
             "RQ2: cross-boundary treatment of the same weakness",
             ["arm", "weakness", "cloud_decision", "onprem_decision", "agree",
              "cloud_score", "onprem_score", "score_gap"],
+        ),
+        "rq2_coverage": (
+            rq2_coverage(rows),
+            "RQ2: detection coverage over the CWE-1008 weakness catalogue",
+            ["cwe", "cwe_name", "branch", "n_runs", "fired", "control_silent",
+             "detected", "categories", "sources"],
+        ),
+        "rq2_discordance": (
+            rq2_discordance(rows),
+            "RQ2: agreement between branches on seeing each weakness class",
+            ["cell", "classes", "share", "members"],
         ),
     }
 

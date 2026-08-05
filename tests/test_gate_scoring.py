@@ -17,11 +17,17 @@ from security_gate.iac_security_gate import (  # noqa: E402
     COST_BANDS,
     SEVERITY_POINTS,
     THRESHOLDS,
+    IaCSecurityGate,
     _decision,
     _dedupe_findings,
     _new_finding,
     _score_findings,
 )
+
+
+def _categories_of(resources: dict) -> set[str]:
+    findings = IaCSecurityGate().analyze_template({"Resources": resources})
+    return {f["category"] for f in findings}
 
 
 # --------------------------------------------------------------------------- #
@@ -202,3 +208,155 @@ def test_dedup_lowers_the_score_it_feeds():
     assert _score_findings(raw, cost_delta_usd=0.0, config_violations=0)["total"] == 60
     deduped = _dedupe_findings(raw)
     assert _score_findings(deduped, cost_delta_usd=0.0, config_violations=0)["total"] == 20
+
+
+# --------------------------------------------------------------------------- #
+# Template rules added for the remediated arm of the coverage evaluation
+#
+# As on the on-premises side, each weakness is expressed through a different
+# resource type from the one the evaluation fixture uses, and each is paired
+# with the secure form of the same construct.
+# --------------------------------------------------------------------------- #
+def test_function_url_without_an_authorizer_is_missing_authentication():
+    assert _categories_of(
+        {"Url": {"Type": "AWS::Lambda::Url", "Properties": {"AuthType": "NONE"}}}
+    ) == {"api_auth_none"}
+
+
+def test_api_method_behind_an_authorizer_is_not_flagged():
+    assert (
+        _categories_of(
+            {
+                "Method": {
+                    "Type": "AWS::ApiGateway::Method",
+                    "Properties": {"HttpMethod": "POST", "AuthorizationType": "COGNITO_USER_POOLS"},
+                }
+            }
+        )
+        == set()
+    )
+
+
+def test_cors_preflight_without_an_authorizer_is_not_flagged():
+    # OPTIONS carries the CORS preflight, which cannot itself be authenticated.
+    assert (
+        _categories_of(
+            {
+                "Preflight": {
+                    "Type": "AWS::ApiGateway::Method",
+                    "Properties": {"HttpMethod": "OPTIONS", "AuthorizationType": "NONE"},
+                }
+            }
+        )
+        == set()
+    )
+
+
+def test_bucket_policy_open_to_every_principal_is_permissive():
+    assert _categories_of(
+        {
+            "BucketPolicy": {
+                "Type": "AWS::S3::BucketPolicy",
+                "Properties": {
+                    "PolicyDocument": {
+                        "Statement": [
+                            {
+                                "Effect": "Allow",
+                                "Principal": "*",
+                                "Action": "s3:GetObject",
+                                "Resource": "*",
+                            }
+                        ]
+                    }
+                },
+            }
+        }
+    ) == {"permissive_resource_policy"}
+
+
+def test_deny_to_every_principal_is_not_flagged():
+    # The deny-unless-TLS statement names a wildcard principal in order to
+    # protect the resource, not to open it.
+    assert (
+        _categories_of(
+            {
+                "QueuePolicy": {
+                    "Type": "AWS::SQS::QueuePolicy",
+                    "Properties": {
+                        "PolicyDocument": {
+                            "Statement": [
+                                {
+                                    "Effect": "Deny",
+                                    "Principal": "*",
+                                    "Action": "sqs:*",
+                                    "Condition": {"Bool": {"aws:SecureTransport": "false"}},
+                                }
+                            ]
+                        }
+                    },
+                }
+            }
+        )
+        == set()
+    )
+
+
+def test_wildcard_principal_scoped_by_a_condition_is_not_flagged():
+    assert (
+        _categories_of(
+            {
+                "TopicPolicy": {
+                    "Type": "AWS::SNS::TopicPolicy",
+                    "Properties": {
+                        "PolicyDocument": {
+                            "Statement": [
+                                {
+                                    "Effect": "Allow",
+                                    "Principal": {"AWS": "*"},
+                                    "Action": "sns:Publish",
+                                    "Condition": {
+                                        "StringEquals": {"aws:PrincipalOrgID": "o-abc123"}
+                                    },
+                                }
+                            ]
+                        }
+                    },
+                }
+            }
+        )
+        == set()
+    )
+
+
+def test_batch_job_with_added_capabilities_is_unnecessary_privilege():
+    assert _categories_of(
+        {
+            "Job": {
+                "Type": "AWS::Batch::JobDefinition",
+                "Properties": {
+                    "ContainerProperties": {
+                        "Image": "example/job:1",
+                        "LinuxParameters": {"Capabilities": {"Add": ["SYS_ADMIN"]}},
+                    }
+                },
+            }
+        }
+    ) == {"unnecessary_privileges"}
+
+
+def test_task_running_as_a_named_user_is_not_flagged():
+    assert (
+        _categories_of(
+            {
+                "Task": {
+                    "Type": "AWS::ECS::TaskDefinition",
+                    "Properties": {
+                        "ContainerDefinitions": [
+                            {"Image": "example/app:1", "User": "appsvc", "Privileged": False}
+                        ]
+                    },
+                }
+            }
+        )
+        == set()
+    )

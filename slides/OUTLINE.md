@@ -57,11 +57,11 @@
 | # | Slide | Time | Key content |
 |---|-------|------|-------------|
 | 18 | Prototype | 0:45 | Python modules; CLI + Streamlit share one orchestration path |
-| 19 | Evaluation methodology | 0:45 | Pre-registered campaign: 14 fixtures, 30 scenarios, 106 offline runs; a rejection is *not* a failure |
+| 19 | Evaluation methodology | 0:45 | Pre-registered campaign: 30 fixtures, 48 scenarios, 154 offline runs; a rejection is *not* a failure |
 | 20 | RQ1 — conformance and enforcement correctness | 0:50 | 106/106 conformance, diagonal matrix (26/25/8, 11/28/8); six invariants at 1.00; gate 102.50 s vs 7.04 s |
 | 21 | Finding 1 — the score fails open | 0:45 | Checkov removed: review 54 → 9 → *pass*; secret scan removed: reject 155 → 75; absent ≡ found nothing |
 | 22 | RQ2 — cross-boundary equivalence: checkpoint attainment | 0:45 | 65 runs (59 offline + 6 live); 7 checkpoints; 9 assertions, `changed=0`; reject blocked at a live host |
-| 23 | Finding 2 — unequal detection | 0:45 | Cloud 3/4 vs on-prem 4/4; no cloud secret scanner; shared identifiers, unshared scanner sets |
+| 23 | Finding 2 — unequal detection | 0:45 | 11 CWE-1008 classes, two arms: baseline 7/11 cloud, 5/11 on-prem, **3/11 both** → remediated 10/11, 11/11, 10/11; `CKV_AWS_33` = right weakness, wrong words |
 | 24 | RQ3 results | 0:50 | Acc 0.8710, F1 0.8667, ROC-AUC 0.8792; CM 14/2/2/13; coefficients; boundary check |
 | 25 | Limitations | 0:45 | Seven: self-authored fixtures · narrow deployment evidence · scope · dataset · fail-open · coverage · no baseline |
 

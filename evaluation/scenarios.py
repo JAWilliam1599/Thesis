@@ -10,12 +10,18 @@ Two declarative inputs are loaded here:
     The campaign matrix: which fixture is run under which conditions, how many
     replicates, and the terminal status expected under those conditions.
 
+``evaluation/coverage_catalogue.yaml``
+    The weakness classes detection coverage is measured over, derived from
+    MITRE CWE-1008 rather than chosen by the author, together with the matcher
+    that decides whether a report names each class.
+
 Keeping both declarative means the sample is *pre-registered* — the set of runs
 and their expected outcomes is fixed before execution, so results cannot be
 selected after the fact.
 """
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -25,9 +31,15 @@ import yaml
 ROOT_DIR = Path(__file__).resolve().parents[1]
 FIXTURES_FILE = ROOT_DIR / "examples" / "eval-fixtures" / "expectations.yaml"
 SCENARIOS_FILE = Path(__file__).resolve().parent / "scenarios.yaml"
+CATALOGUE_FILE = Path(__file__).resolve().parent / "coverage_catalogue.yaml"
 
 VALID_DECISIONS = {"pass", "review", "reject"}
 VALID_BRANCHES = {"cdk", "ansible"}
+
+# Finding fields the permissive matcher reads.  Deliberately includes the free
+# text message: a scanner that names the weakness in vocabulary this catalogue
+# did not anticipate should still be credited.
+MATCH_FIELDS = ("category", "check_id", "message")
 
 
 @dataclass(frozen=True)
@@ -39,6 +51,41 @@ class Fixture:
     expect_decision: str
     rationale: str = ""
     parity_pair: str | None = None
+    weakness_class: str | None = None
+
+
+@dataclass(frozen=True)
+class WeaknessClass:
+    """One catalogued weakness class, with the matcher that credits detection.
+
+    Both the class list and these matchers were fixed before any fixture was
+    authored and before any detection rule was written in response, so a class
+    reported as undetected is a measurement of the gate rather than an artefact
+    of how the question was asked.
+    """
+
+    id: str
+    cwe: int
+    cwe_name: str
+    category: str
+    categories: tuple[str, ...]
+    pattern: re.Pattern[str]
+    cloud_expression: str = ""
+    onprem_expression: str = ""
+
+    @property
+    def label(self) -> str:
+        return f"CWE-{self.cwe}"
+
+    def matches(self, finding: dict[str, Any]) -> bool:
+        """True when this finding names the weakness class."""
+        if str(finding.get("category") or "") in self.categories:
+            return True
+        haystack = " ".join(str(finding.get(f) or "") for f in MATCH_FIELDS)
+        return bool(self.pattern.search(haystack))
+
+    def matching(self, findings: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        return [f for f in findings if self.matches(f)]
 
 
 @dataclass(frozen=True)
@@ -114,10 +161,57 @@ def load_fixtures(path: Path = FIXTURES_FILE) -> list[Fixture]:
                 expect_decision=expect_decision,
                 rationale=str(entry.get("rationale", "")).strip(),
                 parity_pair=entry.get("parity_pair"),
+                weakness_class=entry.get("weakness_class"),
             )
         )
 
     return fixtures
+
+
+def load_coverage_catalogue(path: Path = CATALOGUE_FILE) -> list[WeaknessClass]:
+    """Load the CWE-derived weakness classes coverage is measured over."""
+    data = _read_yaml(path)
+    entries = data.get("classes") or []
+    classes: list[WeaknessClass] = []
+    seen: set[str] = set()
+
+    for entry in entries:
+        class_id = str(entry["id"])
+        if class_id in seen:
+            raise ValueError(f"duplicate weakness class id: {class_id}")
+        seen.add(class_id)
+
+        detects = entry.get("detects") or {}
+        try:
+            pattern = re.compile(str(detects.get("pattern") or r"(?!)"), re.IGNORECASE)
+        except re.error as exc:
+            raise ValueError(f"{class_id}: invalid detects.pattern: {exc}") from exc
+
+        classes.append(
+            WeaknessClass(
+                id=class_id,
+                cwe=int(entry["cwe"]),
+                cwe_name=str(entry["cwe_name"]),
+                category=str(entry["category"]),
+                categories=tuple(str(c) for c in (detects.get("categories") or [])),
+                pattern=pattern,
+                cloud_expression=str(entry.get("cloud_expression", "")).strip(),
+                onprem_expression=str(entry.get("onprem_expression", "")).strip(),
+            )
+        )
+
+    if not classes:
+        raise ValueError(f"{path} declares no weakness classes")
+    return classes
+
+
+def load_controls(path: Path = CATALOGUE_FILE) -> dict[str, str]:
+    """Branch -> fixture id of the clean fixture each matcher must stay silent on."""
+    controls = _read_yaml(path).get("controls") or {}
+    missing = VALID_BRANCHES - set(controls)
+    if missing:
+        raise ValueError(f"{path}: no control fixture declared for {sorted(missing)}")
+    return {str(branch): str(fixture) for branch, fixture in controls.items()}
 
 
 def load_scenarios(
@@ -179,6 +273,29 @@ def parity_pairs(fixtures: list[Fixture]) -> dict[str, dict[str, Fixture]]:
         if fixture.parity_pair:
             grouped.setdefault(fixture.parity_pair, {})[fixture.branch] = fixture
     return {pair: sides for pair, sides in grouped.items() if len(sides) == 2}
+
+
+def coverage_pairs(
+    fixtures: list[Fixture], classes: list[WeaknessClass]
+) -> dict[str, dict[str, Fixture]]:
+    """Group coverage fixtures by catalogue class id, keyed by branch.
+
+    A class with a fixture on only one branch is returned as-is rather than
+    dropped: a missing fixture and an undetected weakness are different facts,
+    and silently discarding the former would misreport the latter.
+    """
+    known = {c.id for c in classes}
+    grouped: dict[str, dict[str, Fixture]] = {c.id: {} for c in classes}
+    for fixture in fixtures:
+        if not fixture.weakness_class:
+            continue
+        if fixture.weakness_class not in known:
+            raise KeyError(
+                f"{fixture.id}: weakness_class {fixture.weakness_class!r} "
+                f"is not in {CATALOGUE_FILE.name}"
+            )
+        grouped[fixture.weakness_class][fixture.branch] = fixture
+    return grouped
 
 
 def total_runs(scenarios: list[Scenario]) -> int:

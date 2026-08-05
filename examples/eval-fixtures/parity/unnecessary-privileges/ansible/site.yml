@@ -1,0 +1,47 @@
+---
+# Coverage fixture: a workload running with more privilege than it needs
+# (on-prem side).
+#
+# Paired with ../cdk, which runs a container as root with the host's full
+# capability set.  Everything else here is deliberately unremarkable so that any
+# difference in the gate's verdict is attributable to the one weakness.
+#
+# Weakness class: unnecessary-privileges (CWE-250)
+- name: Install the ingest service
+  hosts: appservers
+  become: true
+  gather_facts: false
+
+  tasks:
+    # WEAKNESS (CWE-250): the service reads and writes application data but is
+    # installed to run as the host's administrative account.
+    - name: Install the ingest service unit
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/ingestsvc.service
+        owner: root
+        group: root
+        mode: '0644'
+        content: |
+          [Unit]
+          Description=Data ingest
+
+          [Service]
+          ExecStart=/usr/local/bin/ingestsvc
+          User=root
+          Group=root
+          AmbientCapabilities=CAP_SYS_ADMIN
+          NoNewPrivileges=false
+
+          [Install]
+          WantedBy=multi-user.target
+
+    # WEAKNESS (CWE-250): the same account is additionally granted unattended
+    # administrative escalation for every command.
+    - name: Grant the service account unrestricted escalation
+      ansible.builtin.copy:
+        dest: /etc/sudoers.d/ingestsvc
+        owner: root
+        group: root
+        mode: '0440'
+        content: |
+          ingestsvc ALL=(ALL) NOPASSWD: ALL

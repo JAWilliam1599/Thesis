@@ -1,0 +1,37 @@
+---
+# Coverage fixture: a critical resource anyone may modify (on-prem side).
+#
+# Paired with ../cdk, which grants unconditional use of an encryption key.
+# Everything else here is deliberately unremarkable so that any difference in
+# the gate's verdict is attributable to the one weakness.
+#
+# Weakness class: incorrect-permissions (CWE-732)
+- name: Install the application service configuration
+  hosts: appservers
+  become: true
+  gather_facts: false
+
+  tasks:
+    # WEAKNESS (CWE-732): every local account may add, replace or remove files
+    # in the directory holding the service configuration.
+    - name: Create the service configuration directory
+      ansible.builtin.file:
+        path: /etc/appsvc
+        state: directory
+        owner: root
+        group: root
+        mode: '0777'
+
+    # WEAKNESS (CWE-732): the configuration controlling how the service
+    # authenticates is itself writable by every local account.
+    - name: Install the service configuration
+      ansible.builtin.copy:
+        dest: /etc/appsvc/service.conf
+        owner: root
+        group: root
+        mode: '0777'
+        content: |
+          [service]
+          listen = 127.0.0.1:8443
+          auth_backend = ldap
+          session_timeout = 900

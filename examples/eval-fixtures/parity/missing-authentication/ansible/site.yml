@@ -1,0 +1,40 @@
+---
+# Coverage fixture: administrative access with no authentication (on-prem side).
+#
+# Paired with ../cdk, which exposes a state-changing API method with its
+# authorizer set to none.  Everything else here is deliberately unremarkable so
+# that any difference in the gate's verdict is attributable to the one weakness.
+#
+# Weakness class: missing-authentication (CWE-306)
+- name: Configure remote access to the application host
+  hosts: appservers
+  become: true
+  gather_facts: false
+
+  tasks:
+    # WEAKNESS (CWE-306): an account with an empty password is enough to obtain
+    # an interactive session on the host.
+    - name: Permit login without a password
+      ansible.builtin.lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: '^#?PermitEmptyPasswords'
+        line: 'PermitEmptyPasswords yes'
+        owner: root
+        group: root
+        mode: '0600'
+
+    # WEAKNESS (CWE-306): the administrative account itself is reachable the
+    # same way.
+    - name: Permit direct administrative login
+      ansible.builtin.lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: '^#?PermitRootLogin'
+        line: 'PermitRootLogin yes'
+        owner: root
+        group: root
+        mode: '0600'
+
+    - name: Reload the SSH daemon
+      ansible.builtin.systemd:
+        name: sshd
+        state: reloaded

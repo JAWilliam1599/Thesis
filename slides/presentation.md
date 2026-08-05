@@ -347,11 +347,11 @@ The console and the CLI invoke **the same orchestration logic** — a GUI operat
 | RQ | Method | Measures |
 |---|---|---|
 | **RQ1** Decision conformance and enforcement correctness | 30 declared scenarios, **106 offline runs**, incl. 10 that remove one scanner | Decision conformance, enforcement invariants, score deltas, stage latency |
-| **RQ2** Cross-boundary enforcement equivalence | Same engine on an on-prem Linux node via mesh VPN; 4 weakness classes expressed twice | Checkpoint attainment, **detection coverage** across the boundary |
+| **RQ2** Cross-boundary enforcement equivalence | Same engine on an on-prem Linux node via mesh VPN; **11 catalogued weakness classes** expressed twice, measured before and after remediation | Checkpoint attainment, **detection coverage** across the boundary |
 | **RQ3** Unified risk-evaluation capability | Held-out classifier evaluation + controlled boundary cases | Accuracy, P/R/F1, ROC-AUC, score & decision correctness |
 
 - **Declared first.** Scenarios, expected decisions and replicate counts were fixed in a version-controlled specification *before* any reported run executed; every statistic is computed from the persisted records by one analysis program
-- **14 calibrated fixtures** — 6 band + 4 parity pairs. Live pricing and live account state are disabled: in the pilot they moved a *reject* fixture from 114 to 119
+- **30 calibrated fixtures** — 6 band + **12 matched pairs** (11 weakness classes + 1 compliant *specificity control*). Live pricing and live account state are disabled: in the pilot they moved a *reject* fixture from 114 to 119
 - **A security rejection is not a pipeline failure** — a valid *reject* that blocks deployment is *correct* execution. Denominators are reported in place of confidence intervals
 
 <!--
@@ -432,18 +432,19 @@ Ten scenarios removed exactly one scanner from an otherwise identical run. Every
 
 <!-- Decision *equality* is the wrong property to demand: an `iptables` rule is not a security group. The property that matters is weaker — a weakness class the gate can see on one side must not be **invisible** on the other. -->
 
-| Weakness | Cloud branch | On-premises branch |
-|---|---|---|
-| Open ingress | `sg_ssh_open` (critical) | `sg_ssh_open` (critical) |
-| Over-privileged access | `iam_wildcard` (critical) | `iam_wildcard` (critical); `file_world_writable` (high) |
-| Plaintext secret | **— no finding names the credential** | `secret_password`; `secret_token` (high) |
-| Unencrypted storage | `ebs_encryption` (medium) | `storage_encryption` (high); `storage_mount_encryption` (medium) |
-| **Coverage** | **3/4** | **4/4** |
+**11 classes derived from MITRE CWE-1008**, not chosen by the author: 223 members → three mechanical filters → 38 candidates → the 11 expressible as a matched pair. Measured **twice** — at a frozen gate commit, then after remediation.
 
-<!-- The identifiers are the **same on both sides** — that is the substantive result, not the counts. But the cloud path has **no secret scanner**: the fixture reaches *review* only because the learned model scores the surrounding Python, so nothing an operator reads says a credential was committed. **No threshold repairs this.** -->
+| Arm | Cloud | On-prem | **Named by both** |
+|---|---|---|---|
+| **Baseline** — gate frozen at `6e092b9` | 7/11 | 5/11 | **3/11** |
+| **Remediated** — +9 rule families | 10/11 | 11/11 | **10/11** |
+
+Baseline discordance: cloud-only **4** · on-prem-only **2** · neither **2** → a gate treating the branches as interchangeable would be wrong about **8 of 11**
+
+<!-- Where a class *is* named on both sides the **identifiers match** — `sg_ssh_open` whether it came from a security group or an `iptables` task. That shared vocabulary is the substantive result, not the counts. One baseline miss proves the point: the cloud report **did** contain `CKV_AWS_33` "wildcard (*) principal" — the right weakness, in the wrong words, and therefore indistinguishable from silence to every downstream consumer. -->
 
 <!--
-0:45. The gap breaks on the side nobody predicts — the cloud branch, not the private one. Its report contains five Lambda-hygiene findings and a cfn-lint warning, none of which mention the secret. Note the converse too: the learned component has no playbook analogue, so each side keeps a blind spot the other does not, and both were found only by expressing the same weakness twice.
+0:45. Three things. First, externalising the class list is what makes the baseline credible — the author could not choose the weaknesses the gate already covered. Second, the remediated arm is NOT a recall estimate: it answers "were these gaps closable?", not "how much does the gate see?" Third, one gap was left open deliberately — CWE-922 in the cloud — because a credential in a CDK app sits in general-purpose Python where no regex separates an embedded secret from the idioms that legitimately handle one. Raising the number there would have degraded the tool.
 -->
 
 ---
@@ -479,7 +480,7 @@ Ten scenarios removed exactly one scanner from an otherwise identical run. Every
 3. **Restricted implementation scope** — Python + Bandit/Semgrep; AWS CDK/CloudFormation + Ansible. No claim of transfer to other languages, providers or vulnerability classes
 4. **Dataset and model validity** — 31 held-out samples from one split; undetectable categories excluded; negatives are *reference secure*, not verified secure
 5. **Risk assumptions and the fail-open score** — weights, bands and thresholds uncalibrated; missing evidence is read as low risk
-6. **Unequal detection coverage** — a shared decision function over unshared scanner sets, established on four hand-authored classes rather than a catalogue
+6. **Unequal detection coverage** — a shared decision function over unshared scanner sets. The class list is external, but the fixtures are hand-authored, so the figures bound **rule-to-CWE alignment**, not field recall
 7. **Limited comparative measures** — no manual baseline; no operator effort, lead time, change-failure rate or remediation time
 
 <!--
@@ -510,7 +511,7 @@ Ten scenarios removed exactly one scanner from an otherwise identical run. Every
 ## Future work
 
 1. **Close the fail-open condition** *(first priority)* — make the decision function consume the scanner-status record it already writes: an assurance penalty proportional to missing coverage, or a fail-closed policy forcing *review* below a coverage threshold. The existing degradation scenarios are ready-made test cases
-2. **Close the coverage gaps at source** — give the cloud path the same secret scan; give the private path an equivalent learned signal or an explicit *not applicable*; extend well beyond four weakness classes, drawn from an external catalogue
+2. **Close the last coverage gap at source** — give the cloud path a secret scan that separates an *embedded* credential from the idioms that legitimately *handle* one (entropy + provider formats, not keywords); give the private path an equivalent learned signal or an explicit *not applicable*; replace the hand-authored fixtures with independently written ones
 3. **Broaden deployment-side evidence** — divergent prior state, concurrent targets, induced partial failures, so failure attribution has something other than `none` to classify; independently authored fixtures
 4. **Validate the model** — larger multi-project corpus, project-aware partitioning, repeated cross-validation, external holdout, and a retained *challenge set* of analyser-invisible flaws
 5. **Calibrate the score** — expert judgement and historical incidents; sensitivity and ablation against severity-only and scanner-only baselines

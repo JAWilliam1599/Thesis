@@ -24,9 +24,10 @@ Evaluated \\
 \hline
 RQ2 & Equivalent governance of an on-premises target and a cloud target by the
 shared risk engine & All seven on-premises checkpoints attained, the last three
-in a $6$-run live-target arm; three of four matched weakness classes named on
-both sides of the boundary in a shared finding vocabulary &
-Evaluated (coverage narrow) \\
+in a $6$-run live-target arm; of eleven catalogued weakness classes, three named
+on both sides of the boundary at the frozen gate commit and ten after
+remediation, in a shared finding vocabulary &
+Evaluated (coverage bounded) \\
 \hline
 RQ3 & Multi-tool risk estimation and deployment decision & Held-out model results
 available; complete gate-decision analysis incomplete & Partially evaluated \\
@@ -129,20 +130,29 @@ the deployment path completes correctly rather than that it is reliable across
 heterogeneous fleets.
 
 The decision half produced the more interesting finding, and it is not a finding
-about decisions. Both branches run one decision function, and after the
-on-premises configuration rules both draw on scanner sets that name three of the
-four matched weakness classes in the same vocabulary
-(Table~\ref{tab:rq2-coverage}). An unrestricted firewall rule is reported as
+about decisions. Measured against eleven weakness classes derived from an
+external catalogue, the gate at its frozen commit named seven of them on the
+cloud branch and five on-premises --- but only three on both
+(Table~\ref{tab:rq2-coverage}). Four classes were visible only in the cloud, two
+only on-premises, and two on neither. A gate that treats the branches as
+interchangeable would have been wrong about eight of eleven classes, and nothing
+in the architecture would have revealed it. Where a class \emph{was} named on
+both sides, the identifiers matched: an unrestricted firewall rule is reported as
 \texttt{sg\_ssh\_open} whether it appears in a security group or in an
 \texttt{iptables} task; unrestricted administrative privilege is reported as
 \texttt{iam\_wildcard} whether it comes from an IAM policy or a sudoers file.
 That shared vocabulary is the substantive achievement, because it is what makes
 the two sides comparable at all. Equal scores would not have been.
 
-The fourth class is the one that fails, and it fails on the cloud side. On the
-plaintext-secret pair it is the \emph{cloud} branch that names nothing: its
+One miss shows what happens when the vocabulary breaks down. On the cloud
+incorrect-permissions fixture the baseline report contained a Checkov finding
+stating that a KMS key policy contained a wildcard principal --- the right
+weakness, described correctly, in the wrong words. Because the finding carried
+no category naming the class, it was indistinguishable from silence to the
+deduplicator, the risk score, the audit record and the operator alike. The same
+pattern appears more starkly on the plaintext-secret pair, where the cloud
 report contains five findings about Lambda hygiene and a redundant cfn-lint
-dependency warning, none of which state that a credential was committed. The
+dependency warning, none of which state that a credential was committed. That
 fixture still reaches \emph{review}, because the learned code-risk component
 scores the surrounding Python, so the decision looks correct --- but it is
 correct by accident, and the report an operator would actually read does not
@@ -154,19 +164,34 @@ function and shared thresholds are frequently taken to imply consistent
 treatment across a hybrid estate. They do not. Consistency of \emph{decision
 logic} is worth little without comparable \emph{detection coverage} feeding it,
 and the boundary at which coverage diverges is invisible in any architecture
-diagram --- both branches appear to call the same gate, because they do. Nor is
-such a gap reachable by tuning: a weakness that produces no finding cannot be
-scored, reviewed, or audited at any threshold, so the remedy is to add the
-missing scanner rather than to reweight the ones already present. The same
-argument applies in reverse to the learned component, which is computed from
-Python source and has no playbook analogue.
+diagram --- both branches appear to call the same gate, because they do. Nor is such a gap reachable by tuning: a weakness that produces no finding
+cannot be scored, reviewed, or audited at any threshold, so the remedy is to add
+the missing detection rather than to reweight what is already present. The
+remediated arm demonstrates that this remedy was available: nine of the eleven
+gaps closed with nine rule families added to two files, lifting coverage to ten
+of eleven in the cloud and eleven of eleven on-premises and reducing the
+discordant classes from eight to one. That figure should not be read as a
+recall estimate. It measures whether the gaps the baseline located were closable
+within this architecture, not how much the gate sees in general; the baseline is
+the arm that speaks to the latter. The one gap left open was left open
+deliberately, because a hardcoded credential in a CDK application sits in
+general-purpose Python where no regex distinguishes an embedded secret from the
+idioms that legitimately handle one, and a rule that could not be made specific
+would have raised the number while degrading the tool. The same argument applies
+in reverse to the learned component, which is computed from Python source and
+has no playbook analogue.
 
-The evidence supporting this is narrow, and the reason is the size of the
-parity set rather than the number of runs. Four weakness classes, authored by
-hand alongside the rules that detect them, are enough to show that cross-boundary
-coverage gaps exist and to locate two of them. They cannot indicate how many more
-there are, and a different four could have produced a different picture in either
-direction.
+The evidence supporting this is bounded, though the bound is no longer the size
+of the class list. Eleven classes drawn from an external catalogue remove the
+author's discretion over which weaknesses are counted, but not over how each one
+is written: the fixtures are still hand-authored, so a class counts as covered
+when the gate names a weakness composed to be namable. The coverage figures are
+therefore an upper bound measuring rule-to-CWE alignment rather than field
+recall. The specificity controls narrow this from the other side --- both
+remained silent on all eleven classes in both arms --- but a control that
+produces no findings at all cannot establish that a matcher will refrain from
+firing on an unrelated finding in a busier report, a failure mode an earlier
+candidate control exhibited before it was replaced.
 
 \subsection{RQ3: Unified Risk-Evaluation Capability}
 \label{subsec:discussion-rq3}
@@ -285,7 +310,9 @@ The study has seven principal limitations.
     sixteen rejections, and three replicates for each of the apply,
     verification and idempotency checkpoints --- so they establish that the
     mechanism works when exercised rather than how often it fails. Detection
-    coverage rests on four weakness classes. The prototype has additionally not
+    coverage rests on eleven weakness classes drawn from an external catalogue,
+    which removes the author's discretion over which weaknesses are counted but
+    not over how each one is written. The prototype has additionally not
     been evaluated with large repositories, concurrent pipelines, or a
     substantial private-infrastructure fleet.
 
@@ -325,15 +352,17 @@ The study has seven principal limitations.
     scanner-status field but no part of the decision function acts on it.
 
     \item \textbf{Unequal detection coverage across the boundary.} The two
-    branches share a decision function but not a scanner set. Adding semantic
-    configuration rules brought the on-premises path to four weakness classes of
-    four, but the cloud path still names only three of four: it has no secret
-    scanner, and detects a committed credential only as a side effect of the
-    learned code-risk model scoring the surrounding Python. That model is in turn
-    unavailable to the on-premises path, which has no source-code analogue. Each
-    side therefore retains a blind spot the other does not, and coverage is
-    established over four hand-authored classes rather than a representative
-    catalogue.
+    branches share a decision function but not a scanner set. At the frozen gate
+    commit the branches agreed on only three of eleven catalogued weakness
+    classes; adding nine rule families raised this to ten, but the cloud path
+    still names no committed credential, detecting one only as a side effect of
+    the learned code-risk model scoring the surrounding Python. That model is in
+    turn unavailable to the on-premises path, which has no source-code analogue.
+    Each side therefore retains a blind spot the other does not. Coverage is
+    also established over hand-authored fixtures, so the figures bound
+    rule-to-CWE alignment rather than recall on real infrastructure, and the
+    specificity controls --- silent on all eleven classes in both arms --- cannot
+    exclude a matcher firing on an unrelated finding in a busier report.
 
     \item \textbf{Limited comparative and operational measures.} The study does not yet
     compare the proposed process with manual cloud operations or IaC deployment without
@@ -354,17 +383,22 @@ policy that forces \emph{review} below a coverage threshold --- would convert a
 diagnostic record into an enforced property, and the existing degradation
 scenarios already provide the test cases to verify it.
 
-The second is to close the remaining coverage gaps at their source, on both
-sides. The cloud branch needs the same regex secret scan the on-premises branch
-already runs, so that a committed credential is named in the report rather than
-absorbed into a learned probability; the on-premises branch needs either an
+The second is to close the remaining coverage gap at its source, on both
+sides. The cloud branch needs a secret scan that can separate an embedded
+credential from the idioms that legitimately handle one --- entropy and
+provider-format detection rather than the keyword regex the on-premises branch
+runs --- so that a committed credential is named in the report rather than
+absorbed into a learned probability; this was the one gap deliberately left open,
+because nothing specific enough could be built within the existing regex design.
+The on-premises branch needs either an
 equivalent learned signal for configuration artifacts or an explicit statement
 that no such component applies, so that a reader can tell a missing component
 from a component that found nothing. Both are coverage repairs, and neither
-requires the two branches to produce the same score. Extending the weakness set
-well beyond four classes --- and drawing it from an external catalogue rather
-than authoring it alongside the rules --- would turn a demonstration that a gap
-exists into a measurement of how large it is.
+requires the two branches to produce the same score. The measurement itself
+should then be strengthened by replacing the hand-authored fixtures with
+independently written ones, since the present figures bound rule-to-catalogue
+alignment rather than recall, and by widening the class list beyond the eleven
+that admit a matched expression on both sides of the boundary.
 
 The evaluation itself should then be broadened on the deployment side. The
 live-target arm closes the apply, post-apply verification, and idempotency

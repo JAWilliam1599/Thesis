@@ -1,0 +1,40 @@
+---
+# Coverage fixture: sensitive traffic carried in the clear (on-prem side).
+#
+# Paired with ../cdk, which serves the application over plaintext HTTP with no
+# redirect to a protected channel.  Everything else here is deliberately
+# unremarkable so that any difference in the gate's verdict is attributable to
+# the one weakness.
+#
+# Weakness class: cleartext-transmission (CWE-319)
+- name: Install the application release
+  hosts: appservers
+  become: true
+  gather_facts: false
+
+  tasks:
+    # WEAKNESS (CWE-319): the release archive is retrieved over an unprotected
+    # channel, so its contents are readable and alterable in transit.
+    - name: Download the application release
+      ansible.builtin.get_url:
+        url: http://releases.internal.example.com/appsvc/appsvc-2.4.1.tar.gz
+        dest: /opt/appsvc-2.4.1.tar.gz
+        owner: root
+        group: root
+        mode: '0644'
+        validate_certs: false
+
+    # WEAKNESS (CWE-319): the service is told to talk to its database without
+    # transport protection, so credentials and records cross the network in the
+    # clear.
+    - name: Configure the database connection
+      ansible.builtin.copy:
+        dest: /etc/appsvc/database.conf
+        owner: root
+        group: root
+        mode: '0640'
+        content: |
+          [database]
+          host = db.internal.example.com
+          port = 5432
+          sslmode = disable

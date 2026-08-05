@@ -80,6 +80,66 @@ def _resource_props(resource: dict[str, Any]) -> dict[str, Any]:
     return {}
 
 
+# Resource types that carry a resource-based policy, and the property the
+# policy document lives under.  A resource policy differs from an identity
+# policy in that its Principal names who may act on the resource, so a wildcard
+# principal grants the whole world rather than one role.
+_RESOURCE_POLICY_PROPS: dict[str, str] = {
+    "AWS::S3::BucketPolicy": "PolicyDocument",
+    "AWS::SQS::QueuePolicy": "PolicyDocument",
+    "AWS::SNS::TopicPolicy": "PolicyDocument",
+    "AWS::KMS::Key": "KeyPolicy",
+    "AWS::SecretsManager::ResourcePolicy": "ResourcePolicy",
+    "AWS::ECR::Repository": "RepositoryPolicyText",
+    "AWS::Logs::ResourcePolicy": "PolicyDocument",
+}
+
+# HTTP methods for which an unauthenticated route is expected rather than a
+# weakness: OPTIONS carries the CORS preflight, which cannot be authenticated.
+_UNAUTHENTICATED_BY_DESIGN = {"OPTIONS"}
+
+_ROOT_USERS = {"root", "0", "0:0"}
+
+
+def _is_wildcard_principal(principal: Any) -> bool:
+    """True when *principal* names every identity rather than a specific one."""
+    if principal == "*":
+        return True
+    if isinstance(principal, dict):
+        for value in principal.values():
+            if value == "*" or (isinstance(value, list) and "*" in value):
+                return True
+    return False
+
+
+def _open_policy_statements(policy: Any) -> list[dict[str, Any]]:
+    """Statements in *policy* that allow a wildcard principal unconditionally.
+
+    A ``Deny`` on a wildcard principal is how a resource is *protected* (the
+    deny-unless-TLS statement, for instance), and a statement carrying a
+    ``Condition`` is scoped by it, so neither is reported.
+    """
+    if not isinstance(policy, dict):
+        return []
+    statements = policy.get("Statement")
+    if isinstance(statements, dict):
+        statements = [statements]
+    if not isinstance(statements, list):
+        return []
+
+    open_statements: list[dict[str, Any]] = []
+    for statement in statements:
+        if not isinstance(statement, dict):
+            continue
+        if str(statement.get("Effect", "")).lower() != "allow":
+            continue
+        if statement.get("Condition"):
+            continue
+        if _is_wildcard_principal(statement.get("Principal")):
+            open_statements.append(statement)
+    return open_statements
+
+
 # Used during cross-source deduplication to resolve which severity wins.
 _SEVERITY_ORDER: dict[str, int] = {"critical": 4, "high": 3, "medium": 2, "low": 1}
 
@@ -341,6 +401,135 @@ class IaCSecurityGate:
                             "ebs_encryption",
                         )
                     )
+
+            # --- Access granted without proving identity (CWE-306) ---
+
+            if rtype == "AWS::ApiGateway::Method":
+                http_method = str(props.get("HttpMethod", "")).upper()
+                if (
+                    str(props.get("AuthorizationType", "")).upper() == "NONE"
+                    and http_method not in _UNAUTHENTICATED_BY_DESIGN
+                    and props.get("ApiKeyRequired") is not True
+                ):
+                    findings.append(
+                        _new_finding(
+                            "critical",
+                            "iac_security_gate",
+                            f"API method {http_method or 'ANY'} has its authorizer set "
+                            "to NONE, so it can be invoked without authentication.",
+                            resource_id,
+                            "api_auth_none",
+                        )
+                    )
+
+            if rtype == "AWS::ApiGatewayV2::Route":
+                if str(props.get("AuthorizationType", "")).upper() == "NONE":
+                    findings.append(
+                        _new_finding(
+                            "critical",
+                            "iac_security_gate",
+                            "HTTP API route has its authorizer set to NONE, so it can "
+                            "be invoked without authentication.",
+                            resource_id,
+                            "api_auth_none",
+                        )
+                    )
+
+            if rtype == "AWS::Lambda::Url":
+                if str(props.get("AuthType", "")).upper() == "NONE":
+                    findings.append(
+                        _new_finding(
+                            "critical",
+                            "iac_security_gate",
+                            "Function URL is published with AuthType NONE, so the "
+                            "function is invocable by anyone who learns the URL.",
+                            resource_id,
+                            "api_auth_none",
+                        )
+                    )
+
+            # --- Resource policy naming every principal (CWE-732) ---
+
+            policy_prop = _RESOURCE_POLICY_PROPS.get(rtype)
+            if policy_prop and _open_policy_statements(props.get(policy_prop)):
+                findings.append(
+                    _new_finding(
+                        "critical",
+                        "iac_security_gate",
+                        "Resource policy allows a wildcard principal with no "
+                        "condition, granting access to every identity.",
+                        resource_id,
+                        "permissive_resource_policy",
+                    )
+                )
+
+            if rtype == "AWS::Lambda::Permission":
+                if (
+                    props.get("Principal") == "*"
+                    and not props.get("SourceArn")
+                    and not props.get("SourceAccount")
+                ):
+                    findings.append(
+                        _new_finding(
+                            "high",
+                            "iac_security_gate",
+                            "Function invoke permission is granted to a wildcard "
+                            "principal with no source restriction.",
+                            resource_id,
+                            "permissive_resource_policy",
+                        )
+                    )
+
+            # --- Workload running with more authority than it needs (CWE-250) ---
+
+            if rtype in {"AWS::ECS::TaskDefinition", "AWS::Batch::JobDefinition"}:
+                containers = props.get("ContainerDefinitions")
+                if not isinstance(containers, list):
+                    single = props.get("ContainerProperties")
+                    containers = [single] if isinstance(single, dict) else []
+                for container in containers:
+                    if not isinstance(container, dict):
+                        continue
+                    if container.get("Privileged") is True:
+                        findings.append(
+                            _new_finding(
+                                "critical",
+                                "iac_security_gate",
+                                "Container is declared privileged, giving it the "
+                                "host's full capability set.",
+                                resource_id,
+                                "privileged_container",
+                            )
+                        )
+                    if str(container.get("User", "")).strip().lower() in _ROOT_USERS:
+                        findings.append(
+                            _new_finding(
+                                "high",
+                                "iac_security_gate",
+                                "Container runs as root rather than as an "
+                                "unprivileged user.",
+                                resource_id,
+                                "runs_as_root",
+                            )
+                        )
+                    linux_params = container.get("LinuxParameters")
+                    capabilities = (
+                        linux_params.get("Capabilities")
+                        if isinstance(linux_params, dict)
+                        else None
+                    )
+                    added = capabilities.get("Add") if isinstance(capabilities, dict) else None
+                    if isinstance(added, list) and added:
+                        findings.append(
+                            _new_finding(
+                                "high",
+                                "iac_security_gate",
+                                "Container is granted additional Linux capabilities "
+                                f"({', '.join(str(cap) for cap in added)}).",
+                                resource_id,
+                                "unnecessary_privileges",
+                            )
+                        )
 
         # Deduplicate within heuristic findings: one finding per
         # (resource_id, category) so a security group with N open ingress

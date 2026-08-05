@@ -141,28 +141,37 @@ single analysis program.
 
 \subsubsection{Calibrated Fixtures}
 
-Fourteen infrastructure fixtures were constructed. Six are \emph{band fixtures}: for each branch
+Thirty infrastructure fixtures were constructed. Six are \emph{band fixtures}: for each branch
 --- AWS CDK for the cloud path and Ansible for the on-premises path --- one
 fixture was authored to sit in each of the \emph{pass}, \emph{review}, and
-\emph{reject} bands. The remaining eight form four \emph{parity pairs}, each
-pair expressing one weakness class twice, once in CDK and once in Ansible:
-unrestricted network ingress, a plaintext credential, over-privileged access,
-and unencrypted storage.
+\emph{reject} bands. The remaining twenty-four form twelve \emph{matched pairs},
+each pair expressing the same thing twice, once in CDK and once in Ansible.
+Eleven pairs express one catalogued weakness class each: unrestricted network
+ingress, a plaintext credential, over-privileged access, unencrypted storage,
+insufficient logging, missing authentication, incorrect permissions, externally
+accessible files, unbounded resources, cleartext transmission, and execution
+with unnecessary privileges. The twelfth pair is the \emph{specificity control},
+a compliant stack and a compliant playbook that express no weakness at all and
+against which every detection matcher must remain silent.
 
 Each fixture carries a declared band in \texttt{expectations.yaml} together with
 the finding breakdown that produces it. A calibration utility re-scores every
 fixture and fails if any has drifted outside its declared band, so a scanner
 upgrade that silently changes the arithmetic is caught rather than absorbed. An
-important methodological constraint applies to the parity pairs: their declared
+important methodological constraint applies to the matched pairs: their declared
 bands are \emph{descriptive}, recorded from measurement, and were not adjusted
 to bring the two branches into line. Tuning the fixtures or the weights until
 both sides returned the same band would have manufactured a result while leaving
-the question RQ2 untouched.
+the question RQ2 untouched. For the same reason the bands recorded for the
+coverage pairs are those measured in the baseline arm and were deliberately left
+unchanged when the detection rules were added; the remediated arm consequently
+reports the affected fixtures as non-conformant against them. That divergence is
+the effect being measured, and updating the bands to match would erase it.
 
 \subsubsection{Scenario Matrix}
 
-The specification in \texttt{evaluation/scenarios.yaml} declares 30 scenarios
-totalling 106 offline runs, organised in five groups. Eight \emph{conformance}
+The specification in \texttt{evaluation/scenarios.yaml} declares 48 scenarios
+totalling 154 offline runs, organised in six groups. Eight \emph{conformance}
 scenarios, replicated five times each, submit the six band fixtures and
 additionally exercise the \emph{review} band twice per branch --- once withheld
 and once with an operator approval supplied --- so that the approval gate is
@@ -171,11 +180,20 @@ times each, remove one scanner from an otherwise identical run; each declares
 the decision that the remaining evidence should support, derived arithmetically
 from the calibrated breakdown, so the scenario tests a prediction rather than
 merely recording whatever occurs. Eight \emph{parity} scenarios, replicated
-three times each, submit the four pairs, and four \emph{parity baseline}
-scenarios repeat the on-premises half of each pair with the semantic
+three times each, submit the four original pairs, and four \emph{parity
+baseline} scenarios repeat the on-premises half of each pair with the semantic
 configuration rules disabled; these are retained as a regression check that the
 rules are the component responsible for the on-premises findings, and are not
-reported separately. Two further scenarios,
+reported separately. Sixteen \emph{coverage} scenarios, replicated three times
+each, submit the seven additional matched pairs derived from the external
+weakness catalogue together with the two specificity controls; these and the
+eight parity scenarios form the coverage arm of 24 scenarios and 72 runs, which
+is executed twice --- once at the frozen gate commit and once after the
+detection rules were added --- yielding the baseline and remediated
+measurements. The conformance, degradation and parity groups together form the
+106-run batch on which the RQ1 results are reported; the eight parity scenarios
+belong to both that batch and the coverage arm, which is why the two totals
+overlap. Two further scenarios,
 replicated three times each, exercise real deployment against a live node; they
 are skipped unless the \texttt{target-host} capability is explicitly granted,
 which keeps the offline campaign self-contained and reproducible without any
@@ -360,26 +378,109 @@ caused by the implementation of the proposed process.
 
 Checkpoint attainment establishes that the on-premises path \emph{runs} the same
 workflow. It does not establish that the workflow \emph{sees} the same things.
-To test the latter, four weakness classes were selected that have a faithful
-expression in both technologies: unrestricted network ingress, a plaintext
-credential committed to the repository, over-privileged access, and unencrypted
-storage. Each was authored twice --- once as CDK infrastructure code and once as
-an Ansible role --- forming a matched pair in which the intended security defect
-is held constant and only the boundary varies.
+Testing the latter requires a set of weakness classes to test over, and the
+choice of that set is the point at which such an evaluation is most easily
+compromised. A set chosen by the author cannot distinguish a gate that covers
+the space of deployment-time weaknesses from a gate whose author chose the
+weaknesses it already covers. The class list was therefore derived from an
+external catalogue rather than written for the purpose.
 
+\paragraph{Derivation of the class list.}
+The catalogue is MITRE's Common Weakness Enumeration view CWE-1008,
+\emph{Architectural Concepts}, which organises weaknesses by the security
+principle they violate rather than by language or platform \cite{MITRE_CWE1008}.
+That organisation is what makes it usable here: a view indexed by principle
+yields classes that can be expressed on either side of the hybrid boundary,
+whereas a view indexed by technology would not. Version 4.20 of the view was
+retrieved as the published XML export, and its archive digest, version, and
+release date are recorded so
+that the derivation can be repeated against the same source.
+
+The view contains 12 categories spanning 223 member weaknesses. Three filters
+were applied mechanically.
+The first retains only entries that are members of a CWE-1008 category. The
+second retains only entries whose abstraction is \emph{Base} or \emph{Class},
+discarding variants too specific to have an expression in both technologies and
+pillars too abstract to be tested at all. The third retains only entries whose
+declared Modes of Introduction include at least one of \emph{Operation},
+\emph{System Configuration}, \emph{Installation}, or \emph{Bundling} --- that
+is, weaknesses that a deployment artifact can introduce, as distinct from those
+introduced only while writing application code. A gate that inspects
+infrastructure definitions cannot be asked to see the latter, and including them
+would understate coverage by counting weaknesses outside the mechanism's remit.
+
+The filters reduce 223 members to 38 candidates spanning seven categories; five
+categories are eliminated entirely, and the reason for each elimination is
+recorded rather than left implicit, because a category with no deployment-time
+expression bounds what any pre-deployment gate can be asked to see. From the 38
+candidates, 11 classes were retained as those expressible as a matched pair in
+both a CDK application and an Ansible playbook; the 27 candidates not retained
+are listed individually with the reason for exclusion. The resulting catalogue
+is a pre-registration: it fixes the classes, their CWE identifiers, and the
+matcher that decides whether a report names each class, before any of them was
+measured.
+
+\paragraph{Fixtures and the specificity control.}
+Each of the 11 classes was authored twice --- once as CDK infrastructure code
+and once as an Ansible playbook --- forming a matched pair in which the intended
+weakness is held constant and only the boundary varies. Each fixture carries one
+weakness and is otherwise deliberately unremarkable, so that a difference in the
+gate's report is attributable to the weakness rather than to incidental
+differences between the two artifacts.
+
+Crediting detection from the weakness fixture alone would reward a matcher that
+responds to everything. Each branch therefore also submits a \emph{control}
+fixture carrying none of the catalogued weaknesses, and a class is credited only
+if its matcher fires on the weakness fixture \emph{and} stays silent on the
+control for the same branch. Where the control was never examined, the class is
+recorded as not measured rather than as detected, so that an absent control
+cannot be mistaken for a silent one.
+
+The controls were not the ones originally intended. The RQ1 \emph{pass} fixtures
+were used first, and the cloud one proved unusable: it provisions a bucket that
+receives S3 access logs, and such a bucket cannot log to itself and must carry a
+log-delivery ACL, so the report named both access logging and a public ACL no
+matter how the fixture was written. Two classes therefore had a control that
+could not discriminate. Purpose-built controls were substituted --- on the cloud
+side a key, an encrypted log group, and an encrypted queue with a dead-letter
+queue; on the on-premises side a playbook that installs a service under a
+dedicated account with stated limits --- and both were verified to produce no
+findings at all before the measurement was taken. The original measurement is
+retained rather than discarded.
+
+\paragraph{Two arms.}
+The gate was frozen at a recorded commit before the first fixture was authored,
+and the \emph{baseline} arm was measured at that commit. Detection rules written
+in response to the baseline result were then implemented, and the
+\emph{remediated} arm was measured over the identical scenario set. Reporting both,
+with the frozen commit recorded, states plainly which capability preceded the
+measurement and which followed it.
+
+Two constraints keep the second arm from collapsing into fitting. First, the
+matchers in the catalogue are frozen at their pre-registered form even where
+they are known to under-credit, so a class is earned by emitting the
+pre-registered category rather than by widening the pattern that recognises it
+after seeing what the pattern missed. Second, each new rule is accompanied by
+unit tests that express the same weakness through a different module or resource
+type from the one the fixture uses, and by a test asserting that the rule stays
+silent on the secure form of the same construct. A rule that passed only against
+its own fixture would satisfy neither.
+
+\paragraph{What is measured, and what is not.}
 The measured quantity is coverage, not agreement. For each pair and each branch,
-the persisted gate report was examined for a finding whose category names the
-weakness the fixture encodes; the branch was credited with detection only if such
-a finding was present. The criterion was applied identically to both branches,
-and a generic style or hygiene finding that happens to touch the same artifact
-was not credited, since a report that names the wrong problem gives an operator
-no signal that the real one exists.
+the persisted gate report is examined for a finding whose category names the
+weakness the fixture encodes; a generic style or hygiene finding that happens to
+touch the same artifact is not credited, since a report that names the wrong
+problem gives an operator no signal that the real one exists. Alongside the
+per-class result, the classes are cross-tabulated by which branches saw them, so
+that a gap is located on a specific side of the boundary rather than averaged
+away.
 
 Decision agreement was deliberately \emph{not} adopted as the measure. The two
 sides of a pair are not the same artifact --- a host firewall rule and a
-security group differ in blast radius, in reversibility, and in how many distinct
-controls they can violate --- so requiring identical bands would assert an
-equivalence that does not hold, and could be satisfied by adjusting weights
+security group differ in blast radius, in reversibility, and in how many
+distinct controls they can violate --- so requiring identical bands would assert
+an equivalence that does not hold, and could be satisfied by adjusting weights
 rather than by improving detection. Where a branch fails to detect a weakness,
 the finding breakdown of both sides is reported so that the cause can be
 attributed to a specific absence of capability rather than left as an
@@ -557,14 +658,27 @@ to bring the branches into line; had the rules or weights been tuned until both
 sides returned the same band, the resulting figure would have measured the tuning
 rather than the system.
 
-The parity design covers four weakness classes. This is sufficient to show that
-coverage gaps exist and to locate the particular ones reported, but not to
-quantify how many remain, and a different selection of weakness classes could
-yield a different coverage rate. Relatedly, any coverage gap observed is a
-property of the particular scanner set assembled in this prototype, not an
-inherent property of the process architecture; substituting a scanner with
-broader on-premises coverage would change the measurement without changing the
-design.
+The coverage design measures eleven weakness classes drawn from an external
+catalogue, which removes the author's discretion over \emph{which} classes are
+counted but not over how each one is expressed. The fixtures are still written
+by the author, so a class counts as covered when the gate names the weakness in
+a fixture the author composed; the figure is an upper bound on what the gate
+would recover from arbitrary generated infrastructure in the field. The eleven
+classes are also the subset of 38 filtered candidates that could be expressed as
+a matched pair, so the measurement speaks to weaknesses with an expression on
+both sides of the boundary rather than to the catalogue as a whole. A different
+selection could yield a different rate.
+
+The specificity control bounds the result from the other side, but only
+partially. A control that produces no findings at all shows that no matcher
+responds to a compliant artifact; it does not show that a matcher will refrain
+from firing on an \emph{unrelated} finding in a report that contains several.
+The first control used in this evaluation demonstrates exactly that failure
+mode, and it was detected only because the control was examined explicitly.
+Relatedly, any coverage gap observed is a property of the particular scanner set
+assembled in this prototype, not an inherent property of the process
+architecture; substituting a scanner with broader on-premises coverage would
+change the measurement without changing the design.
 
 Finally, replicates in this campaign measure the reproducibility of the pipeline
 under fixed conditions rather than its variability across environments. Because

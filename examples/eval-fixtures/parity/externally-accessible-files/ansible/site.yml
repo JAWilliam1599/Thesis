@@ -1,0 +1,41 @@
+---
+# Coverage fixture: application data readable by external parties (on-prem side).
+#
+# Paired with ../cdk, which makes the same class of data publicly readable in
+# object storage.  Everything else here is deliberately unremarkable so that any
+# difference in the gate's verdict is attributable to the one weakness.
+#
+# Weakness class: externally-accessible-files (CWE-552)
+- name: Share the application data directory
+  hosts: appservers
+  become: true
+  gather_facts: false
+
+  tasks:
+    - name: Install the network file server
+      ansible.builtin.package:
+        name: nfs-kernel-server
+        state: present
+
+    - name: Create the shared data directory
+      ansible.builtin.file:
+        path: /srv/appdata
+        state: directory
+        owner: root
+        group: root
+        mode: '0755'
+
+    # WEAKNESS (CWE-552): the export names no client restriction, so every host
+    # that can route to this one may read and write the data directory.
+    - name: Export the data directory to every host
+      ansible.builtin.copy:
+        dest: /etc/exports
+        owner: root
+        group: root
+        mode: '0644'
+        content: |
+          /srv/appdata *(rw,sync,insecure)
+
+    - name: Apply the export table
+      ansible.builtin.command: exportfs -ra
+      changed_when: true

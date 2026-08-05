@@ -1,0 +1,366 @@
+# Detection-coverage catalogue: weakness classes drawn from MITRE CWE-1008.
+#
+# WHY THIS FILE EXISTS
+#
+# The first parity set contained four weakness classes chosen by the author,
+# alongside the rules that detect them.  A coverage figure computed over such a
+# set cannot separate "the gate covers this class" from "this class was chosen
+# because the gate covers it".  The class list below is instead derived from a
+# published external catalogue by filters that refer only to fields MITRE
+# publishes, so the population being measured was fixed by a third party.
+#
+# DERIVATION
+#
+# Frame:   MITRE CWE view CWE-1008 "Architectural Concepts" -- twelve
+#          technology-neutral categories of architectural security tactic.  The
+#          view is used because its categories are defined by the security
+#          property being pursued rather than by a platform, which is the
+#          precondition for asking whether the same class is visible on both
+#          sides of a hybrid boundary.
+#
+# Filters (applied by evaluation/build_coverage_catalogue.py):
+#   F1  member of one of the twelve CWE-1008 categories
+#   F2  abstraction is Base or Class.  Variant entries are bound to one
+#       language or technology and so cannot have a faithful expression on both
+#       branches; Pillar and Compound entries are too abstract to author as a
+#       single fixture.
+#   F3  at least one published Mode of Introduction is a deployment-time phase
+#       (Operation, System Configuration, Installation, Bundling) -- the phases
+#       in which an infrastructure-as-code change can act.
+#
+# F1-F3 reduce 223 weaknesses to 38 candidates in 7 categories.  The remaining
+# step is not mechanical: a candidate is in scope only if it has a faithful
+# expression in *both* AWS CDK and Ansible.  Every candidate that survived
+# F1-F3 is accounted for below, either as a selected class, as merged into one,
+# or in the exclusion log with its reason.  Where several candidates would
+# produce the same fixture, the most abstract was kept and the others merged.
+#
+# ORDER OF WORK (this matters for the claim)
+#
+# This file, including the detection matchers, was completed and committed
+# before any fixture was authored, and the gate was frozen at the commit
+# recorded under `provenance.gate_commit`.
+#
+# Coverage is reported in two arms:
+#   baseline    the gate as frozen at that commit, before this catalogue
+#               existed.  This arm is the measurement: a class missed here was
+#               missed by a gate built without knowledge of the class list.
+#   remediated  the gate after adapters written in response to the baseline
+#               gaps.  This arm reports what the gaps cost to close, not what
+#               the gate independently covered.
+#
+# The baseline arm is measured first and is never recomputed after an adapter
+# lands.  Folding remediation back into the baseline would restore exactly the
+# co-authorship the catalogue was introduced to remove.
+#
+# CREDITING DETECTION
+#
+# A branch is credited with detecting a class in a run if any finding in that
+# run's persisted gate report matches the class's `detects` block:
+#   categories  exact match against the finding's `category` field
+#   pattern     case-insensitive regex against `category`, `check_id`, and
+#               `message`, so that a scanner naming the weakness in vocabulary
+#               not anticipated here is still credited
+# The matcher is deliberately permissive.  A class reported as undetected under
+# a permissive matcher is a stronger result than one reported undetected under
+# a strict one.
+#
+# Each class also names a `control`: a fixture that does *not* contain the
+# weakness.  A class counts as detected *and specific* only if the matcher fires
+# on the weakness fixture and stays silent on the control.  Without this, a rule
+# that fires unconditionally would score full coverage.
+
+provenance:
+  source: https://cwe.mitre.org/data/xml/views/1008.xml.zip
+  view: CWE-1008 Architectural Concepts
+  cwe_version: "4.20"
+  cwe_date: "2026-04-30"
+  archive_sha256: 7276a26c3d9410ba4a43d1cc2c87f73653750c2487be6eeb2fa6fcbcf594415f
+  retrieved: "2026-08-05"
+  candidates_after_filters: 38
+  categories_after_filters: 7
+  # Gate frozen here before any fixture was authored. The baseline arm is
+  # measured at this commit; adapters written in response are reported
+  # separately, never folded back into the baseline.
+  gate_commit: 6e092b9983842ae42b98f65ae40c9427a18d7972
+  gate_commit_date: "2026-08-05T06:52:00+07:00"
+
+# Fixtures carrying none of the catalogued weaknesses.  A class counts as
+# detected *and specific* only if its matcher fires on the weakness fixture and
+# stays silent on the control for the same branch.
+# Fixtures containing none of the classes below.  A class is credited on a
+# branch only if its matcher fires on the weakness fixture and stays silent
+# here, so that a matcher which responds to everything reports nothing.
+#
+# The RQ1 pass fixtures were the original controls and were replaced after the
+# first measurement: a bucket that receives S3 access logs cannot log to itself
+# and carries a log-delivery ACL, so cdk-pass provoked findings naming logging
+# and public ACLs regardless of how it was written, leaving it unable to
+# discriminate for CWE-778 and CWE-552.  The replacement controls were built to
+# the definition above and verified silent before the baseline arm was run; the
+# original result is kept in logs/experiments/rq2_coverage_control_probe.
+controls:
+  cdk: cov-control-cdk
+  ansible: cov-control-ansible
+
+# Second arm.  Rules written after the baseline was recorded, each against the
+# CWE entry's own description rather than against the fixture that motivated
+# it.  Every rule is accompanied by unit tests that express the same weakness
+# through a different module or resource type, and by a test asserting silence
+# on the secure form of the same construct, so that coverage is not bought at
+# the cost of specificity.
+remediation:
+  campaign_id: rq2_coverage_remediated
+  on_premises:
+    - CWE-306 sshd empty-password directives, PAM stacks that succeed
+      unconditionally, services accepting anonymous access
+    - CWE-778 logging daemons disabled or masked, cleared audit rules, a
+      journal configured to keep no storage, rotation that keeps no copies
+    - CWE-552 export tables whose client specification names no client
+    - CWE-770 resource ceilings explicitly removed (infinity / unlimited)
+    - CWE-319 disabled certificate validation, plaintext URLs, connection
+      strings with transport protection switched off
+    - CWE-250 units running as root or holding administrative capabilities,
+      privileged containers
+  cloud:
+    - CWE-306 API methods, HTTP API routes and function URLs published with
+      their authorizer set to NONE
+    - CWE-732 resource policies allowing a wildcard principal with no
+      condition, and function permissions with no source restriction
+    - CWE-250 containers declared privileged, running as root, or granted
+      additional Linux capabilities
+  # Left uncovered deliberately, and reported as a residual gap rather than
+  # closed.  The on-premises branch detects hardcoded credentials with a regex
+  # scan over playbooks and variable files.  The equivalent on the cloud branch
+  # would have to read general-purpose Python, where the CDK idioms for
+  # *handling* secrets are lexically indistinguishable from *embedding* one, so
+  # the rule could not be shown specific against the control.  A class that
+  # cannot be shown specific is not credited.
+  withheld:
+    - class: insecure-secret-storage
+      branch: cdk
+      reason: could not be shown specific against the control
+
+# Categories eliminated before the applicability pass, with the reason.  These
+# are reported rather than dropped silently: a category with no deployment-time
+# expression bounds what a pre-deployment gate can be asked to see at all.
+excluded_categories:
+  - id: 1014
+    name: Identify Actors
+    reason: >-
+      No Base or Class member has a deployment-time Mode of Introduction; the
+      category concerns runtime identity handling.
+  - id: 1017
+    name: Lock Computer
+    reason: Sole member is a Variant tied to endpoint session locking.
+  - id: 1018
+    name: Manage User Sessions
+    reason: >-
+      No member survives F2-F3; session management is an application-runtime
+      property with no infrastructure-as-code expression.
+  - id: 1019
+    name: Validate Inputs
+    reason: >-
+      No member survives F2-F3; input validation is a property of application
+      code, which this gate scores through the learned component rather than
+      through configuration analysis.
+  - id: 1020
+    name: Verify Message Integrity
+    reason: >-
+      No member survives F3.  Notably CWE-494 (Download of Code Without
+      Integrity Check) is published as introduced only at Architecture and
+      Design and Implementation, despite being realisable in both branches.
+  - id: 1012
+    name: Cross Cutting
+    reason: >-
+      Sole surviving candidate CWE-208 (Observable Timing Discrepancy) is an
+      execution-time property with no static deployment expression.
+  - id: 1016
+    name: Limit Exposure
+    reason: >-
+      Surviving candidates CWE-211 and CWE-214 concern error-message and
+      process-argument disclosure at runtime, neither of which is expressible
+      as a deployment artifact in either branch.
+
+classes:
+  - id: insufficient-logging
+    cwe: 778
+    cwe_name: Insufficient Logging
+    category: 1009 Audit
+    abstraction: Base
+    merges: [223]
+    cloud_expression: >-
+      Object storage and API resources created with no access logging and no
+      trail recording control-plane activity.
+    onprem_expression: >-
+      Host provisioned with the audit daemon masked and security logs excluded
+      from rotation and retention.
+    detects:
+      categories: [access_logging, cloudtrail_disabled, audit_logging]
+      pattern: "logg?ing|cloudtrail|audit(d|_)|access[-_ ]log|log[-_ ]retention"
+
+  - id: missing-authentication
+    cwe: 306
+    cwe_name: Missing Authentication for Critical Function
+    category: 1010 Authenticate Actors
+    abstraction: Base
+    cloud_expression: >-
+      An API endpoint exposing a state-changing operation with its authorizer
+      set to none.
+    onprem_expression: >-
+      SSH daemon configured to permit empty passwords and root password login.
+    detects:
+      categories: [missing_authentication, api_auth_none, ssh_empty_password]
+      pattern: "auth(entication|oriz(er|ation))?[-_ ]?(none|missing|disabled)|permitemptypassword|anonymous"
+
+  - id: improper-privilege-management
+    cwe: 269
+    cwe_name: Improper Privilege Management
+    category: 1011 Authorize Actors
+    abstraction: Class
+    merges: [267, 268, 270, 271, 272, 285, 286, 862, 863]
+    supersedes: overprivileged-access
+    cloud_expression: An identity policy granting Action "*" on Resource "*".
+    onprem_expression: A sudoers entry granting unrestricted passwordless sudo.
+    detects:
+      categories: [iam_wildcard, sudo_nopasswd, privilege_escalation]
+      pattern: "wildcard|nopasswd|privileg|least[-_ ]privilege|admin(istrator)?[-_ ]access"
+
+  - id: incorrect-permissions
+    cwe: 732
+    cwe_name: Incorrect Permission Assignment for Critical Resource
+    category: 1011 Authorize Actors
+    abstraction: Class
+    merges: [276, 281, 708]
+    cloud_expression: >-
+      A key policy and bucket policy granting write to any principal in the
+      account without condition.
+    onprem_expression: >-
+      A credential file and its parent directory created world-writable.
+    detects:
+      categories: [file_world_writable, permissive_resource_policy, incorrect_permissions]
+      pattern: "world[-_ ]?(writable|readable)|permission|mode[-_ ]0?7[0-7]7|principal[-_ ]?\\*"
+
+  - id: exposure-wrong-sphere
+    cwe: 668
+    cwe_name: Exposure of Resource to Wrong Sphere
+    category: 1011 Authorize Actors
+    abstraction: Class
+    supersedes: open-ingress
+    cloud_expression: A security group admitting SSH from 0.0.0.0/0.
+    onprem_expression: >-
+      A host firewall rule accepting SSH from any source address.
+    detects:
+      categories: [sg_ssh_open, sg_public_ingress, open_ingress]
+      pattern: "0\\.0\\.0\\.0/0|::/0|unrestricted|open[-_ ]ingress|public[-_ ]access|internet"
+
+  - id: externally-accessible-files
+    cwe: 552
+    cwe_name: Files or Directories Accessible to External Parties
+    category: 1011 Authorize Actors
+    abstraction: Base
+    cloud_expression: >-
+      A bucket with public read access serving a directory of application data.
+    onprem_expression: >-
+      An NFS export shared to any host, over a world-readable data directory.
+    detects:
+      categories: [public_bucket, public_read, nfs_world_export]
+      pattern: "public[-_ ]?(read|acl|bucket)|export.*\\*|everyone|allusers|world[-_ ]readable"
+
+  - id: unbounded-resources
+    cwe: 770
+    cwe_name: Allocation of Resources Without Limits or Throttling
+    category: 1011 Authorize Actors
+    abstraction: Base
+    cloud_expression: >-
+      A function with no reserved concurrency behind an API stage with no
+      throttling or usage plan.
+    onprem_expression: >-
+      A service unit with no task, memory or file-descriptor limits and no
+      resource limits configured for its user.
+    detects:
+      categories: [no_throttling, unbounded_concurrency, missing_resource_limit]
+      pattern: "throttl|rate[-_ ]?limit|concurrency|ulimit|limitnofile|memorymax|resource[-_ ]limit|quota"
+
+  - id: missing-encryption
+    cwe: 311
+    cwe_name: Missing Encryption of Sensitive Data
+    category: 1013 Encrypt Data
+    abstraction: Class
+    supersedes: unencrypted-storage
+    cloud_expression: Block and object storage created without encryption at rest.
+    onprem_expression: >-
+      A data filesystem created and mounted with no encryption layer.
+    detects:
+      categories: [ebs_encryption, storage_encryption, storage_mount_encryption]
+      pattern: "encrypt|kms|luks|at[-_ ]rest"
+
+  - id: cleartext-transmission
+    cwe: 319
+    cwe_name: Cleartext Transmission of Sensitive Information
+    category: 1013 Encrypt Data
+    abstraction: Base
+    cloud_expression: >-
+      A load balancer listener serving the application over plaintext HTTP with
+      no redirect to TLS.
+    onprem_expression: >-
+      An artifact fetched over HTTP with certificate validation disabled.
+    detects:
+      categories: [insecure_transport, tls_disabled, validate_certs_disabled]
+      pattern: "cleartext|plain[-_ ]?text|http(?![s])|tls|ssl|validate_certs|insecure[-_ ]transport"
+
+  - id: insecure-secret-storage
+    cwe: 922
+    cwe_name: Insecure Storage of Sensitive Information
+    category: 1013 Encrypt Data
+    abstraction: Class
+    supersedes: plaintext-secret
+    cloud_expression: >-
+      A database credential baked into a function's environment in clear text.
+    onprem_expression: >-
+      A service password committed to a variable file in clear text.
+    detects:
+      categories: [secret_password, secret_token, secret_key, hardcoded_credential]
+      pattern: "secret|credential|password|api[-_ ]?key|token|hard[-_ ]?coded"
+
+  - id: unnecessary-privileges
+    cwe: 250
+    cwe_name: Execution with Unnecessary Privileges
+    category: 1015 Limit Access
+    abstraction: Base
+    cloud_expression: >-
+      A container definition running privileged and as the root user.
+    onprem_expression: >-
+      A service unit running as root where an unprivileged account would serve.
+    detects:
+      categories: [privileged_container, runs_as_root, unnecessary_privileges]
+      pattern: "privileged|run[-_ ]?as[-_ ]?root|user\\s*[:=]\\s*root|become"
+
+# Candidates that survived F1-F3 but have no faithful expression in both
+# branches.  Recorded so the applicability pass is auditable rather than
+# implicit.
+excluded_candidates:
+  - cwe: 224
+    reason: Obscured security-relevant information is a property of log content, not configuration.
+  - cwe: 532
+    reason: >-
+      Insertion of sensitive information into a log file is produced at
+      runtime; neither branch can express it as a static artifact.
+  - cwe: 779
+    reason: Excessive logging is a volume property, not statically decidable from a template or playbook.
+  - cwe: 274
+    reason: Handling of insufficient privileges is application control flow.
+  - cwe: 359
+    reason: Personal-data exposure depends on data content, absent from both fixtures.
+  - cwe: 420
+    reason: Unprotected alternate channel has no single deployment expression common to both branches.
+  - cwe: 425
+    reason: Forced browsing is an application-routing property.
+  - cwe: 538
+    reason: Merged in substance with CWE-552; kept as one class to avoid two fixtures with one weakness.
+  - cwe: 669
+    reason: Incorrect resource transfer between spheres is a data-flow property, not a configuration one.
+  - cwe: 209
+    reason: Error-message content is generated at runtime.
+  - cwe: 212
+    reason: Improper removal of sensitive data before storage is an application-processing property.

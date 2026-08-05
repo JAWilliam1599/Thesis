@@ -347,3 +347,130 @@ scenarios:
     purpose: >-
       Baseline arm: only a style rule fired before the semantic rules were
       added.
+
+  # -------------------------------------------------------------- coverage --
+  #
+  # The four pairs above were chosen by the author.  The fourteen cells below
+  # extend the measurement to the remaining weakness classes derived from MITRE
+  # CWE-1008 in evaluation/coverage_catalogue.yaml, so that detection coverage
+  # is reported over a class list the gate's designer did not select.
+  #
+  # Expected statuses are the bands measured when each fixture was first scored
+  # against the gate at commit 6e092b9, before any detection rule was written in
+  # response.  Several are gated_ok at a score of zero; that is the measurement,
+  # since a weakness no scanner names contributes nothing to the score.
+  #
+  # The two control cells are what make a fired matcher meaningful.  Without
+  # them a rule that matched every finding would report full coverage, so the
+  # analysis credits detection only when the control fixture -- which contains
+  # none of these weaknesses -- stays silent for the same class.
+
+  - id: cov-control-cdk
+    fixture: cov-control-cdk
+    expect_status: gated_ok
+    replicates: 3
+    purpose: >-
+      Specificity control for the cloud branch: no catalogued weakness class may
+      match a finding in a compliant stack.
+
+  - id: cov-control-ansible
+    fixture: cov-control-ansible
+    flags: ["--no-connectivity-check"]
+    expect_status: gated_ok
+    replicates: 3
+    purpose: >-
+      Specificity control for the on-premises branch: no catalogued weakness
+      class may match a finding in a compliant playbook.
+
+  - id: cov-insufficient-logging-cdk
+    fixture: par-insufficient-logging-cdk
+    expect_status: gated_ok
+    replicates: 3
+    purpose: Cloud-side treatment of storage and control-plane activity left unlogged.
+
+  - id: cov-insufficient-logging-ansible
+    fixture: par-insufficient-logging-ansible
+    flags: ["--no-connectivity-check"]
+    expect_status: gated_ok
+    replicates: 3
+    purpose: On-premises treatment of a masked audit daemon and unrotated security logs.
+
+  - id: cov-missing-authentication-cdk
+    fixture: par-missing-authentication-cdk
+    expect_status: review
+    replicates: 3
+    purpose: Cloud-side treatment of a state-changing endpoint with no authorizer.
+
+  - id: cov-missing-authentication-ansible
+    fixture: par-missing-authentication-ansible
+    flags: ["--no-connectivity-check"]
+    expect_status: gated_ok
+    replicates: 3
+    purpose: On-premises treatment of an SSH daemon accepting empty passwords.
+
+  - id: cov-incorrect-permissions-cdk
+    fixture: par-incorrect-permissions-cdk
+    expect_status: gated_ok
+    replicates: 3
+    purpose: Cloud-side treatment of a key policy usable by any principal.
+
+  - id: cov-incorrect-permissions-ansible
+    fixture: par-incorrect-permissions-ansible
+    flags: ["--no-connectivity-check"]
+    expect_status: gated_ok
+    replicates: 3
+    purpose: On-premises treatment of a world-writable configuration directory.
+
+  - id: cov-externally-accessible-files-cdk
+    fixture: par-externally-accessible-files-cdk
+    expect_status: review
+    replicates: 3
+    purpose: Cloud-side treatment of publicly readable application data.
+
+  - id: cov-externally-accessible-files-ansible
+    fixture: par-externally-accessible-files-ansible
+    flags: ["--no-connectivity-check"]
+    expect_status: gated_ok
+    replicates: 3
+    purpose: On-premises treatment of a data directory exported to every host.
+
+  - id: cov-unbounded-resources-cdk
+    fixture: par-unbounded-resources-cdk
+    expect_status: review
+    replicates: 3
+    purpose: Cloud-side treatment of work accepted with no concurrency or rate ceiling.
+
+  - id: cov-unbounded-resources-ansible
+    fixture: par-unbounded-resources-ansible
+    flags: ["--no-connectivity-check"]
+    expect_status: gated_ok
+    replicates: 3
+    purpose: On-premises treatment of a service with every resource limit removed.
+
+  - id: cov-cleartext-transmission-cdk
+    fixture: par-cleartext-transmission-cdk
+    expect_status: review
+    replicates: 3
+    purpose: Cloud-side treatment of an application served over plaintext HTTP.
+
+  - id: cov-cleartext-transmission-ansible
+    fixture: par-cleartext-transmission-ansible
+    flags: ["--no-connectivity-check"]
+    expect_status: gated_ok
+    replicates: 3
+    purpose: >-
+      On-premises treatment of an artifact fetched over HTTP and a database
+      connection configured without TLS.
+
+  - id: cov-unnecessary-privileges-cdk
+    fixture: par-unnecessary-privileges-cdk
+    expect_status: gated_ok
+    replicates: 3
+    purpose: Cloud-side treatment of a container running privileged and as root.
+
+  - id: cov-unnecessary-privileges-ansible
+    fixture: par-unnecessary-privileges-ansible
+    flags: ["--no-connectivity-check"]
+    expect_status: gated_ok
+    replicates: 3
+    purpose: On-premises treatment of a service unit running as root.

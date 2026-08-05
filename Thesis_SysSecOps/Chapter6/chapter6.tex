@@ -71,15 +71,16 @@ Two findings emerged that the pipeline's own success criteria would not have
 surfaced. First, the additive score \emph{fails open}: removing one scanner moved a
 \emph{review}-band change to \emph{pass}, because an unavailable scanner and a
 scanner that found nothing contribute identically. Second, detection coverage is
-unequal across the hybrid boundary. Of four weakness classes expressed on both
-sides, three are named by both branches in a shared finding vocabulary, but the
-fourth is named only on the private side: the cloud path runs no secret scanner
-and detects a committed credential solely as a by-product of the learned
-code-risk model scoring the surrounding Python, so nothing in its report states
-that a secret exists. A gap of that kind is not reachable by adjusting weights or
-thresholds --- a weakness that produces no finding cannot be scored, reviewed, or
-audited at any setting --- and it was visible only because the same weakness was
-expressed on both sides and the two reports were compared.
+unequal across the hybrid boundary. Measured against eleven weakness classes
+derived from an external catalogue, the gate at its frozen commit named seven on
+the cloud branch and five on-premises, but only three on both: four were visible
+only in the cloud, two only on-premises, and two on neither. Writing nine rule
+families closed all but one of those gaps, raising the branches to ten and eleven
+of eleven respectively. A gap of that kind is not
+reachable by adjusting weights or thresholds --- a weakness that produces no
+finding cannot be scored, reviewed, or audited at any setting --- and it was
+visible only because the same weakness was expressed on both sides and the two
+reports were compared.
 
 The classifier evaluation used a filtered corpus containing vulnerable Python examples
 from SecurityEval and reference negative files from maintained Python projects. On the
@@ -144,7 +145,10 @@ infrastructure correctly. Several results rest on very few runs --- ten
 approved-review runs, sixteen rejections, and three replicates for each of the
 apply, post-apply verification and idempotency checkpoints against a single fresh
 virtual machine --- so they show that each mechanism works when exercised rather
-than how often it fails. Detection coverage rests on four weakness classes.
+than how often it fails. Detection coverage rests on eleven weakness classes
+drawn from an external catalogue but expressed in hand-authored fixtures, so the
+coverage figures bound the alignment between the gate's rules and the catalogue
+rather than its recall on real infrastructure.
 The current results therefore indicate internal
 correctness under pre-declared conditions rather than general operational effectiveness
 at scale.
@@ -161,19 +165,26 @@ threshold. The existing degradation scenarios provide ready-made test cases for
 verifying such a change, since each declares in advance what the remaining evidence
 ought to support.
 
-The second priority is to close the residual coverage gaps at their source, on both
-sides of the boundary. The cloud path should run the same secret scan the private
-path already runs, so that a committed credential appears as a named finding rather
-than as an increment to a learned probability that an operator cannot interpret. The
+The second priority is to close the residual coverage gap at its source, on both
+sides of the boundary. The cloud path should run a secret scan capable of
+distinguishing a credential embedded in a CDK application from the idioms that
+legitimately handle one --- entropy and provider-format detection rather than the
+keyword regex the private path uses --- so that a committed credential appears as
+a named finding rather than as an increment to a learned probability that an
+operator cannot interpret. This was the one gap left deliberately open, because
+no rule specific enough to be worth having could be written within the existing
+regex-based design. The
 private path should either gain an equivalent learned signal over configuration
 artifacts or declare explicitly that no such component applies, so that a missing
 component is distinguishable from a component that found nothing. Both are coverage
 repairs and neither requires the two branches to produce equal scores, which they
 should not be expected to do: a wildcard IAM policy and a sudoers entry are not the
-same object and do not admit the same number of legitimate findings. The semantic
-configuration rules should also be broadened beyond the six categories currently
-implemented, and the weakness set extended well beyond four classes and drawn from an
-external catalogue, so that coverage is measured rather than merely demonstrated.
+same object and do not admit the same number of legitimate findings. Beyond
+closing that gap, the coverage measurement itself should be strengthened by
+replacing the hand-authored fixtures with independently written ones, since the
+present figures bound rule-to-catalogue alignment rather than recall, and by
+widening the class list beyond the eleven that admit a matched expression on both
+sides of the boundary.
 
 The deployment-side evaluation should then be broadened. The live-target arm establishes
 that apply, post-apply verification and repeated-run idempotency succeed against a fresh

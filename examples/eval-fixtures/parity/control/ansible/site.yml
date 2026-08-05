@@ -1,0 +1,80 @@
+---
+# Specificity control for the coverage measurement (on-premises side).
+#
+# This playbook contains none of the weakness classes in
+# evaluation/coverage_catalogue.yaml.  Its purpose is negative: if a class
+# matcher fires here, that class cannot be credited on the on-premises branch,
+# because the matcher is responding to something other than the weakness.
+#
+# It touches the same subject matter as the weakness fixtures -- a service
+# account, a unit file, a configuration directory, a downloaded artifact -- so
+# that a matcher keying on vocabulary rather than on the defect would be caught.
+#
+# Weakness class: none (control)
+- name: Install the control service
+  hosts: appservers
+  become: true
+  gather_facts: false
+
+  tasks:
+    - name: Create the service account
+      ansible.builtin.user:
+        name: controlsvc
+        system: true
+        shell: /usr/sbin/nologin
+        create_home: false
+
+    - name: Create the service configuration directory
+      ansible.builtin.file:
+        path: /etc/controlsvc
+        state: directory
+        owner: root
+        group: controlsvc
+        mode: '0750'
+
+    - name: Install the service configuration
+      ansible.builtin.copy:
+        dest: /etc/controlsvc/service.conf
+        owner: root
+        group: controlsvc
+        mode: '0640'
+        content: |
+          [service]
+          listen = 127.0.0.1:8443
+          session_timeout = 900
+
+    - name: Download the application release
+      ansible.builtin.get_url:
+        url: https://releases.internal.example.com/controlsvc/controlsvc-1.0.0.tar.gz
+        dest: /opt/controlsvc-1.0.0.tar.gz
+        owner: root
+        group: root
+        mode: '0644'
+        checksum: sha256:9f2fcb1d0f1a4f2a2b0c6f0d51fbf4a3c0f7d6e5b4a39281706f5e4d3c2b1a09
+
+    - name: Install the service unit
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/controlsvc.service
+        owner: root
+        group: root
+        mode: '0644'
+        content: |
+          [Unit]
+          Description=Control service
+
+          [Service]
+          ExecStart=/usr/local/bin/controlsvc
+          User=controlsvc
+          Group=controlsvc
+          NoNewPrivileges=true
+          LimitNOFILE=4096
+          TasksMax=256
+
+          [Install]
+          WantedBy=multi-user.target
+
+    - name: Enable the service
+      ansible.builtin.systemd:
+        name: controlsvc
+        enabled: true
+        daemon_reload: true

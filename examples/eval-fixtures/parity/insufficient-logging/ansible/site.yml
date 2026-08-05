@@ -1,0 +1,46 @@
+---
+# Coverage fixture: no record of access or privileged activity (on-prem side).
+#
+# Paired with ../cdk, which creates storage with no access logging and no trail.
+# Everything else here is deliberately unremarkable so that any difference in
+# the gate's verdict is attributable to the one weakness.
+#
+# Weakness class: insufficient-logging (CWE-778)
+- name: Configure application host logging
+  hosts: appservers
+  become: true
+  gather_facts: false
+
+  tasks:
+    - name: Create the application log directory
+      ansible.builtin.file:
+        path: /var/log/appsvc
+        state: directory
+        owner: root
+        group: root
+        mode: '0750'
+
+    # WEAKNESS (CWE-778): the audit daemon is stopped and masked, so privileged
+    # activity on the host is never recorded.
+    - name: Disable the audit daemon
+      ansible.builtin.systemd:
+        name: auditd
+        state: stopped
+        enabled: false
+        masked: true
+
+    # WEAKNESS (CWE-778): logs are discarded on rotation rather than retained,
+    # so what little is recorded does not survive the day.
+    - name: Install the application log rotation policy
+      ansible.builtin.copy:
+        dest: /etc/logrotate.d/appsvc
+        owner: root
+        group: root
+        mode: '0644'
+        content: |
+          /var/log/appsvc/*.log {
+              daily
+              rotate 0
+              missingok
+              notifempty
+          }

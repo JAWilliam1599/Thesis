@@ -6,9 +6,11 @@ Section~\ref{subsec:evaluation-rqs}. The RQ1 and RQ2 results are drawn from the
 pre-registered campaign described in Section~\ref{subsec:evaluation-campaign}:
 106 runs over 30 declared scenarios, executed in a single batch and analysed from the
 persisted run, gate, approval, and rejection records alone. The one exception is
-the cross-boundary coverage table, which reports finding categories rather than
-aggregates and was compiled by reading the gate reports each run record points
-to. Every scenario's
+the cross-boundary coverage measurement, which is reported from a separate arm
+of 24 scenarios and 72 runs, executed twice --- once at a frozen gate commit and
+once after remediation --- and compiled by reading the finding categories in the
+gate reports each run record points to rather than the aggregate scores. Every
+scenario's
 expected decision was fixed in a version-controlled specification before any of
 the reported runs executed. The optional cost-estimation and cloud-configuration
 components, whose outputs depend on live external state, were disabled
@@ -332,78 +334,192 @@ set to. Detection coverage is therefore measured directly: for each matched
 pair, did the branch emit a finding whose category names the weakness the
 fixture encodes? The criterion is applied identically to both branches, and a
 generic style finding that happens to touch the same artifact does not count as
-detection. Table~\ref{tab:rq2-coverage} compiles the answer from the gate
-reports referenced by each run record.
+detection.
 
-\begin{table}[ht]
+Two decisions keep that criterion from being self-serving. First, the eleven
+weakness classes are not the author's list: they are the classes that survive
+three mechanical filters applied to the 223 members of the MITRE CWE-1008
+\emph{Architectural Concepts} view, whose archive digest is recorded alongside
+the class list in \texttt{evaluation/coverage\_catalogue.yaml}. Second, the
+measurement is taken twice. The \emph{baseline} arm was run with the gate frozen
+ before any fixture had been inspected for whether it
+would be detected; the \emph{remediated} arm was run after detection rules were
+written for the gaps the baseline exposed. Each arm is 72 runs --- twenty-four
+scenarios, eleven weakness pairs and one control pair, at three replicates each.
+The class list, the fixtures and the
+matchers were identical in both arms, and the baseline was never recomputed
+after the rules were added. Table~\ref{tab:rq2-coverage} compiles both arms from
+the gate reports referenced by each run record.
+
+\begin{table}[htb!]
 \centering
-\caption{Findings naming each weakness class, by branch. Categories are those
-emitted in the persisted gate reports; ``---'' denotes that no finding
-identified the weakness.}
+\small
+\caption{Detection of each catalogued weakness class, by branch and by arm.
+``Base'' records whether the baseline arm, at the frozen gate commit, emitted a
+finding naming the class; the adjacent column gives the categories that named it
+in the remediated arm.}
 \label{tab:rq2-coverage}
-\begin{tabular}{|L{3.0cm}|L{5.0cm}|L{6.2cm}|}
+\begin{tabular}{|L{2.9cm}|C{1.0cm}|L{3.8cm}|C{1.0cm}|L{3.8cm}|}
 \hline
-\textbf{Weakness} & \textbf{Cloud branch} & \textbf{On-premises branch} \\
+\multirow{2}{*}{\textbf{Weakness}} &
+\multicolumn{2}{c|}{\textbf{Cloud branch}} &
+\multicolumn{2}{c|}{\textbf{On-premises branch}} \\
+\cline{2-5}
+ & \textbf{Base} & \textbf{Remediated categories} &
+   \textbf{Base} & \textbf{Remediated categories} \\
 \hline
-Open ingress & \texttt{sg\_ssh\_open} (critical) &
-\texttt{sg\_ssh\_open} (critical) \\
+CWE-778 Insufficient logging & yes &
+\texttt{s3\_access\_logging} & no &
+\texttt{audit\_logging}; \texttt{log\_retention} \\
 \hline
-Over-privileged access & \texttt{iam\_wildcard} (critical) &
-\texttt{iam\_wildcard} (critical); \texttt{file\_world\_writable} (high) \\
+CWE-306 Missing authentication & no & \texttt{api\_auth\_none} & no &
+\texttt{ssh\_empty\_password} \\
 \hline
-Plaintext secret & --- (no finding names the credential) &
-\texttt{secret\_password} (high); \texttt{secret\_token} (high) \\
+CWE-269 Improper privilege management & yes & \texttt{iam\_wildcard} & yes &
+\texttt{iam\_wildcard} \\
 \hline
-Unencrypted storage & \texttt{ebs\_encryption} (medium) &
-\texttt{storage\_encryption} (high);
-\texttt{storage\_mount\_encryption} (medium) \\
+CWE-732 Incorrect permissions & no & \texttt{permissive\_resource\_policy} &
+yes & \texttt{file\_world\_writable} \\
 \hline
-\textbf{Coverage} & $3/4$ & $4/4$ \\
+CWE-668 Exposure to wrong sphere & yes & \texttt{sg\_ssh\_open} & yes &
+\texttt{sg\_ssh\_open} \\
+\hline
+CWE-552 Externally accessible files & yes &
+\texttt{s3\_public\_access\_block} & no & \texttt{nfs\_world\_export} \\
+\hline
+CWE-770 Unbounded resources & yes & \texttt{lambda\_concurrency} & no &
+\texttt{missing\_resource\_limit} \\
+\hline
+CWE-311 Missing encryption & yes & \texttt{ebs\_encryption} & yes &
+\texttt{storage\_encryption}; \texttt{storage\_mount\_encryption} \\
+\hline
+CWE-319 Cleartext transmission & yes &
+\texttt{CKV\_AWS\_103}; \texttt{CKV\_AWS\_131} & no &
+\texttt{insecure\_transport} \\
+\hline
+CWE-922 Insecure secret storage & no & --- (rule withheld) & yes &
+\texttt{secret\_password}; \texttt{secret\_token} \\
+\hline
+CWE-250 Unnecessary privileges & no &
+\texttt{privileged\_container}; \texttt{runs\_as\_root} & no &
+\texttt{runs\_as\_root}; \texttt{unnecessary\_privileges} \\
+\hline
+\textbf{Coverage} & \textbf{7/11} & \textbf{10/11} & \textbf{5/11} &
+\textbf{11/11} \\
 \hline
 \end{tabular}
 \end{table}
 
-Three of the four weakness classes are named on both sides, and the identifiers
-are the same on both sides. That is the substantive result rather than the
-counts. An unrestricted firewall rule is reported as \texttt{sg\_ssh\_open}
-whether it was found in a security group or in an \texttt{iptables} task, and
-unrestricted administrative privilege is reported as \texttt{iam\_wildcard}
-whether it came from an IAM policy or from a sudoers file. The on-premises rules
-in \texttt{security\_gate/scanners/ansible\_rules\_adapter.py} were written to
-emit the cloud-side categories deliberately, so a weakness carries one name
-across the boundary and both branches deduplicate and score it through a single
-code path. Without that shared vocabulary the two columns of
-Table~\ref{tab:rq2-coverage} would not be comparable at all.
+At the frozen commit the gate named seven of the eleven classes on the cloud
+branch and five on the on-premises branch. The intervals are wide --- eleven classes cannot pin a rate
+down --- and they overlap, so the difference between $7/11$ and $5/11$ is not
+itself a finding. What the arm does establish is which specific classes were
+invisible, and that is not a matter of interval width: a class named in zero of
+three runs was named in zero of three runs.
 
-The fourth class is where coverage breaks, and it breaks on the side one would
-not predict. On the plaintext-secret pair the \emph{cloud} branch emits no
-finding naming the hardcoded credential. Its report contains five findings about
-Lambda hygiene --- a missing dead-letter queue, no concurrency limit, no VPC
-placement, unencrypted environment variables --- and a redundant dependency
-warning from cfn-lint, none of which mention the secret. The fixture still
-reaches \emph{review}, because the learned code-risk component scores the
-function's Python source, but that contribution is a probability rather than a
-statement: nothing an operator would read tells them that a credential was
-committed. The on-premises branch, which runs a dedicated regex secret scan,
-names it twice.
+The shape of that result matters more than the totals.
+Table~\ref{tab:rq2-discordance} cross-tabulates the eleven classes by which
+branch named them. Only three classes were named on both sides at the frozen
+commit. Two were named only on-premises, four only in the cloud, and two on
+neither. A gate that treats the two branches as interchangeable would be wrong
+about eight of eleven classes.
 
-This is worth separating from a mis-set threshold, because no adjustment to the
-weights or the bands would repair it. A weakness that produces no finding cannot
-be scored, reviewed, or audited at any threshold; the report is silent about it
-regardless of what the arithmetic does. The cloud path lacks a secret scanner,
-and the remedy is to give it one, not to tune what it already collects. The
-converse holds for the learned component, which is computed from Python source
-and has no playbook analogue --- the on-premises path cannot acquire it by
-reweighting either.
+\begin{table}[ht]
+\centering
+\caption{The eleven weakness classes cross-tabulated by which branch emitted a
+finding naming them, in each arm.}
+\label{tab:rq2-discordance}
+\begin{tabular}{|L{5.4cm}|C{2.4cm}|C{2.4cm}|}
+\hline
+\textbf{Named by} & \textbf{Baseline} & \textbf{Remediated} \\
+\hline
+Both branches & 3 & 10 \\
+\hline
+Cloud branch only & 4 & 0 \\
+\hline
+On-premises branch only & 2 & 1 \\
+\hline
+Neither branch & 2 & 0 \\
+\hline
+\textbf{Total} & 11 & 11 \\
+\hline
+\end{tabular}
+\end{table}
 
-What the four pairs establish is therefore narrow but specific. Both branches
-run one decision function, and after the on-premises configuration rules they
-draw on scanner sets that name the same weaknesses in the same vocabulary for
-three of four classes. They do not draw on equivalent sets: each side retains a
-blind spot the other does not, and the blind spots were found only by expressing
-the same weakness twice and comparing the resulting reports. Four
-hand-authored classes are enough to demonstrate that such gaps exist and to
-locate two of them; they are not enough to estimate how many remain.
+Reading the baseline misses individually shows that they are not all the same
+kind of failure. Most are genuine blind spots: no component in that branch
+inspected the construct at all, so no wording of the criterion would have
+credited a detection. One is not. On the cloud \texttt{incorrect-permissions}
+fixture the baseline report contained exactly one finding ---
+\texttt{CKV\_AWS\_33}, ``Ensure KMS key policy does not contain wildcard (*)
+principal.'' The scanner saw the weakness. The finding did not carry a category
+naming the class, and the pre-registered matcher for CWE-732 did not recognise
+Checkov's phrasing, so the run counted as undetected. This is worth stating
+plainly rather than repairing quietly, because it is the shared-vocabulary
+problem in miniature: a finding that describes the right weakness in the wrong
+words is, to every downstream consumer --- the deduplicator, the risk score, the
+audit record, the operator --- indistinguishable from no finding at all. The
+matcher was left frozen and the gate was given a rule that emits
+\texttt{permissive\_resource\_policy} directly, which is the same remedy the
+argument recommends: fix the vocabulary at the producer, not at the reader.
+
+The baseline left ten gaps in total --- four on the cloud branch and six
+on-premises --- and the remediated arm applied that remedy to nine of them: six
+rule families were added to the on-premises configuration adapter and three to
+the cloud template analyser, each emitting a category that was already in the
+pre-registered list for its class. Coverage rose to $10/11$ in the cloud and $11/11$ on-premises, and the
+cross-tabulation collapsed from eight discordant classes to one. Both
+specificity controls --- a compliant CDK stack and a compliant playbook, run in
+the same campaign --- remained silent on every one of the eleven classes in both
+arms, so the added rules respond to the weakness rather than to the fixture. As
+a second constraint, each new rule is accompanied by unit tests that express the
+same weakness in a different form from the fixture that motivated it, paired
+with the secure form of the same construct; a rule that fired on both would have
+bought coverage at the cost of specificity.
+
+What the remediated arm does \emph{not} establish is general recall. It is a
+measurement of the same eleven classes the baseline located, taken after
+targeted repair, so $10/11$ answers the question ``were these gaps closable
+within this architecture?'' and not ``how much does this gate see?'' The
+baseline is the arm that carries evidential weight about the system as it stood;
+the remediated arm carries evidence about the cost of closing what the baseline
+found, which turned out to be nine rule families in two files.
+
+One gap was deliberately left open. CWE-922 remains undetected on the cloud
+branch, and no rule was written for it, because none could be written that would
+be specific. A hardcoded credential in a CDK application appears in
+general-purpose Python, where a regex cannot reliably distinguish an embedded
+secret from the many idioms that legitimately \emph{handle} secrets --- reading
+from Secrets Manager, naming a parameter, granting read access. A rule that
+fired on those would have raised the coverage figure while making the gate less
+useful, and the withholding is recorded in the catalogue rather than left as an
+unexplained miss. The on-premises branch faces no such difficulty: its fixture
+is a playbook, where a credential appears as a literal value in a known field,
+and a dedicated secret scan names it twice. The converse asymmetry also remains:
+the learned
+code-risk component is computed from Python source and has no playbook analogue,
+so the on-premises path cannot acquire it by reweighting either.
+
+Three limits bound how far these numbers should be read. The fixtures are
+author-written, so a class counts as covered when the gate names a weakness the
+author composed to be namable; the coverage figures are an upper bound on what
+the gate would recover from arbitrary generated infrastructure, and they measure
+rule-to-CWE alignment rather than field recall. The controls establish that no
+matcher responds to a compliant artifact, but a control that produces no
+findings cannot establish that a matcher will refrain from firing on an
+\emph{unrelated} finding in a report that contains several. And any gap observed is a property of the particular
+scanner set assembled in this prototype, not of the process architecture:
+substituting a scanner with broader on-premises coverage would change the
+measurement without changing the design.
+
+The substantive result survives all three. Where a class is named on both sides,
+the identifiers are the same on both sides. The
+on-premises rules were written to emit
+the cloud-side categories deliberately, so a weakness carries one name across
+the boundary and both branches deduplicate and score it through a single code
+path. Without that shared vocabulary the columns of
+Table~\ref{tab:rq2-coverage} would not be comparable at all --- and the CWE-732
+baseline miss shows what happens when it is absent even once.
 
 \subsection{RQ3: Unified Risk-Evaluation Capability}
 \label{subsec:results-rq3}

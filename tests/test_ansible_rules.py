@@ -243,3 +243,225 @@ def test_findings_are_unique_per_resource_and_category(tmp_path):
     # Two distinct tasks on distinct lines: both reported, neither duplicated.
     assert len(findings) == 2
     assert len({f["resource_id"] for f in findings}) == 2
+
+
+# --- Rules added for the remediated arm of the coverage evaluation ------------
+#
+# Each weakness below is written in a *different* form from the evaluation
+# fixture that motivated the rule, so a passing test is evidence that the rule
+# keys on the weakness rather than on the fixture's phrasing.  Each is paired
+# with the secure form of the same construct, because a rule that fired on both
+# would buy coverage at the cost of specificity.
+
+
+def test_pam_stack_that_always_succeeds_is_missing_authentication(tmp_path):
+    files = _write(tmp_path, """
+- hosts: all
+  tasks:
+    - ansible.builtin.copy:
+        dest: /etc/pam.d/appsvc
+        mode: '0644'
+        content: |
+          auth sufficient pam_permit.so
+          account required pam_unix.so
+""")
+    findings, _ = run_ansible_rules(files)
+    assert _categories(findings) == {"missing_authentication"}
+
+
+def test_anonymous_service_access_is_missing_authentication(tmp_path):
+    files = _write(tmp_path, """
+- hosts: all
+  tasks:
+    - ansible.builtin.copy:
+        dest: /etc/vsftpd.conf
+        mode: '0644'
+        content: |
+          listen=YES
+          anonymous_enable=YES
+""")
+    findings, _ = run_ansible_rules(files)
+    assert "missing_authentication" in _categories(findings)
+
+
+def test_sshd_requiring_a_password_is_not_flagged(tmp_path):
+    files = _write(tmp_path, """
+- hosts: all
+  tasks:
+    - ansible.builtin.lineinfile:
+        path: /etc/ssh/sshd_config
+        line: 'PermitEmptyPasswords no'
+        mode: '0600'
+""")
+    findings, _ = run_ansible_rules(files)
+    assert findings == []
+
+
+def test_removing_the_system_logger_is_insufficient_logging(tmp_path):
+    files = _write(tmp_path, """
+- hosts: all
+  tasks:
+    - ansible.builtin.service:
+        name: rsyslog
+        state: stopped
+        enabled: false
+""")
+    findings, _ = run_ansible_rules(files)
+    assert _categories(findings) == {"audit_logging"}
+
+
+def test_clearing_audit_rules_from_a_command_is_insufficient_logging(tmp_path):
+    files = _write(tmp_path, """
+- hosts: all
+  tasks:
+    - ansible.builtin.command: auditctl -e 0
+""")
+    findings, _ = run_ansible_rules(files)
+    assert "audit_logging" in _categories(findings)
+
+
+def test_journal_that_keeps_no_storage_is_insufficient_logging(tmp_path):
+    files = _write(tmp_path, """
+- hosts: all
+  tasks:
+    - ansible.builtin.copy:
+        dest: /etc/systemd/journald.conf
+        mode: '0644'
+        content: |
+          [Journal]
+          Storage=none
+""")
+    findings, _ = run_ansible_rules(files)
+    assert _categories(findings) == {"audit_logging"}
+
+
+def test_enabled_audit_daemon_is_not_flagged(tmp_path):
+    files = _write(tmp_path, """
+- hosts: all
+  tasks:
+    - ansible.builtin.systemd:
+        name: auditd
+        state: started
+        enabled: true
+""")
+    findings, _ = run_ansible_rules(files)
+    assert findings == []
+
+
+def test_export_to_any_address_is_externally_accessible(tmp_path):
+    files = _write(tmp_path, """
+- hosts: all
+  tasks:
+    - ansible.builtin.lineinfile:
+        path: /etc/exports
+        mode: '0644'
+        line: '/srv/share 0.0.0.0/0(rw,no_root_squash)'
+""")
+    findings, _ = run_ansible_rules(files)
+    assert _categories(findings) == {"nfs_world_export"}
+
+
+def test_export_restricted_to_a_subnet_is_not_flagged(tmp_path):
+    files = _write(tmp_path, """
+- hosts: all
+  tasks:
+    - ansible.builtin.lineinfile:
+        path: /etc/exports
+        mode: '0644'
+        line: '/srv/share 10.20.0.0/16(ro,root_squash)'
+""")
+    findings, _ = run_ansible_rules(files)
+    assert findings == []
+
+
+def test_ulimit_removed_from_a_shell_command_is_unbounded(tmp_path):
+    files = _write(tmp_path, """
+- hosts: all
+  tasks:
+    - ansible.builtin.shell: ulimit -n unlimited && exec /usr/local/bin/worker
+""")
+    findings, _ = run_ansible_rules(files)
+    assert "missing_resource_limit" in _categories(findings)
+
+
+def test_unit_with_a_stated_ceiling_is_not_flagged(tmp_path):
+    files = _write(tmp_path, """
+- hosts: all
+  tasks:
+    - ansible.builtin.copy:
+        dest: /etc/systemd/system/worker.service
+        mode: '0644'
+        content: |
+          [Service]
+          User=worker
+          LimitNOFILE=4096
+          TasksMax=256
+""")
+    findings, _ = run_ansible_rules(files)
+    assert findings == []
+
+
+def test_plaintext_url_is_cleartext_transmission(tmp_path):
+    files = _write(tmp_path, """
+- hosts: all
+  tasks:
+    - ansible.builtin.uri:
+        url: http://api.internal.example.com/v1/enrol
+        method: POST
+""")
+    findings, _ = run_ansible_rules(files)
+    assert _categories(findings) == {"insecure_transport"}
+
+
+def test_protected_url_with_certificate_checking_is_not_flagged(tmp_path):
+    files = _write(tmp_path, """
+- hosts: all
+  tasks:
+    - ansible.builtin.uri:
+        url: https://api.internal.example.com/v1/enrol
+        method: POST
+        validate_certs: true
+""")
+    findings, _ = run_ansible_rules(files)
+    assert findings == []
+
+
+def test_privileged_container_is_unnecessary_privilege(tmp_path):
+    files = _write(tmp_path, """
+- hosts: all
+  tasks:
+    - community.docker.docker_container:
+        name: ingest
+        image: registry.example.com/ingest:1.4
+        privileged: true
+""")
+    findings, _ = run_ansible_rules(files)
+    assert _categories(findings) == {"privileged_container"}
+
+
+def test_container_running_as_root_is_unnecessary_privilege(tmp_path):
+    files = _write(tmp_path, """
+- hosts: all
+  tasks:
+    - community.docker.docker_container:
+        name: ingest
+        image: registry.example.com/ingest:1.4
+        user: root
+""")
+    findings, _ = run_ansible_rules(files)
+    assert _categories(findings) == {"runs_as_root"}
+
+
+def test_container_running_as_a_named_account_is_not_flagged(tmp_path):
+    files = _write(tmp_path, """
+- hosts: all
+  tasks:
+    - community.docker.docker_container:
+        name: ingest
+        image: registry.example.com/ingest:1.4
+        user: ingestsvc
+        privileged: false
+""")
+    findings, _ = run_ansible_rules(files)
+    assert findings == []
+
