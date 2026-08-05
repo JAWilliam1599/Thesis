@@ -436,7 +436,7 @@ Ten scenarios removed exactly one scanner from an otherwise identical run. Every
 
 | Arm | Cloud | On-prem | **Named by both** |
 |---|---|---|---|
-| **Baseline** — gate frozen at `6e092b9` | 7/11 | 5/11 | **3/11** |
+| **Baseline** | 7/11 | 5/11 | **3/11** |
 | **Remediated** — +9 rule families | 10/11 | 11/11 | **10/11** |
 
 Baseline discordance: cloud-only **4** · on-prem-only **2** · neither **2** → a gate treating the branches as interchangeable would be wrong about **8 of 11**
