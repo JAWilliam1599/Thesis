@@ -1,0 +1,12 @@
+Feature,Importance
+bandit_low,1.7202161943567806
+bandit_conf_high,1.6565655922154192
+total_bandit,1.5555041490214305
+semgrep_high,0.7909390656947215
+total_semgrep,0.5469204751238519
+bandit_conf_medium,0.49709572067842756
+bandit_high,0.3819451953110169
+semgrep_medium,0.029059073681501502
+semgrep_low,0.0
+bandit_medium,-0.3591145788750869
+bandit_conf_low,-0.366808385081069
