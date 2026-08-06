@@ -3,7 +3,9 @@ import joblib
 
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
+
 from sklearn.linear_model import LogisticRegression
+from sklearn.ensemble import RandomForestClassifier
 
 from sklearn.metrics import (
     accuracy_score,
@@ -28,7 +30,7 @@ print()
 # Features / Labels
 # =====================================
 
-X = df.drop(columns=["sample_id", "label"])
+X = df.drop(columns=["id", "label"])
 y = df["label"]
 
 # =====================================
@@ -44,7 +46,7 @@ X_train, X_test, y_train, y_test = train_test_split(
 )
 
 # =====================================
-# Feature Scaling
+# Feature Scaling (Only for Logistic Regression)
 # =====================================
 
 scaler = StandardScaler()
@@ -52,108 +54,140 @@ scaler = StandardScaler()
 X_train_scaled = scaler.fit_transform(X_train)
 X_test_scaled = scaler.transform(X_test)
 
+
+# =====================================
+# Evaluation Function
+# =====================================
+
+def evaluate_model(model, X_test, y_test, feature_names, model_name):
+    y_pred = model.predict(X_test)
+    y_prob = model.predict_proba(X_test)[:, 1]
+
+    print("=" * 60)
+    print(model_name)
+    print("=" * 60)
+
+    print("Accuracy :", accuracy_score(y_test, y_pred))
+    print("Precision:", precision_score(y_test, y_pred))
+    print("Recall   :", recall_score(y_test, y_pred))
+    print("F1 Score :", f1_score(y_test, y_pred))
+    print("ROC AUC  :", roc_auc_score(y_test, y_prob))
+    print()
+
+    print("Confusion Matrix")
+    print(confusion_matrix(y_test, y_pred))
+    print()
+
+    print(classification_report(y_test, y_pred))
+
+    # Feature Importance
+    if hasattr(model, "coef_"):
+        importance = pd.DataFrame({
+            "Feature": feature_names,
+            "Importance": model.coef_[0]
+        })
+
+    elif hasattr(model, "feature_importances_"):
+        importance = pd.DataFrame({
+            "Feature": feature_names,
+            "Importance": model.feature_importances_
+        })
+
+    else:
+        importance = None
+
+    if importance is not None:
+        importance = importance.sort_values(
+            by="Importance",
+            ascending=False
+        )
+
+        print("Feature Importance")
+        print(importance)
+
+        filename = model_name.lower().replace(" ", "_") + "_importance.csv"
+        importance.to_csv(filename, index=False)
+
+
 # =====================================
 # Logistic Regression
 # =====================================
 
-model = LogisticRegression(
-    max_iter=1000,
-    class_weight="balanced",
-    random_state=42
-)
+def train_logistic_regression():
+    model = LogisticRegression(
+        max_iter=1000,
+        class_weight="balanced",
+        random_state=42
+    )
 
-model.fit(
-    X_train_scaled,
-    y_train
-)
+    model.fit(X_train_scaled, y_train)
 
-# =====================================
-# Prediction
-# =====================================
+    evaluate_model(
+        model,
+        X_test_scaled,
+        y_test,
+        X.columns,
+        "Logistic Regression"
+    )
 
-y_pred = model.predict(X_test_scaled)
+    # Predict entire dataset
+    all_scaled = scaler.transform(X)
+    risk = model.predict_proba(all_scaled)[:, 1] * 100
 
-# probability of being insecure (label=1)
+    df_lr = df.copy()
+    df_lr["risk_score"] = risk
+    df_lr.to_csv("dataset_with_risk_lr.csv", index=False)
 
-y_prob = model.predict_proba(X_test_scaled)[:, 1]
+    joblib.dump(model, "logistic_regression.pkl")
+    joblib.dump(scaler, "scaler.pkl")
 
-# =====================================
-# Evaluation
-# =====================================
+    print("Logistic Regression model saved.\n")
 
-print("=" * 60)
+    return model
 
-print("Accuracy :", accuracy_score(y_test, y_pred))
-print("Precision:", precision_score(y_test, y_pred))
-print("Recall   :", recall_score(y_test, y_pred))
-print("F1 Score :", f1_score(y_test, y_pred))
-print("ROC AUC  :", roc_auc_score(y_test, y_prob))
-
-print()
-
-print("Confusion Matrix")
-
-print(confusion_matrix(y_test, y_pred))
-
-print()
-
-print(classification_report(y_test, y_pred))
 
 # =====================================
-# Learned coefficients
+# Random Forest
 # =====================================
 
-importance = pd.DataFrame({
+def train_random_forest():
+    model = RandomForestClassifier(
+        n_estimators=200,
+        class_weight="balanced",
+        random_state=42,
+        n_jobs=-1
+    )
 
-    "Feature": X.columns,
+    # No scaling
+    model.fit(X_train, y_train)
 
-    "Coefficient": model.coef_[0]
+    evaluate_model(
+        model,
+        X_test,
+        y_test,
+        X.columns,
+        "Random Forest"
+    )
 
-})
+    risk = model.predict_proba(X)[:, 1] * 100
 
-importance = importance.sort_values(
-    by="Coefficient",
-    ascending=False
-)
+    df_rf = df.copy()
+    df_rf["risk_score"] = risk
+    df_rf.to_csv("dataset_with_risk_rf.csv", index=False)
 
-print("=" * 60)
-print("Feature Importance")
-print(importance)
+    joblib.dump(model, "random_forest.pkl")
 
-importance.to_csv(
-    "feature_importance.csv",
-    index=False
-)
+    print("Random Forest model saved.\n")
 
-# =====================================
-# Predict entire dataset
-# =====================================
+    return model
 
-all_scaled = scaler.transform(X)
-
-risk = model.predict_proba(all_scaled)[:, 1] * 100
-
-df["risk_score"] = risk
-
-df.to_csv(
-    "dataset_with_risk.csv",
-    index=False
-)
 
 # =====================================
-# Save model
+# Train Models
 # =====================================
 
-joblib.dump(
-    model,
-    "logistic_regression.pkl"
-)
+lr_model = train_logistic_regression()
 
-joblib.dump(
-    scaler,
-    "scaler.pkl"
-)
+#rf_model = train_random_forest()
 
-print("=" * 60)
-print("Model saved.")
-print("Risk score saved.")
+print

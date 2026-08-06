@@ -14,7 +14,6 @@ INSECURE_FILE = "insecure.csv"
 # Output file
 OUTPUT_FILE = "dataset.csv"
 
-
 # -----------------------------
 # Read insecure dataset
 # -----------------------------

@@ -5,6 +5,8 @@ import subprocess
 from pathlib import Path
 import sys
 
+import re
+
 
 # ==========================
 # Bandit
@@ -191,9 +193,10 @@ def scan_folder(folder, label, output_csv):
     print(f"Scanning {len(py_files)} filtered files")
 
     fieldnames = [
-        "sample_id",
+        "id",
         "label",
 
+        # Bandit
         "bandit_high",
         "bandit_medium",
         "bandit_low",
@@ -202,10 +205,12 @@ def scan_folder(folder, label, output_csv):
         "bandit_conf_medium",
         "bandit_conf_low",
 
+        # Semgrep
         "semgrep_high",
         "semgrep_medium",
         "semgrep_low",
 
+        # Total
         "total_bandit",
         "total_semgrep"
     ]
@@ -226,8 +231,8 @@ def scan_folder(folder, label, output_csv):
 
         for i, file in enumerate(py_files):
 
-            if (i >= 40):
-                break # Stop after 40 files
+            #if (i >= 40):
+                #break # Stop after 40 files
 
             print(f"{i}: Scanning:", file)
 
@@ -235,7 +240,7 @@ def scan_folder(folder, label, output_csv):
             semgrep = run_semgrep(file)
 
             row = {
-                "sample_id": file.relative_to(folder).as_posix(),
+                "id": file.relative_to(folder).as_posix(),
                 "label": label,
 
                 **bandit,
@@ -246,14 +251,26 @@ def scan_folder(folder, label, output_csv):
 
     print("Done!")
 
+
 def generateDataset(file, label, output_csv):
     with open(file, "r", encoding="utf-8") as f:
         data = [json.loads(line) for line in f]
 
+    
+    SUPPORTED_CWES = {
+    20,22,23,73,77,78,79,80,89,90,94,95,
+    116,117,134,190,200,209,259,295,297,
+    306,307,311,312,319,326,327,330,338,
+    352,377,400,434,502,601,611,614,703,
+    732,798,862,863,918
+    }
+
+
     fieldnames = [
-        "sample_id",
+        "id",
         "label",
 
+        # Bandit
         "bandit_high",
         "bandit_medium",
         "bandit_low",
@@ -262,10 +279,12 @@ def generateDataset(file, label, output_csv):
         "bandit_conf_medium",
         "bandit_conf_low",
 
+        # Semgrep
         "semgrep_high",
         "semgrep_medium",
         "semgrep_low",
 
+        # Total
         "total_bandit",
         "total_semgrep"
     ]
@@ -286,8 +305,15 @@ def generateDataset(file, label, output_csv):
 
         for i, item in enumerate(data):
 
-            sample_id = item.get("sample_id", f"sample_{i}")
+            id = item.get("ID", "")
+            print(f"{i}: Scanning ID: {id}")
             code = item.get("Insecure_code", "")
+
+            cwe_numbers = [int(x) for x in re.findall(r"\d+", str(id))]
+
+            if not any(cwe in SUPPORTED_CWES for cwe in cwe_numbers):
+                print(f"Skipping {id} due to unsupported CWE")
+                continue
 
             # Save code to a temporary file
             temp_file_path = Path(f"temp_{i}.py")
@@ -300,7 +326,7 @@ def generateDataset(file, label, output_csv):
             temp_file_path.unlink()
 
             row = {
-                "sample_id": sample_id,
+                "id": id,
                 "label": label,
 
                 **bandit,
@@ -311,6 +337,142 @@ def generateDataset(file, label, output_csv):
 
     print("Done!")
 
+def generateDatasetFromPyCode(file, label, output_csv_safe, output_csv_unsafe):
+    SUPPORTED_CWES = {
+    20,22,23,73,77,78,79,80,89,90,94,95,
+    116,117,134,190,200,209,259,295,297,
+    306,307,311,312,319,326,327,330,338,
+    352,377,400,434,502,601,611,614,703,
+    732,798,862,863,918
+    }
+
+
+    fieldnames = [
+        "id",
+        "label",
+
+        # Bandit
+        "bandit_high",
+        "bandit_medium",
+        "bandit_low",
+
+        "bandit_conf_high",
+        "bandit_conf_medium",
+        "bandit_conf_low",
+
+        # Semgrep
+        "semgrep_high",
+        "semgrep_medium",
+        "semgrep_low",
+
+        # Total
+        "total_bandit",
+        "total_semgrep"
+    ]
+
+    total_rows = 0
+    with open(file, "r", encoding="utf-8") as f:
+        reader = csv.DictReader(f)
+        with open(
+            output_csv_safe,
+            "w",
+            newline="",
+            encoding="utf-8"
+        ) as csvfile:
+
+            writer = csv.DictWriter(
+                csvfile,
+                fieldnames=fieldnames
+            )
+
+            writer.writeheader()
+
+            with open(
+                output_csv_unsafe,
+                "w",
+                newline="",
+                encoding="utf-8"
+            ) as csvfile_unsafe:
+
+                writer_unsafe = csv.DictWriter(
+                    csvfile_unsafe,
+                    fieldnames=fieldnames
+                )
+
+                writer_unsafe.writeheader()
+
+                for i, row in enumerate(reader):
+                    if i <= -1: # Skip the first 608 rows since already run
+                        continue
+
+                    id = row["predicted_cwe_ids"]
+                    # unsafe_code = row["vulnerable_function_source"]
+                    safe_code = row["patched_function_source"]
+                    # cwe = [int(x) for x in re.findall(r"\d+", str(id))]
+                    label = row["label"] # it is 0 or 1
+
+                    # if (id == "None" or unsafe_code == "None" or safe_code == "None" or not any(c in SUPPORTED_CWES for c in cwe)):
+                    #     print(f"Skipping {id} due to unsupported CWE or missing code")
+                    #     continue
+
+                    if (id == "None" or safe_code == "None" or label == "1"):
+                        print(f"Skipping {id} due to missing code or label is 1")
+                        continue
+
+                    print(f"{i}: Scanning ID: {id}")
+
+                    # # Save code to a temporary file, unsafe one
+                    # try:
+                    #     temp_file_path = Path(f"temp_{i}.py")
+                    #     temp_file_path.write_text(unsafe_code, encoding="utf-8")
+
+                    #     bandit = run_bandit(temp_file_path)
+                    #     semgrep = run_semgrep(temp_file_path)
+
+                    # # Remove the temporary file
+                    # finally:
+                    #     temp_file_path.unlink()
+
+                    # unsafe_row = {
+                    #     "id": id,
+                    #     "label": label,
+
+                    #     **bandit,
+                    #     **semgrep
+                    # }
+
+                    # print(f"Writing unsafe row for ID: {id}")
+                    # writer_unsafe.writerow(unsafe_row)
+
+                    # Save code to a temporary file, safe one
+                    try:
+                        temp_file_path = Path(f"temp_{i}.py")
+                        temp_file_path.write_text(safe_code, encoding="utf-8")
+                        bandit = run_bandit(temp_file_path)
+                        semgrep = run_semgrep(temp_file_path)
+
+                    # Remove the temporary file
+                    finally:
+                        temp_file_path.unlink()
+
+                    safe_row = {
+                        "id": id,
+                        "label": 0,  # Safe code label
+
+                        **bandit,
+                        **semgrep
+                    }
+
+                    print(f"Writing safe row for ID: {id}")
+                    writer.writerow(safe_row)
+
+                    total_rows += 1  # Count both safe and unsafe rows
+                    if (total_rows >= 614):  # Limit to 800 rows
+                        print("Reached limit of 800 rows, stopping.")
+                        break
+
+            print("Done!")
+
 # ==========================
 # Example
 # ==========================
@@ -319,11 +481,11 @@ if __name__ == "__main__":
     sys.path.append(os.getcwd())
 
     # Secure dataset
-    scan_folder(
-        folder=r".\rich-main",
-        label=0,
-        output_csv="secure_dataset3.csv"
-    )
+    # scan_folder(
+    #     folder=r".\typer-master",
+    #     label=0,
+    #     output_csv="secure_dataset3.csv"
+    # )
 
     # Insecure dataset
     # generateDataset(
@@ -331,3 +493,12 @@ if __name__ == "__main__":
     #     label=1,
     #     output_csv="insecure.csv"
     # )
+
+    # Insecure dataset from PyCode_Vul
+    generateDatasetFromPyCode(
+        file=r"PyCode_Vul train-set.csv",
+        label=1,
+        output_csv_safe="safe_dataset.csv",
+        output_csv_unsafe="unsafe_dataset.csv"
+    )
+

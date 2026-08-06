@@ -92,3 +92,75 @@ Feature Importance
 5      bandit_conf_low     0.083852
 8          semgrep_low     0.067123
 ============================================================
+Objective findings -> phân loại vulnerabilities or not, chứ không detect
+
+SUPPORTED_CWES = {
+    20,
+    22,
+    77,
+    78,
+    79,
+    89,
+    94,
+    95,
+    190,
+    200,
+    295,
+    327,
+    330,
+    352,
+    434,
+    502,
+    611,
+    798,
+    918,
+}
+Second dataset with more samples and better visualize for analysis
+
+Loaded insecure.csv
+Loaded secure_dataset1.csv
+Loaded secure_dataset2.csv
+Loaded secure_dataset3.csv
+========================================
+Total samples : 482
+Secure        : 195
+Insecure      : 287
+Saved to dataset.csv
+
+============================================================
+Accuracy : 0.7835051546391752
+Precision: 0.8775510204081632
+Recall   : 0.7413793103448276
+F1 Score : 0.8037383177570093
+ROC AUC  : 0.8709106984969054
+
+Confusion Matrix
+[[33  6]
+ [15 43]]
+
+              precision    recall  f1-score   support
+
+           0       0.69      0.85      0.76        39
+           1       0.88      0.74      0.80        58
+
+    accuracy                           0.78        97
+   macro avg       0.78      0.79      0.78        97
+weighted avg       0.80      0.78      0.79        97
+
+============================================================
+Feature Importance
+               Feature  Coefficient
+4   bandit_conf_medium     1.427237
+6         semgrep_high     1.311356
+0          bandit_high     0.967863
+9         total_bandit     0.808595
+10       total_semgrep     0.803885
+3     bandit_conf_high     0.715450
+1        bandit_medium     0.680787
+2           bandit_low     0.574613
+8          semgrep_low     0.132594
+7       semgrep_medium    -0.125491
+5      bandit_conf_low    -0.805208
+============================================================
+
+limitations of tools
