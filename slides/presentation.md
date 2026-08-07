@@ -451,17 +451,17 @@ Baseline discordance: cloud-only **4** · on-prem-only **2** · neither **2** �
 
 ## RQ3 — Unified risk-evaluation capability
 
-**Held-out classifier performance** ($n = 31$: 16 negative, 15 positive)
+**Held-out classifier performance** ($n = 324$: 162 negative, 162 positive)
 
 | Accuracy | Precision | Recall | F1 | ROC-AUC |
 |---|---|---|---|---|
-| **0.8710** | 0.8667 | 0.8667 | 0.8667 | **0.8792** |
+| **0.9259** | 0.9480 | 0.9012 | 0.9240 | **0.9233** |
 
 | Confusion matrix | Predicted − | Predicted + | | Top coefficients | |
 |---|---|---|---|---|---|
-| **Actual −** | 14 | 2 | | `total_semgrep` | 1.136 |
-| **Actual +** | 2 | 13 | | `bandit_conf_medium` | 1.004 |
-| | | | | `semgrep_high` | 0.915 |
+| **Actual −** | 146 | 16 | | `bandit_low` | 1.720 |
+| **Actual +** | 8 | 154 | | `bandit_conf_high` | 1.656 |
+| | | | | `total_bandit` | 1.555 |
 
 **Controlled gate-decision check:** $S=20 \to$ pass · $S=21 \to$ review · $S=80 \to$ review · $S=81 \to$ reject · duplicate finding across tools → **counted once**. All five cases agreed with the specification.
 
