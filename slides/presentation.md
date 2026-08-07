@@ -266,7 +266,7 @@ $$
 S \;=\; \underbrace{\sum_{f \in F} w(\mathrm{sev}(f))}_{\text{severity}}
 \;+\; \underbrace{c(\Delta)}_{\text{cost}}
 \;+\; \underbrace{5v}_{\text{compliance}}
-\;+\; \underbrace{\mathrm{round}(p \cdot 20)}_{\text{ML code risk}}
+\;+\; \underbrace{\mathrm{round}\big(p^{\gamma} \cdot P_{\mathrm{ml}}\big)}_{\text{ML code-risk}}
 $$
 
 | Severity | Points | | Decision | Band | Action |
@@ -392,7 +392,8 @@ Ten scenarios removed exactly one scanner from an otherwise identical run. Every
 | Checkov (from *review*, CDK) | 54 | 9 | **45** | review → **pass** |
 | Checkov (from *reject*, CDK) | 114 | 64 | 50 | reject → review |
 | Secret scan (from *reject*, Ansible) | 155 | 75 | **80** | reject → review |
-| ML risk model (from *reject*, CDK) | 114 | 110 | 4 | reject → reject |
+| ML risk model (from *reject*, CDK) | 115 | 70 | 45 | reject → review |
+| ML risk model (from *review*, CDK) | 63 | 25 | 38 | review → review |
 
 <!-- **An absent scanner and a scanner that found nothing contribute identically.** The run still reports a clean terminal status. The scanner-status record makes the degradation visible to an auditor afterwards, but nothing in the decision function acts on it — a design deficiency inherent to any purely additive score, not an implementation defect. -->
 
