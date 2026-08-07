@@ -47,37 +47,11 @@ centralised and can be overridden explicitly.
 Generation alone does not guarantee secure output, so it is wrapped in a closed loop.
 The loop generates code, synthesizes it, gates it, and --- if the gate rejects ---
 rebuilds the prompt with the machine-readable findings injected before retrying, up to a
-bounded number of attempts. Each attempt is persisted for reproducibility under
-\texttt{logs/cdk\_regen/<run\_id>/attempt\_<N>/} (the prompt snapshot, the generated
+bounded number of attempts. Each attempt is persisted for reproducibility (the prompt snapshot, the generated
 code, the synthesis output, and the gate report), and the successful attempt is promoted
-to a \texttt{passed/} folder. Algorithm~\ref{alg:regen} formalises the loop.
+to a \texttt{passed/} folder.
 
-\begin{algorithm}[ht]
-\caption{Generate--synthesize--gate--regenerate loop}
-\label{alg:regen}
-\begin{algorithmic}[1]
-\Require prompt $q$, maximum attempts $N$
-\Ensure gated CDK application, or failure after $N$ attempts
-\State $findings \gets \emptyset$
-\For{$i \gets 1$ to $N$}
-    \State $code \gets \Call{Generate}{q, findings}$
-    \State write $code$ to the CDK application
-    \State $t \gets \Call{Synth}{code}$ \Comment{emit CloudFormation templates}
-    \If{$\Call{Synth}{}$ failed}
-        \State $findings \gets$ synthesis error
-        \State \textbf{continue}
-    \EndIf
-    \State $report \gets \Call{Gate}{t}$
-    \If{$report.decision \neq \textit{reject}$}
-        \State \Return $report$ \Comment{pass or review}
-    \EndIf
-    \State $findings \gets report.findings$ \Comment{injected into the next prompt}
-\EndFor
-\State \Return failure
-\end{algorithmic}
-\end{algorithm}
-
-Figure~\ref{fig:method-regen} presents the same loop as a flowchart, emphasising the two
+Figure~\ref{fig:method-regen} presents the loop as a flowchart, emphasising the two
 exit conditions: an accepting decision (\emph{pass} or \emph{review}) leaves the loop
 with a gated application, whereas exhausting the attempt budget $N$ leaves it with a
 failure that surfaces to the operator.

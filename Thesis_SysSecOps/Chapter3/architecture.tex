@@ -1,14 +1,6 @@
 \section{System Architecture}
 \label{sec:architecture}
 
-This section presents the architecture of the proposed SysSecOps system for a hybrid
-cloud environment. The design places a quantitative, multi-scanner \emph{security gate}
-between the synthesis and the deployment of Infrastructure-as-Code (IaC), so that no
-change is applied to either the public-cloud or the on-premises side until it has been
-statically analysed, costed, checked against live compliance state, and assigned a
-single risk score. The same engine governs both sides of the hybrid environment, which
-gives the process a uniform and reproducible security behaviour.
-
 \subsection{Design goals}
 \label{subsec:arch-goals}
 
@@ -438,45 +430,6 @@ bandwidth, or multi-site routing is required. Crucially, the choice of connectiv
 orthogonal to the rest of the pipeline: none of these methods changes the gate, the risk
 scoring, or the deployment-governance behaviour, which is what allows the architecture to
 remain portable across different hybrid networking substrates.
-
-\subsection{Component map and interfaces}
-\label{subsec:arch-components}
-
-Table~\ref{tab:modules} lists the top-level software modules and their responsibilities.
-The modules communicate through stable contracts rather than shared internal state, which
-keeps the generation, evaluation, orchestration, and monitoring concerns decoupled.
-
-\begin{table}[ht]
-\centering
-\caption{Top-level modules and their responsibilities.}
-\label{tab:modules}
-\begin{tabular}{|L{5.5cm}|L{9.0cm}|}
-\hline
-\textbf{Module} & \textbf{Responsibility} \\
-\hline
-\texttt{generation/} & Zone~1 generation: provider-abstracted code generation
-(Bedrock~/~OpenRouter) and the CDK regeneration loop. \\
-\hline
-\texttt{security\_gate/} & Zone~2 gate: template and playbook analysis, scanner adapters,
-deduplication, risk scoring, and report assembly. \\
-\hline
-\texttt{execution/} & Subprocess execution backbone with a stable result contract. \\
-\hline
-\texttt{pipeline/} & Orchestration and governance: synth--gate--diff--deploy, the approval
-audit trail, credentials, and the operational-loop emitters. \\
-\hline
-\texttt{monitoring/} & CloudTrail, CloudWatch metrics and
-dashboards, the operational-loop Lambda, and on-premises SSM registration. \\
-\hline
-\texttt{scripts/} & Command-line entry points for the CDK-only and the hybrid flows. \\
-\hline
-\texttt{ui/} & Streamlit operator console and the multi-project registry. \\
-\hline
-\texttt{risk\_scoring/} & Training and evaluation code for the machine-learning
-code-risk model consumed by the gate. \\
-\hline
-\end{tabular}
-\end{table}
 
 \subsection{Key data contracts}
 \label{subsec:arch-contracts}

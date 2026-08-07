@@ -57,7 +57,7 @@ points rather than duplicating logic.
 \node[proc, right=of ui] (scripts) {\texttt{scripts/}};
 \node[proc, below=of scripts] (pipe) {\texttt{pipeline/}};
 \node[proc, below left=of pipe] (aigen) {\texttt{generation/}};
-\node[proc, below=14mm of pipe] (eval) {\texttt{security\_gate/}};
+\node[proc, below=16mm of pipe] (eval) {\texttt{security\_gate/}};
 \node[proc, below right=of pipe] (mon) {\texttt{monitoring/}};
 \node[proc, below=16mm of aigen] (exec) {\texttt{execution/}};
 \draw[flow] (ui) -- (scripts);
@@ -85,7 +85,7 @@ response, and save the result, and both centralise their default model identifie
 allowing an explicit override. Provider-specific error handling (for example, quota and
 throttling detection) is isolated behind the provider boundary, and credentials are read
 from explicit arguments first and then from the environment. The regeneration loop
-described in Algorithm~\ref{alg:regen} orchestrates these backends and persists the
+described in Section~\ref{subsec:method-generation} orchestrates these backends and persists the
 per-attempt artifacts.
 
 \subsection{Security gate and scanner adapters}
@@ -126,56 +126,18 @@ to points. \\
 \end{tabular}
 \end{table}
 
-An abbreviated gate report is shown in Listing~\ref{lst:report}. The
-\texttt{components} object exposes the per-dimension contribution to the score, which
-makes the decision explainable, and the \texttt{scanner\_status} object records which
-tools ran.
-
-\begin{lstlisting}[language=Python,caption={Abbreviated gate report.},label={lst:report}]
-{
-  "run_id": "cdk_20260614T093934Z",
-  "timestamp": "2026-06-14T09:39:42+00:00",
-  "score": 50,
-  "decision": "review",
-  "message": "Manual review required before deployment.",
-  "components": {"severity": 30, "cost": 10, "aws_config": 10, "ml_risk": 0},
-  "findings": [
-    {"severity": "high", "source": "checkov", "category": "sg_ssh_open",
-     "resource_id": "MySG", "template": "App.template.json",
-     "message": "Security group allows ingress on port 22 from 0.0.0.0/0"}
-  ],
-  "scanner_status": {"checkov": "ok", "cfn_lint": "ok",
-                     "infracost": "ok", "aws_config": "ok", "ml_risk": "ok"}
-}
-\end{lstlisting}
-
 \subsection{Orchestration and governance}
 \label{subsec:impl-orchestration}
 
 Two command-line entry points drive the pipeline. The CDK-only entry point,
 \texttt{run\_cdk\_pipeline.py}, orchestrates bootstrap, synthesis, gating, diff, and
 deployment for the public side, and can optionally invoke the regeneration loop on a
-reject. The hybrid entry point, \texttt{run\_hybrid\_pipeline.py}, runs the same
+reject. The hybrid entry point,\\ \texttt{run\_hybrid\_pipeline.py}, runs the same
 gate, risk-scoring, deployment, and observability workflow over both a bring-your-own CDK
 directory and a bring-your-own Ansible directory --- with no code-generation step ---
 gating each side independently with the same engine and writing a combined report. The
 orchestration routes all external commands through the execution backbone and honours the
-deployment-governance rules of Section~\ref{subsec:method-governance}. Listing
-\ref{lst:cli} shows representative invocations.
-
-\begin{lstlisting}[language=bash,caption={Representative pipeline invocations.},label={lst:cli}]
-# CDK-only: synth, gate, and deploy if the gate allows
-python scripts/run_cdk_pipeline.py --project-dir generated_cdk --deploy
-
-# Hybrid: gate both sides; scope the Ansible scan to files changed since HEAD~1
-python scripts/run_hybrid_pipeline.py \
-    --cdk-path examples/hybrid-demo/cdk \
-    --ansible-path examples/hybrid-demo/ansible \
-    --base-ref HEAD~1
-
-# Read-only status of every gated target
-python scripts/run_hybrid_pipeline.py --query-status
-\end{lstlisting}
+deployment-governance rules of Section~\ref{subsec:method-governance}.
 
 On the hybrid side, the Ansible scan can be scoped to the files changed since a given git
 reference, which limits analysis to the modified plays. The decision returned by each

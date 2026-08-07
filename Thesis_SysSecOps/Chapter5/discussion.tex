@@ -30,160 +30,103 @@ available; complete gate-decision analysis incomplete & Partially evaluated \\
 \subsection{RQ1: Decision Conformance and Enforcement Correctness}
 \label{subsec:discussion-rq1}
 
-RQ1 was stated around three properties
-that do: whether the decision reached is the decision the case warranted,
-whether that decision constrains what happens next, and whether the evidence
-behind it is preserved.
+RQ1 asks three things: whether the decision reached is the decision the case
+warranted, whether that decision constrains what happens next, and whether the
+evidence behind it is preserved. The campaign answers all three positively
+(Tables~\ref{tab:rq1-confusion} and~\ref{tab:rq1-invariants}): the confusion
+matrix is exactly diagonal, no \emph{reject} was followed by a deployment, and
+no \emph{review} was deployed without a matching approval record.
 
-On the first, all 106 pre-registered runs produced the decision declared for
-them in advance, and the confusion matrix over the three bands is exactly
-diagonal (Table~\ref{tab:rq1-confusion}). The diagonal is the substantive
-result rather than the aggregate percentage: a gate can score highly on overall
-agreement while being systematically permissive, and that bias would be hidden
-inside a single figure. On the second, all six enforcement invariants held on
-every run to which they applied (Table~\ref{tab:rq1-invariants}) --- no
-\emph{reject} was followed by a deployment, and no \emph{review} was deployed
-without a matching approval record.
-
-The strength of this evidence should not be overstated in two specific respects.
-The fixtures were authored by the same work that built the gate, so conformance
-shows that the implementation satisfies its specification on cases whose correct
-treatment is already known; it does not show that the specification assigns the
-right band to arbitrary real infrastructure. And the invariants were not all
-exercised equally often: summary persistence and scanner-status reporting held
-over all 106 runs, but the approval-record invariant was tested by ten runs and
-the two rejection invariants by sixteen. Ten clean runs show that the mechanism
-works when it is invoked; they do not show how often it would fail. What has
-been established is internal correctness under pre-declared conditions, which is
-a weaker and more precise claim than "the gate works".
+What this establishes is internal correctness under pre-declared conditions. Two things
+limit it. The fixtures were authored by the same work that built the gate, so
+the result shows that the implementation satisfies its own specification rather
+than that the specification assigns the right band to arbitrary real
+infrastructure. And the invariants were not exercised equally often: the
+approval-record invariant rests on ten runs and the rejection invariants on
+sixteen. Ten clean runs show that the mechanism works when it is invoked; they
+do not show how often it would fail.
 
 \subsubsection{The Gate Fails Open}
 
 The most consequential result in the RQ1 data is not the conformance figure but
 the degradation table. Removing Checkov from a \emph{review}-band cloud change
-drops its score from $54$ to $9$ and moves the decision to \emph{pass}
-(Table~\ref{tab:rq1-degradation}). The gate conformed to its specification here
---- the scenario declared that outcome in advance --- but the specification
-permits a change to be released precisely because the evidence that would have
-held it was never collected. The same pattern appears twice more: losing Checkov
-costs a \emph{reject} fixture $50$ of its $114$ points, and losing the secret
-scanner costs the on-premises \emph{reject} fixture $80$ of its $155$.
+drops its score from $54$ to $9$ and releases it as \emph{pass}
+(Table~\ref{tab:rq1-degradation}). The gate conformed to its specification here,
+since the scenario declared that outcome in advance. The problem is that the
+specification permits the release: the evidence that would have held the change
+was never collected.
 
-This follows directly from the additive form of the scoring function. In
+This follows from the additive form of the scoring function. In
 $S = \sum_{f} w(\mathrm{sev}(f)) + c(\Delta \mathrm{cost}) + 5v + m$, a scanner
-that was never invoked and a scanner that ran and found nothing contribute
-identically: zero. The score therefore conflates \emph{absence of evidence} with
-\emph{evidence of absence}, which is the classic failure mode of any
-evidence-summing control. The system does record which scanners were unavailable
---- the scanner-status field held for all 106 runs --- so an auditor can detect
-the condition after the fact. But nothing in the decision function consumes that
-field, so the record is diagnostic rather than protective.
+that was never invoked and a scanner that ran and found nothing both contribute
+zero. The score therefore conflates \emph{absence of evidence} with
+\emph{evidence of absence}, the classic failure mode of any evidence-summing
+control. The system does record which scanners were unavailable, so an auditor
+can detect the condition after the fact, but nothing in the decision function
+consumes that field. The record is diagnostic rather than protective.
 
-This is a design deficiency rather than an implementation defect, and naming it
-that way matters: no amount of testing would have surfaced it, because the
-system behaves exactly as designed. It was surfaced instead by declaring, in
-advance, what score the remaining evidence \emph{should} support and then
-observing that the resulting decision was more permissive than the change
-deserved. Chapter~\ref{Chapter6} proposes an assurance penalty --- a positive
-contribution for each unavailable scanner, or a fail-closed policy above a
-coverage threshold --- as the remedy.
+Chapter~\ref{Chapter6}
+proposes an assurance penalty --- a positive contribution for each unavailable
+scanner, or a fail-closed policy above a coverage threshold --- as the remedy.
 
 \subsubsection{Gate Overhead}
 
-The cloud gate's median duration of $102.50$~seconds accounts for roughly
-seven-tenths of total run wall-clock time, against $7.04$~seconds and about a
-quarter on the on-premises branch. In absolute terms both are acceptable for a
-pre-deployment check. The concern is the scaling behaviour rather than the
-current figure: the cloud cost is dominated by Checkov being invoked once per
-synthesised template file, so it grows with the size of the deployed stack
-rather than with the size of the change under review. A production deployment
-with many templates would find the gate, not the cloud provider, to be the
-bottleneck.
+Both branches are acceptable in absolute terms for a pre-deployment check, so
+the concern is the scaling behaviour rather than the current figure. The cloud
+gate consumes roughly seven-tenths of run wall-clock time, and its cost is
+dominated by Checkov being invoked once per synthesised template file. It
+therefore grows with the size of the deployed stack rather than with the size of
+the change under review. A production deployment with many templates would find
+the gate, not the cloud provider, to be the bottleneck.
 
 \subsection{RQ2: Cross-Boundary Enforcement Equivalence}
 \label{subsec:discussion-rq2}
 
-The question asks whether the two sides of the
-boundary are governed \emph{alike}, which can fail and, as it turned out, did. The workflow-attainment half of the question is answered positively across all
-seven checkpoints. Syntax validation, security gating and dry run were attained
-on every attempted on-premises run in the offline campaign, with no failures in
-any class. The remaining three --- apply, post-apply verification, and
-idempotency --- required a real host, and were closed by a live-target arm run
-against a disposable Multipass virtual machine. That arm supplies a kind of
-evidence the offline campaign structurally could not: an apply whose resulting
-state is read back and asserted against independently written expectations, a
-second apply that reports \texttt{changed=0}, and --- most importantly for the
-enforcement claim --- three runs that requested deployment of the rejected
-fixture against a reachable, authenticated host and were stopped at the gate,
-never reaching the apply stage at all. Enforcement holds at the point of
-application, not merely in simulation. The arm is small, at three replicates per
-scenario against one host and one operating system image, so it establishes that
-the deployment path completes correctly rather than that it is reliable across
-heterogeneous fleets.
+RQ2 asks whether the two sides of the boundary are governed \emph{alike}.
 
-The decision half produced the more interesting finding, and it is not a finding
-about decisions. Measured against eleven weakness classes derived from an
-external catalogue, the gate at its frozen commit named seven of them on the
-cloud branch and five on-premises --- but only three on both
-(Table~\ref{tab:rq2-coverage}). Four classes were visible only in the cloud, two
-only on-premises, and two on neither. A gate that treats the branches as
+The workflow half is answered positively across all seven checkpoints. The last
+three --- apply, post-apply verification, and idempotency --- were closed by a live-target arm. That arm supplies a kind of evidence
+the offline campaign structurally could not: an applied state read back and
+asserted against independently written expectations, a second apply that reports
+\texttt{changed=0}, and three runs that requested deployment of the rejected
+fixture against a reachable, authenticated host and were stopped at the gate.
+Enforcement holds at the point of application, not merely in simulation.
+
+The detection half produced the more interesting finding, and it is not a
+finding about decisions. At the frozen commit only three of the eleven
+catalogued classes were named on both branches
+(Table~\ref{tab:rq2-coverage}). A gate that treats the branches as
 interchangeable would have been wrong about eight of eleven classes, and nothing
 in the architecture would have revealed it. Where a class \emph{was} named on
 both sides, the identifiers matched: an unrestricted firewall rule is reported as
 \texttt{sg\_ssh\_open} whether it appears in a security group or in an
-\texttt{iptables} task; unrestricted administrative privilege is reported as
+\texttt{iptables} task, and unrestricted administrative privilege as
 \texttt{iam\_wildcard} whether it comes from an IAM policy or a sudoers file.
 That shared vocabulary is the substantive achievement, because it is what makes
 the two sides comparable at all. Equal scores would not have been.
 
-One miss shows what happens when the vocabulary breaks down. On the cloud
-incorrect-permissions fixture the baseline report contained a Checkov finding
-stating that a KMS key policy contained a wildcard principal --- the right
-weakness, described correctly, in the wrong words. Because the finding carried
-no category naming the class, it was indistinguishable from silence to the
-deduplicator, the risk score, the audit record and the operator alike. The same
-pattern appears more starkly on the plaintext-secret pair, where the cloud
-report contains five findings about Lambda hygiene and a redundant cfn-lint
-dependency warning, none of which state that a credential was committed. That
-fixture still reaches \emph{review}, because the learned code-risk component
-scores the surrounding Python, so the decision looks correct --- but it is
-correct by accident, and the report an operator would actually read does not
-mention the secret. Deciding alike is not the same as seeing alike, and only the
-latter is auditable.
-
-This deserves emphasis because it inverts a common assumption. A shared scoring
+A shared scoring
 function and shared thresholds are frequently taken to imply consistent
 treatment across a hybrid estate. They do not. Consistency of \emph{decision
 logic} is worth little without comparable \emph{detection coverage} feeding it,
 and the boundary at which coverage diverges is invisible in any architecture
-diagram --- both branches appear to call the same gate, because they do. Nor is such a gap reachable by tuning: a weakness that produces no finding
-cannot be scored, reviewed, or audited at any threshold, so the remedy is to add
-the missing detection rather than to reweight what is already present. The
-remediated arm demonstrates that this remedy was available: nine of the eleven
-gaps closed with nine rule families added to two files, lifting coverage to ten
-of eleven in the cloud and eleven of eleven on-premises and reducing the
-discordant classes from eight to one. That figure should not be read as a
-recall estimate. It measures whether the gaps the baseline located were closable
-within this architecture, not how much the gate sees in general; the baseline is
-the arm that speaks to the latter. The one gap left open was left open
-deliberately, because a hardcoded credential in a CDK application sits in
-general-purpose Python where no regex distinguishes an embedded secret from the
-idioms that legitimately handle one, and a rule that could not be made specific
-would have raised the number while degrading the tool. The same argument applies
-in reverse to the learned component, which is computed from Python source and
-has no playbook analogue.
+diagram --- both branches appear to call the same gate, because they do. Nor is
+such a gap reachable by tuning: a weakness that produces no finding cannot be
+scored, reviewed, or audited at any threshold, so the remedy is to add the
+missing detection rather than to reweight what is already present. The
+remediated arm shows that this remedy was available and inexpensive, at nine
+rule families in two files. It should not be read as a recall estimate: it
+measures whether the gaps the baseline located were closable within this
+architecture, not how much the gate sees in general.
 
-The evidence supporting this is bounded, though the bound is no longer the size
-of the class list. Eleven classes drawn from an external catalogue remove the
-author's discretion over which weaknesses are counted, but not over how each one
-is written: the fixtures are still hand-authored, so a class counts as covered
-when the gate names a weakness composed to be namable. The coverage figures are
-therefore an upper bound measuring rule-to-CWE alignment rather than field
-recall. The specificity controls narrow this from the other side --- both
-remained silent on all eleven classes in both arms --- but a control that
-produces no findings at all cannot establish that a matcher will refrain from
-firing on an unrelated finding in a busier report, a failure mode an earlier
-candidate control exhibited before it was replaced.
+The bound on this evidence is no longer the size of the class list but the
+authorship of the fixtures. Eleven classes drawn from an external catalogue
+remove the author's discretion over which weaknesses are counted, but not over
+how each one is written, so the figures measure rule-to-CWE alignment rather
+than field recall. The specificity controls narrow this from the other side, but
+a control that produces no findings at all cannot establish that a matcher will
+refrain from firing on an unrelated finding in a busier report --- a failure
+mode an earlier candidate control exhibited before it was replaced.
 
 \subsection{RQ3: Unified Risk-Evaluation Capability}
 \label{subsec:discussion-rq3}
@@ -206,81 +149,42 @@ multi-component decision mechanism has not yet been fully validated.
 \section{Comparison with Related Approaches}
 \label{sec:discussion-comparison}
 
-The contribution of the proposed process concerns cloud operations rather than security
-alone. It coordinates infrastructure definition, assessment, deployment, and monitoring
-across public and private targets, with security acting as a decision function within
-the broader workflow.
-
-Traditional infrastructure operations often separate provisioning, system
-administration, delivery, and security review. This separation can require manual
-coordination and may delay security feedback. Rajapakse et al. report that conventional
-security tools are difficult to adapt to rapid DevOps workflows, while CloudCAMP
-identifies substantial manual and scripting effort in cloud deployment
-\cite{Rajapakse2021ToolIntegration,Bhattacharjee2019CloudCAMP}. The proposed process
-instead places a common gate before deployment and records the relationship between a
-change, its evidence, its decision, and its deployed state. However, the present study
-does not quantify improvements in lead time, operator effort, or incident reduction over
-a manual baseline.
-
-The NIST Cloud Computing Reference Architecture describes cloud actors,
-responsibilities, service orchestration, management, security, and privacy, but it does
-not prescribe a concrete implementation sequence \cite{Liu2011NISTRA}. The proposed
-process complements this reference view by defining an executable sequence for
-assessment, approval, deployment, and monitoring. This concreteness reduces generality:
-the prototype reflects one public-cloud provider and one private-side configuration
-mechanism, whereas the NIST architecture is vendor-neutral.
-
-Infrastructure as Code improves repeatability and automation, but industrial evidence
-shows that IaC ecosystems remain fragmented and provide limited support for integration,
-quality automation, maintenance, and evolution \cite{Guerriero2019IaC}. Research on IaC
-testing also indicates that executable infrastructure definitions still require explicit
-verification \cite{Hasan2020IaCTesting}. The proposed adapter and normalisation layers
-address heterogeneous scanner output, but they introduce maintenance obligations as tool
-formats and rules evolve. Compared with CloudCAMP's model-driven deployment abstraction,
-the proposed process places greater emphasis on risk-based gating and auditability, while
-offering less platform independence \cite{Bhattacharjee2019CloudCAMP}.
-
-Continuous-security approaches similarly integrate security activities throughout the
-delivery lifecycle. Kumar and Goyal's ADOC model proposes automated continuous security
-using open-source software over cloud infrastructure \cite{Kumar2020ADOC}. The proposed
-process follows this principle but adds a shared risk decision for public-cloud and
-private-side changes. Its normalised findings, deduplication, and component breakdown also
-address the alert fatigue and tool-integration difficulties reported by Rajapakse et al.
-\cite{Rajapakse2021ToolIntegration}. Nevertheless, aggregation may conceal context unless
-the original findings and component contributions remain available to the reviewer.
+The proposed process combines cloud operations and continuous security in one governed
+workflow. Table~\ref{tab:discussion-comparison} summarises its relationship to established
+approaches without claiming quantitative superiority, since no manual or ungated baseline
+was evaluated.
 
 \begin{table}[ht]
 \centering
 \small
 \setlength{\tabcolsep}{4pt}
-\caption{Comparison with related cloud operational approaches.}
+\caption{Concise comparison with related cloud operational approaches.}
 \label{tab:discussion-comparison}
-\begin{tabular}{|L{3.3cm}|L{4.3cm}|L{6.3cm}|}
+\begin{tabular}{|L{3.2cm}|L{4.4cm}|L{6.3cm}|}
 \hline
 \textbf{Approach} & \textbf{Primary emphasis} & \textbf{Relationship to this research} \\
 \hline
 Traditional operations & Separately coordinated provisioning, administration, and
-review & The proposed process integrates these transitions, but no quantitative manual
-baseline has yet been evaluated. \\
+review & Integrates these stages through one gate and audit trail; operational gains
+remain unmeasured. \\
 \hline
 NIST reference architecture \cite{Liu2011NISTRA} & Vendor-neutral actors and cloud
-components & Provides the architectural context; the proposed process supplies a more
-concrete but less vendor-neutral operational sequence. \\
+components & Adds an executable operational sequence, but is less vendor-neutral. \\
 \hline
-CloudCAMP \cite{Bhattacharjee2019CloudCAMP} & Model-driven generation and reduced manual
-scripting & Provides stronger platform abstraction; this research places greater emphasis
-on gating, traceability, and monitoring. \\
-\hline
-Industrial IaC practice \cite{Guerriero2019IaC} & Adoption, integration, and maintenance
-challenges & Normalisation addresses heterogeneous outputs but creates an adapter layer
-that must be maintained. \\
+CloudCAMP and IaC practice \cite{Bhattacharjee2019CloudCAMP,Guerriero2019IaC,Hasan2020IaCTesting}
+& Automated provisioning, abstraction, and IaC quality & Adds gating and traceability,
+while retaining adapter-maintenance costs. \\
 \hline
 Continuous security \cite{Kumar2020ADOC,Rajapakse2021ToolIntegration} & Lifecycle security,
-tool integration, and triage & This research adds hybrid-cloud decision control and an
-explainable quantitative score. \\
+tool integration, and triage & Adds hybrid-cloud decision control and a shared finding
+vocabulary; source evidence remains necessary. \\
 \hline
 \end{tabular}
 \end{table}
+
+The contribution is therefore an operational integration of existing ideas: it is more
+concrete than a reference architecture and more governance-oriented than provisioning
+automation, but less portable and not yet proven more efficient than traditional practice.
 
 \section{Limitations}
 \label{sec:discussion-limitations}
@@ -291,32 +195,26 @@ The study has seven principal limitations.
     \item \textbf{Self-authored fixtures and limited scale.} RQ1 and RQ2 were
     evaluated on a pre-registered campaign of 106 runs whose scenarios and
     expected outcomes were fixed in advance, which removes the selection
-    freedom of the earlier development sample. It does not remove a more basic
+    freedom of an ad-hoc development sample. It does not remove a more basic
     dependency: the fixtures were authored by the same work that built the
-    gate, so conformance establishes that the implementation satisfies its own
-    specification on cases whose correct treatment is already known. It does
-    not establish that the specification assigns the right band to arbitrary
-    real infrastructure, which would require independently authored cases.
-    Several results also rest on very few runs --- ten approved-review runs,
-    sixteen rejections, and three replicates for each of the apply,
-    verification and idempotency checkpoints --- so they establish that the
-    mechanism works when exercised rather than how often it fails. Detection
-    coverage rests on eleven weakness classes drawn from an external catalogue,
-    which removes the author's discretion over which weaknesses are counted but
-    not over how each one is written. The prototype has additionally not
-    been evaluated with large repositories, concurrent pipelines, or a
-    substantial private-infrastructure fleet.
+    gate. Conformance therefore establishes that the implementation satisfies
+    its own specification on cases whose correct treatment is already known,
+    not that the specification assigns the right band to arbitrary real
+    infrastructure. Establishing the latter would require independently
+    authored cases. The prototype has
+    additionally not been evaluated with large repositories, concurrent
+    pipelines, or a substantial private-infrastructure fleet.
 
     \item \textbf{Narrow deployment-side evidence.} Apply, post-apply
-    verification, and repeated-run idempotency were measured, but only in the
+    verification, and repeated-run idempotency were measured only in the
     live-target arm: three replicates of one scenario against a single
-    disposable virtual machine running one operating system image. What that
-    supports is that the deployment path completes correctly and that a
-    \emph{reject} decision blocks application against a real host. It does not
-    support claims about behaviour under host heterogeneity, concurrent targets,
-    partial failures, or hosts whose prior state differs from a fresh image ---
-    all of which are exactly the conditions under which convergence tooling
-    tends to misbehave.
+    disposable virtual machine running one operating system image. That
+    supports two claims --- that the deployment path completes correctly, and
+    that a \emph{reject} decision blocks application against a real host. It
+    does not support claims about host heterogeneity, concurrent targets,
+    partial failures, or hosts whose prior state differs from a fresh image,
+    which are exactly the conditions under which convergence tooling tends to
+    misbehave.
 
     \item \textbf{Restricted implementation scope.} The learned component is limited to
     Python and uses features from Bandit and Semgrep. The wider prototype relies on a
@@ -324,33 +222,21 @@ The study has seven principal limitations.
     services, and Ansible. The findings cannot be assumed to transfer to other languages,
     cloud providers, configuration systems, or vulnerability classes.
 
-    \item \textbf{Dataset and model validity.} The held-out result contains only 31
-    samples and was obtained from one train--test split. Vulnerability categories outside
-    the selected analysers' detection scope were excluded, and maintained project files
-    were treated as negative examples without formal security verification. These choices
-    introduce selection bias, possible label noise, and uncertainty about performance on
-    external projects.
-
     \item \textbf{Risk assumptions and the fail-open score.} The severity weights,
     cost bands, compliance contribution, model contribution, and decision
     thresholds have not been calibrated using expert judgement or historical
     incidents. Exposure, asset criticality, data sensitivity, and compensating
     controls are represented only indirectly. More seriously, the campaign
     confirmed that the additive score \emph{fails open}: an unavailable scanner
-    and a scanner that found nothing contribute identically, so removing Checkov
-    moved a \emph{review}-band change to \emph{pass}
+    and a scanner that found nothing contribute identically
     (Table~\ref{tab:rq1-degradation}). The condition is recorded in the
-    scanner-status field but no part of the decision function acts on it.
+    scanner-status field, but no part of the decision function acts on it.
 
     \item \textbf{Unequal detection coverage across the boundary.} The two
-    branches share a decision function but not a scanner set. At the frozen gate
-    commit the branches agreed on only three of eleven catalogued weakness
-    classes; adding nine rule families raised this to ten, but the cloud path
-    still names no committed credential. Coverage is
-    also established over hand-authored fixtures, so the figures bound
-    rule-to-CWE alignment rather than recall on real infrastructure, and the
-    specificity controls --- silent on all eleven classes in both arms --- cannot
-    exclude a matcher firing on an unrelated finding in a busier report.
+    branches share a decision function but not a scanner set. Coverage is also established over hand-authored
+    fixtures, so the figures bound rule-to-CWE alignment rather than recall on
+    real infrastructure, and the specificity controls cannot exclude a matcher
+    firing on an unrelated finding in a busier report.
 
     \item \textbf{Limited comparative and operational measures.} The study does not yet
     compare the proposed process with manual cloud operations or IaC deployment without
@@ -363,64 +249,25 @@ The study has seven principal limitations.
 \section{Directions for Improvement}
 \label{sec:discussion-improvements}
 
-The first priority is to close the fail-open condition, since it is the one
-limitation that weakens the control while the system reports success. Making the
-decision function consume the scanner-status field it already records --- either
-as an assurance penalty proportional to missing coverage, or as a fail-closed
-policy that forces \emph{review} below a coverage threshold --- would convert a
-diagnostic record into an enforced property, and the existing degradation
-scenarios already provide the test cases to verify it.
+The improvements follow directly from the observed limitations.
 
-The second is to close the remaining coverage gap at its source, on both
-sides. The cloud branch needs a secret scan that can separate an embedded
-credential from the idioms that legitimately handle one --- entropy and
-provider-format detection rather than the keyword regex the on-premises branch
-runs --- so that a committed credential is named in the report rather than
-absorbed into a learned probability; this was the one gap deliberately left open,
-because nothing specific enough could be built within the existing regex design.
-The on-premises branch needs either an
-equivalent learned signal for configuration artifacts or an explicit statement
-that no such component applies, so that a reader can tell a missing component
-from a component that found nothing. Both are coverage repairs, and neither
-requires the two branches to produce the same score. The measurement itself
-should then be strengthened by replacing the hand-authored fixtures with
-independently written ones, since the present figures bound rule-to-catalogue
-alignment rather than recall, and by widening the class list beyond the eleven
-that admit a matched expression on both sides of the boundary.
+\begin{enumerate}
+    \item \textbf{Fail-open scoring:} make assessment availability part of the decision
+    by applying an assurance penalty or forcing review below a coverage threshold.
 
-The evaluation itself should then be broadened on the deployment side. The
-live-target arm closes the apply, post-apply verification, and idempotency
-checkpoints, but against a single fresh virtual machine; the informative
-extension is to repeat it against hosts with divergent prior state, several
-targets concurrently, and induced partial failures, so that the failure-class
-attribution has something other than \texttt{none} to classify. Independently
-authored fixtures would address the
-self-authorship dependency. Subsequent evaluation should increase repository
-size, infrastructure scale, and pipeline concurrency while measuring execution
-time, resource consumption, storage growth, and cloud-service cost --- the
-measured gate overhead, at roughly seven-tenths of cloud run time and scaling
-with template count, indicates where that cost will concentrate. A controlled
-comparison among manual operations, IaC automation without the gate, and the
-proposed process would provide evidence regarding operator effort, lead time,
-policy violations, and remediation time.
+    \item \textbf{Unequal detection coverage:} add source-appropriate detection for the
+    remaining cloud-side secret gap and explicitly identify components that do not apply
+    to one branch.
 
-The code-risk model should be evaluated using a larger multi-project corpus,
-project-aware data partitioning, repeated cross-validation, and an external holdout set.
-Vulnerabilities outside the current analyser scope should be retained as a separate
-challenge set rather than removed entirely. Additional language-specific models and
-features covering dependency risk, resource exposure, identity policy, data sensitivity,
-and runtime behaviour would broaden the assessment scope.
+    \item \textbf{Limited scale and external validity:} repeat the campaign with
+    independently authored fixtures, heterogeneous hosts, concurrent targets, induced
+    failures, larger repositories, and incremental scanning.
 
-The unified score should be calibrated using expert-labelled changes, historical
-incidents, and organisational risk preferences. Sensitivity and ablation analyses would
-show how individual components affect decisions and whether the learned signal adds value
-beyond severity-only or scanner-only baselines. Missing assessment components should
-produce an assurance penalty or configurable fail-closed behaviour so that insufficient
-evidence is not interpreted as low risk.
+    \item \textbf{Restricted learned model:} use larger multi-project datasets,
+    project-aware partitions, repeated cross-validation, external test sets, and
+    language-specific models.
 
-Finally, the provider and adapter interfaces should be extended to additional cloud and
-private-infrastructure platforms. Evaluation with system administrators, developers, and
-security practitioners would determine whether the component breakdown improves
-decision-making or obscures important detail. Versioned policies, role-separated
-approvals, signed audit records, and longitudinal deployment would further strengthen the
-governance and practical applicability of the process.
+    \item \textbf{Uncalibrated operational value:} calibrate score weights with expert
+    and incident data, then compare the process with manual operations and ungated IaC
+    using lead time, effort, policy violations, and remediation time.
+\end{enumerate}
