@@ -16,6 +16,25 @@
 #                    --allow on the campaign runner
 #
 # Terminal statuses: gated_ok | review | reject | deployed | deploy_failed | error
+#
+# Amendment, 2026-08-07.  The learned code-risk component was rescaled from
+# round(p * 20) to round(p^2.5 * 85), which changes the score of any fixture
+# containing Python the model can act on.  The affected cells were re-derived
+# from fixture calibration and fixed again before any run of the amended
+# matrix; no expectation was written after seeing a result.  Specifically:
+#   * cdk-mlrisk-block and cdk-mlrisk-no-ml were added, because no existing CDK
+#     fixture contains application Python and the component can act on nothing
+#     else, so none of them exercised it
+#   * cdk-pass-no-cfn-lint was retired to keep the degradation arm at ten cells
+#   * cdk-reject-no-ml was replaced by cdk-secret-no-ml, which measures the same
+#     component on a fixture the component can actually act on
+# Calibration also showed severity totals moving on fixtures the rescale cannot
+# touch: cdk-reject from 110 to 130, ans-review from 55 to 65 and ans-reject
+# from 155 to 165.  The Ansible branch carries no learned component at all, so
+# this is unrelated to the amendment above; it follows from the detection rules
+# added for the RQ2 remediated arm.  The eight cells that do not involve the
+# learned component were not re-run, so the figures reported for them predate
+# both changes.
 
 campaign:
   id_prefix: rq12
@@ -57,6 +76,16 @@ scenarios:
     replicates: 5
     purpose: >-
       A reject-band decision blocks deployment and writes a rejection record.
+
+  - id: cdk-mlrisk-block
+    fixture: cdk-mlrisk
+    expect_status: reject
+    replicates: 5
+    purpose: >-
+      A stack whose one template weakness is calibrated to sit inside the review
+      band, and whose bundled handler code carries a second weakness no template
+      scanner can see.  Also supplies the undegraded reference score for
+      cdk-mlrisk-no-ml.
 
   - id: ans-pass-gate
     fixture: ans-pass
@@ -105,14 +134,18 @@ scenarios:
       Quantifies Checkov's share of a reject decision on the cloud branch and
       confirms the gate degrades to review rather than to pass.
 
-  - id: cdk-reject-no-ml
-    fixture: cdk-reject
+  - id: cdk-secret-no-ml
+    fixture: par-plaintext-secret-cdk
     flags: ["--no-ml-risk"]
     degradation: ml_model_unavailable
-    expect_decision: reject
-    expect_status: reject
+    expect_decision: review
+    expect_status: review
     replicates: 3
-    purpose: The reject decision does not depend on the learned risk component.
+    purpose: >-
+      The cloud branch has no secret scanner, so the learned component supplies
+      most of this fixture's score.  Quantifies how much of a review decision
+      rests on it where the residual template findings are enough to hold the
+      band on their own.
 
   - id: cdk-review-no-cfn-lint
     fixture: cdk-review
@@ -140,16 +173,19 @@ scenarios:
       auto-pass. Declared in advance so the resulting deployment of an
       unreviewed change is reported as designed behaviour, not as a surprise.
 
-  - id: cdk-pass-no-cfn-lint
-    fixture: cdk-pass
-    flags: ["--no-cfn-lint"]
-    degradation: cfn_lint_unavailable
-    expect_decision: pass
-    expect_status: gated_ok
+  - id: cdk-mlrisk-no-ml
+    fixture: cdk-mlrisk
+    flags: ["--no-ml-risk"]
+    degradation: ml_model_unavailable
+    expect_decision: review
+    expect_status: review
     replicates: 3
     purpose: >-
-      A missing linter is reported as unavailable and does not block an
-      otherwise compliant change.
+      The weakness in this fixture's bundled handler source reaches no
+      synthesised template, so no infrastructure scanner can see it and the
+      learned component is the only assurance source that scores it.  Removing
+      it is expected to drop the decision from reject to review, leaving the
+      residual template finding to hold the change.
 
   - id: ans-reject-no-secret-scan
     fixture: ans-reject

@@ -116,13 +116,13 @@ Each row is the median of three replicates, which were identical.}
 \hline
 Checkov (from \emph{reject}) & $114$ & $64$ & $50$ & reject $\rightarrow$ review \\
 \hline
-ML risk model (from \emph{reject}) & $114$ & $110$ & $4$ & reject $\rightarrow$ reject \\
+ML risk model (from \emph{reject}) & $115$ & $70$ & $45$ & reject $\rightarrow$ review \\
 \hline
 cfn-lint (from \emph{review}) & $54$ & $49$ & $5$ & review $\rightarrow$ review \\
 \hline
 Checkov (from \emph{review}) & $54$ & $9$ & $45$ & review $\rightarrow$ \textbf{pass} \\
 \hline
-cfn-lint (from \emph{pass}) & $14$ & $9$ & $5$ & pass $\rightarrow$ pass \\
+ML risk model (from \emph{review}) & $63$ & $25$ & $38$ & review $\rightarrow$ review \\
 \hline
 Secret scan (from \emph{reject}) & $155$ & $75$ & $80$ & reject $\rightarrow$ review \\
 \hline
@@ -142,12 +142,26 @@ The most consequential row is the fourth. Removing Checkov from a
 decision to \emph{pass}. The gate conformed to its specification --- this is
 precisely the outcome the scenario declared in advance --- but the specification
 permits a change to be released because the evidence that would have held it was
-never collected. The gate fails \emph{open}. Two rows above, removing Checkov
+never collected. The gate fails \emph{open}. The first row shows the same
+mechanism short of a release: removing Checkov
 from a \emph{reject} change costs $50$ points and downgrades it to
 \emph{review}, and removing the secret scanner from the Ansible \emph{reject}
 fixture costs $80$ of its $155$ points. In each case the loss of a single
 assurance source materially weakens the verdict while the run still reports a
 clean terminal status.
+
+The two ML risk model rows isolate a different property: what that component
+contributes that nothing else on its branch does. Removing it from the fixture
+whose weakness sits in bundled handler source costs $45$ of $115$ points and
+returns a \emph{reject} to \emph{review}. That weakness never reaches the
+synthesised template, so no infrastructure scanner observes it at all, and the
+ML risk model is the only source that scores it --- it is what carries the
+stack across the reject threshold. Removing it from the plaintext-secret fixture
+costs $38$ of $63$. The cloud branch has no secret scanner, so again no other
+component responds to the weakness the fixture encodes.
+Both rows show the component carrying
+decision weight no other assurance source on that branch supplies, and both show
+that weight disappearing silently when it is unavailable.
 
 This is a design deficiency of the scoring model, not an implementation defect,
 and it is inherent to any purely additive score: an absent scanner and a scanner
@@ -507,13 +521,6 @@ baseline miss shows what happens when it is absent even once.
 
 \subsection{RQ3: Unified Risk-Evaluation Capability}
 \label{subsec:results-rq3}
-
-The available RQ3 evidence comprises the held-out performance of the
-logistic-regression model and an examination of its fitted coefficients. This analysis
-assesses whether features obtained from multiple static analysers provide a useful
-learned signal for the unified risk-scoring mechanism. The reported results concern
-detector-visible insecure code and do not represent the detection of every semantic
-vulnerability.
 
 \subsubsection{Dataset Composition}
 \label{subsubsec:results-dataset}

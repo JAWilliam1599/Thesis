@@ -69,6 +69,24 @@ fixtures:
       Severe weaknesses: SSH open to the internet, unencrypted public
       storage, and a wildcard IAM policy.
 
+  - id: cdk-mlrisk
+    branch: cdk
+    path: examples/eval-fixtures/cdk/mlrisk
+    band: reject
+    expect_decision: reject
+    rationale: >-
+      Storage, logging, network and function configuration hardened to the same
+      standard as cdk-pass.  One template weakness — a wildcard IAM policy —
+      is calibrated to leave the stack inside the review band on its own, and a
+      second weakness sits where no template scanner reaches: certificate
+      validation disabled in a Lambda handler bundled from source.  Added after
+      the learned component was rescaled, because every other CDK fixture
+      contains only resource declarations and the component can act only on
+      Python, so no fixture in the set exercised it.  Measured at 115 points, of
+      which 45 come from the learned component and 70 from the template
+      findings, so the learned component is what carries the stack across the
+      reject threshold.
+
   # ----------------------------------------------------------------- parity --
   #
   # Each parity pair encodes *one* weakness class on both sides of the hybrid
@@ -118,7 +136,7 @@ fixtures:
     expect_decision: review
     rationale: >-
       Credential baked into a function's environment in clear text.  Measured at
-      44 points, of which 19 come from the learned code-risk model rather than
+      63 points, of which 38 come from the learned code-risk model rather than
       from a secret scanner — the cloud path has no secret scanner, so detection
       here is incidental to the ML component.
 

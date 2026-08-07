@@ -1,15 +1,6 @@
 \section{Risk-Scoring Engine}
 \label{sec:risk-scoring}
 
-The risk-scoring engine is the analytical core of the proposed process: it converts the
-heterogeneous output of several independent security tools into one number and one
-decision.
-(Section~\ref{subsec:rs-motivation}), states the multi-factor formulation
-(Section~\ref{subsec:rs-formulation}), describes the additive scoring actually
-implemented in the gate (Section~\ref{subsec:rs-additive}), details the machine-learning
-code-risk model (Section~\ref{subsec:rs-ml}), explains how deduplication yields
-explainability (Section~\ref{subsec:rs-explain}).
-
 \subsection{Motivation and limitations of severity-only scoring}
 \label{subsec:rs-motivation}
 
@@ -72,7 +63,7 @@ The gate implements Equation~\ref{eq:multifactor} as an additive sum of four com
 that are easy to implement and cheap to compute. Each deduplicated finding contributes
 points according to its severity (Table~\ref{tab:severity}); a monthly cost increase
 contributes points in bands; each non-compliant live rule contributes a fixed number of
-points; and the machine-learning model contributes points proportional to its predicted
+points; and the machine-learning model contributes points that rise with its predicted
 probability of insecurity.
 
 \begin{table}[ht]
@@ -102,14 +93,12 @@ probability of insecurity from the machine-learning model. The total score $S$ i
 S \;=\; \underbrace{\sum_{f \in F} w\big(\mathrm{sev}(f)\big)}_{\text{severity}}
 \;+\; \underbrace{c(\Delta)}_{\text{cost}}
 \;+\; \underbrace{5\,v}_{\text{compliance}}
-\;+\; \underbrace{\mathrm{round}\big(p \cdot P_{\mathrm{ml}}\big)}_{\text{ML code-risk}},
+\;+\; \underbrace{\mathrm{round}\big(p^{\gamma} \cdot P_{\mathrm{ml}}\big)}_{\text{ML code-risk}},
 \end{equation}
 
-where $P_{\mathrm{ml}} = 20$ is the maximum contribution of the machine-learning
-component at $p = 1$. The cost contribution $c(\Delta)$ is banded: a high band applies
-above a high monthly-cost threshold and a medium band above a medium threshold, with the
-thresholds and their points being configurable. Banding, rather than a continuous cost
-term, keeps the score stable against small estimation noise.
+where $P_{\mathrm{ml}} = 85$ is the maximum contribution of the machine-learning
+component, attained at $p = 1$, and $\gamma = 2.5$ governs how that contribution accrues
+below it.
 
 The decision function maps $S$ to one of three outcomes using the thresholds in
 Table~\ref{tab:thresholds}:
@@ -150,7 +139,7 @@ summed and compared against the two thresholds to select the decision.
 \node[proc] (sev) {Severity\\$\sum w(\mathrm{sev})$};
 \node[proc, below=of sev] (cost) {Cost\\$c(\Delta)$};
 \node[proc, below=of cost] (comp) {Compliance\\$5v$};
-\node[proc, below=of comp] (ml) {ML risk\\$\mathrm{round}(p\cdot20)$};
+\node[proc, below=of comp] (ml) {ML risk\\$\mathrm{round}(p^{2.5}\cdot85)$};
 \node[proc, right=18mm of cost, yshift=-4mm] (sum) {$\Sigma$\\score $S$};
 \node[dec, right=of sum] (t1) {$S\le 20$?};
 \node[proc, right=of t1] (pass) {pass};

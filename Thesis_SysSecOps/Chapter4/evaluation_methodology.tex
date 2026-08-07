@@ -489,12 +489,6 @@ unexplained numeric difference.
 \subsection{Risk-Scoring Evaluation}
 \label{subsec:evaluation-rq3}
 
-RQ3 was examined through two evaluations. The first measured the ability of the
-logistic-regression component to discriminate between labelled insecure and reference
-secure Python files. The second examined whether the complete gate correctly aggregated
-the machine-learning result with the remaining risk components and produced the decision
-specified by the scoring policy.
-
 \subsubsection{Dataset Construction}
 \label{subsubsec:evaluation-dataset}
 
@@ -528,9 +522,8 @@ to an eleven-dimensional feature vector comprising Bandit severity counts, Bandi
 confidence counts, Semgrep severity counts, and the total number of findings returned by
 each analyser~\ref{subsubsec:rs-features}.
 
-The corpus was divided into training and test partitions using a stratified $80/20$
-split. Stratification preserved the class distribution in both partitions. A feature
-scaler was fitted exclusively on the training partition and was then applied unchanged
+The corpus was divided into training and test partitions using a $80/20$
+split. A feature scaler was fitted exclusively on the training partition and was then applied unchanged
 to the held-out test partition. The logistic-regression classifier was trained with
 balanced class weights, and its output for each file was the estimated probability of
 membership in the insecure class.
@@ -570,36 +563,3 @@ classifier. The baseline classified a file as insecure when at least one configu
 security finding was reported. This comparison determined whether learning a relationship
 among the scanner features provided discriminatory value beyond treating the presence of
 any finding as a positive classification.
-
-\subsubsection{Unified Score and Decision Evaluation}
-\label{subsubsec:evaluation-gate-decision}
-
-The complete risk-scoring mechanism was evaluated using controlled cases containing
-different combinations of deduplicated static findings, estimated infrastructure cost,
-live compliance state, and machine-learning probability. For each case, the expected
-component contributions and total score were calculated independently using
-Equation~\ref{eq:score}. The independently calculated values were then compared with the
-values recorded in the gate report.
-
-Cases were constructed below, at, and above the decision boundaries defined in
-Equation~\ref{eq:decision}. This boundary-oriented design exercised the \emph{pass},
-\emph{review}, and \emph{reject} outcomes and examined whether the implemented
-comparisons treated threshold values consistently. Additional cases contained
-equivalent findings produced by more than one scanner to determine whether the
-deduplication procedure prevented repeated counting of one underlying issue.
-
-The gate evaluation considered three properties:
-
-\begin{itemize}
-    \item \textbf{Aggregation correctness}: the reported score equalled the sum of the
-    deduplicated severity, cost, compliance, and machine-learning contributions.
-    \item \textbf{Decision consistency}: the reported decision corresponded to the
-    score interval defined by the configured thresholds.
-    \item \textbf{Interpretability}: the report identified the contributing findings,
-    component values, scanner execution states, total score, and resulting decision.
-\end{itemize}
-
-The classifier evaluation and the controlled gate cases addressed different aspects of
-RQ3. The classifier measures assessed the discriminatory performance of the learned
-code-risk component. The gate cases assessed whether that component and the other risk
-signals were combined correctly and transparently to govern deployment.

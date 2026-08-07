@@ -1,14 +1,6 @@
 \section{Interpretation of Research Questions}
 \label{sec:discussion-rqs}
 
-The evaluation considers whether the pipeline decides and enforces correctly,
-whether the two sides of the hybrid boundary are governed alike, and whether the
-unified risk-evaluation mechanism is capable. RQ1 and RQ2 are supported by the
-pre-registered campaign of 106 runs reported in
-Section~\ref{sec:evaluation-results}, while RQ3 is partially addressed by the
-held-out evaluation of the learned code-risk component.
-Table~\ref{tab:rq-status} summarises the current status.
-
 \begin{table}[ht]
 \centering
 \caption{Current evidential status of the research questions.}
@@ -197,10 +189,9 @@ candidate control exhibited before it was replaced.
 \label{subsec:discussion-rq3}
 
 The classifier experiment provides positive but bounded evidence for RQ3. The
-logistic-regression component achieved an accuracy of $0.8710$, an F1-score of $0.8667$,
-and a ROC--AUC of $0.8792$ on the held-out partition. The confusion matrix contained two
-false positives and two false negatives, indicating similar performance for the two
-classes. Within the filtered corpus, the combined Bandit and Semgrep features therefore
+logistic-regression component achieved an accuracy of $0.9259$, an F1-score of $0.9240$,
+and a ROC--AUC of $0.9233$ on the held-out partition. The confusion matrix contained 8
+false positives and 16 false negatives. Within the filtered corpus, the combined Bandit and Semgrep features therefore
 provided a useful learned risk signal.
 
 This result does not validate the complete gate. The model was evaluated only on
@@ -355,10 +346,7 @@ The study has seven principal limitations.
     branches share a decision function but not a scanner set. At the frozen gate
     commit the branches agreed on only three of eleven catalogued weakness
     classes; adding nine rule families raised this to ten, but the cloud path
-    still names no committed credential, detecting one only as a side effect of
-    the learned code-risk model scoring the surrounding Python. That model is in
-    turn unavailable to the on-premises path, which has no source-code analogue.
-    Each side therefore retains a blind spot the other does not. Coverage is
+    still names no committed credential. Coverage is
     also established over hand-authored fixtures, so the figures bound
     rule-to-CWE alignment rather than recall on real infrastructure, and the
     specificity controls --- silent on all eleven classes in both arms --- cannot
