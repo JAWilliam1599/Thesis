@@ -210,6 +210,33 @@ security_gate/dependency-check/plugins/
 dependency-check-*.zip
 *.zip
 
+# LaTeX build artifacts
+*.aux
+*.lof
+*.lot
+*.toc
+*.out
+*.bbl
+*.blg
+*.bcf
+*.run.xml
+*.fls
+*.fdb_latexmk
+*.synctex.gz
+*.nav
+*.snm
+*.vrb
+*.idx
+*.ilg
+*.ind
+*.glo
+*.gls
+*.glg
+*.acn
+*.acr
+*.alg
+*.xdv
+
 # Backup folder
 Backup/
 # Live evaluation target (machine-specific address and private key)

@@ -3,13 +3,12 @@
 
 The risk-scoring engine is the analytical core of the proposed process: it converts the
 heterogeneous output of several independent security tools into one number and one
-decision. This section motivates why a single, purpose-built score is needed
+decision.
 (Section~\ref{subsec:rs-motivation}), states the multi-factor formulation
 (Section~\ref{subsec:rs-formulation}), describes the additive scoring actually
 implemented in the gate (Section~\ref{subsec:rs-additive}), details the machine-learning
 code-risk model (Section~\ref{subsec:rs-ml}), explains how deduplication yields
-explainability (Section~\ref{subsec:rs-explain}), and closes with a worked example
-(Section~\ref{subsec:rs-example}).
+explainability (Section~\ref{subsec:rs-explain}).
 
 \subsection{Motivation and limitations of severity-only scoring}
 \label{subsec:rs-motivation}
@@ -36,7 +35,7 @@ changes in a hybrid cloud this is insufficient for three reasons:
 
 The engine addresses these limitations by combining several orthogonal signals into one
 additive score with a fixed, auditable decision boundary, so that prioritisation reflects
-severity \emph{and} exposure, cost, live compliance, and a learned code-risk estimate.
+severity and exposure, cost, live compliance, and a learned code-risk estimate.
 
 \subsection{Multi-factor formulation}
 \label{subsec:rs-formulation}
@@ -70,7 +69,7 @@ the calibrated severity weights and the live-compliance term.
 \label{subsec:rs-additive}
 
 The gate implements Equation~\ref{eq:multifactor} as an additive sum of four components
-that are easy to explain and cheap to compute. Each deduplicated finding contributes
+that are easy to implement and cheap to compute. Each deduplicated finding contributes
 points according to its severity (Table~\ref{tab:severity}); a monthly cost increase
 contributes points in bands; each non-compliant live rule contributes a fixed number of
 points; and the machine-learning model contributes points proportional to its predicted
@@ -173,136 +172,99 @@ total is compared against two fixed thresholds to yield the decision.}
 \label{fig:rs-pipeline}
 \end{figure}
 
-\subsection{Machine-learning code-risk model}
+\subsection{Learned multi-source risk module}
 \label{subsec:rs-ml}
 
-The machine-learning component predicts whether generated Python code is likely to be
-insecure, supplying the probability $p$ used in Equation~\ref{eq:score}. Unlike the rule
-scanners, which fire only on patterns encoded in their rule sets, this component learns a
-statistical association between static-analysis signals and ground-truth insecurity, so it
-can flag code whose overall signal profile resembles known-insecure samples. Its
-construction has three parts: a labelled dataset, a feature-extraction step shared between
-training and inference, and a logistic-regression classifier.
+The learned risk module supplements deterministic assessment rules with a statistical
+estimate of whether an infrastructure-related code artifact resembles previously observed
+insecure examples. Its purpose is not to replace the individual assessment components,
+but to combine their signals into an additional probability $p \in [0,1]$ for use in
+Equation~\ref{eq:score}. This design allows several assessment sources to contribute to a
+common risk estimate even when their native outputs use different formats, taxonomies,
+and confidence scales.
 
-\subsubsection{Dataset construction}
+The module consists of four general stages: construction of a labelled corpus,
+normalisation of assessment outputs, training of a probabilistic classifier, and
+integration of the predicted probability into the unified score. The concrete data
+sources, assessment tools, model type, and training parameters are implementation choices
+and are therefore described in Chapter~\ref{Chapter4}.
+
+\subsubsection{Labelled corpus}
 \label{subsubsec:rs-dataset}
 
-The training corpus pairs insecure and secure Python files under a common schema. The
-insecure class is drawn from the \textsc{SecurityEval} dataset, a public benchmark of
-CWE-labelled insecure Python snippets, each of which is materialised to a temporary file
-and scanned. The secure class is sampled from the source trees of well-maintained,
-widely-used open-source projects (for example \texttt{click}, \texttt{rich}, and
-\texttt{typer}), whose code is taken as a negative (secure) reference. To keep the two
-classes comparable and to remove degenerate inputs, a filtering rule admits a file only if
-it is not a package initialiser or a test, and contains between $20$ and $700$
-non-blank, non-comment lines; overly short or generated-boilerplate files are therefore
-excluded. Each admitted file becomes one labelled sample --- label $0$ for secure, label
-$1$ for insecure --- yielding a balanced dataset of roughly $150$ samples split almost
-evenly between the two classes.
+The training corpus contains artifacts representing two classes: examples with known
+security weaknesses and reference examples without known weaknesses. Each artifact is
+assigned a binary label, where label $1$ represents the insecure class and label $0$
+represents the reference class. Filtering rules are applied consistently to reduce
+irrelevant variation caused by generated files, test artifacts, empty inputs, or differences in artifact size.
 
-A practical finding shaped the final corpus. An initial run showed that a large fraction
-of the \textsc{SecurityEval} insecure samples (on the order of half, spanning dozens of
-distinct CWEs) contain flaws --- chiefly logic and mis-counting errors --- that the two
-static analysers cannot detect, so those samples were statistically indistinguishable from
-secure code under the chosen features. Retaining them capped recall (an initial model
-reached only $\approx 0.73$ accuracy with recall near $0.46$). Removing these undetectable
-outliers, while keeping a small margin ($\approx 15\%$) of them so the model still sees
-hard negatives, produced a corpus on which the same features are informative. This is an
-explicit \emph{scope statement} for the model: it estimates the risk of \emph{detector-visible}
-insecurity, not of semantic flaws invisible to \texttt{bandit} and \texttt{semgrep}.
+The corpus must reflect the detection scope of the assessment sources used to construct
+the features. If a weakness cannot produce any observable signal under the selected
+assessment methods, the classifier cannot learn a reliable relationship for that
+weakness. Consequently, the output is interpreted as the probability of visible insecurity, rather than as proof that an artifact is secure or
+insecure in every semantic sense.
 
-\subsubsection{Feature extraction}
+\subsubsection{Common feature representation}
 \label{subsubsec:rs-features}
 
-Each file is scanned independently by two static analysers --- \texttt{bandit} (a
-security-focused linter) and \texttt{semgrep} (a pattern-matching analyser run with its
-automatic rule set) --- and their findings are reduced to an eleven-dimensional count
-vector (Table~\ref{tab:ml-features}). Counts, rather than raw messages, keep the feature
-space small, tool-version-robust, and directly comparable across files.
+Every assessment source is connected through an adapter that converts its native output
+into the common finding schema. For each artifact, the normalised findings are then
+reduced to a fixed-length feature vector. The vector may contain counts grouped by source,
+severity, confidence, category, and total finding volume. Using aggregated numeric
+features avoids dependence on tool-specific message text and allows heterogeneous sources
+to be processed by the same model.
 
-\begin{table}[ht]
-\centering
-\caption{Per-file feature vector extracted for the code-risk model.}
-\label{tab:ml-features}
-\begin{tabular}{|L{4.6cm}|L{3.0cm}|L{5.4cm}|}
-\hline
-\textbf{Feature group} & \textbf{Source} & \textbf{Features} \\
-\hline
-Severity counts & \texttt{bandit} & \texttt{bandit\_high}, \texttt{bandit\_medium},
-\texttt{bandit\_low} \\
-\hline
-Confidence counts & \texttt{bandit} & \texttt{bandit\_conf\_high},
-\texttt{bandit\_conf\_medium}, \texttt{bandit\_conf\_low} \\
-\hline
-Severity counts & \texttt{semgrep} & \texttt{semgrep\_high}, \texttt{semgrep\_medium},
-\texttt{semgrep\_low} \\
-\hline
-Totals & both & \texttt{total\_bandit}, \texttt{total\_semgrep} \\
-\hline
-\end{tabular}
-\end{table}
+Let $m$ denote the number of assessment sources and let $G$ denote the set of common
+finding groups. For artifact $k$, a general feature vector can be expressed as
+
+\begin{equation}
+\label{eq:ml-features-general}
+\mathbf{x}_k =
+\left[n_{k,1,g_1},\ldots,n_{k,1,g_{|G|}},\ldots,
+n_{k,m,g_1},\ldots,n_{k,m,g_{|G|}}\right]^{\top},
+\end{equation}
+
+where $n_{k,j,g}$ is the number of findings reported for artifact $k$ by source $j$ in
+group $g$. The grouping definition is fixed before training and reused unchanged during
+inference. This common representation is the mechanism that enables the module to combine
+signals from multiple assessment sources without binding the methodology to particular
+products.
 
 \subsubsection{Training procedure}
 \label{subsubsec:rs-training}
 
-The classifier is a logistic-regression model trained with the configuration in
-Table~\ref{tab:ml-train}. The dataset is split $80/20$ into train and test partitions with
-stratification on the label, so both partitions preserve the class balance. Features are
-standardised (zero mean, unit variance) with a scaler fitted on the training partition and
-re-applied unchanged at test and inference time. Because the two classes are close to but
-not exactly balanced, the loss uses balanced class weights so that neither class dominates
-the fit. The fitted model exposes, for each file, the probability of the positive
-(insecure) class via its sigmoid output.
+The labelled corpus is divided into disjoint training and evaluation partitions while
+preserving the class distribution. Any preprocessing transformation, such as feature
+scaling, is fitted using only the training partition and then applied unchanged to the
+evaluation and operational inputs. If the class distribution is imbalanced, weighting or
+sampling strategies may be used to prevent the majority class from dominating the model.
 
-\begin{table}[ht]
-\centering
-\caption{Training configuration of the logistic-regression code-risk model.}
-\label{tab:ml-train}
-\begin{tabular}{|L{5.0cm}|L{7.8cm}|}
-\hline
-\textbf{Setting} & \textbf{Value} \\
-\hline
-Algorithm & Logistic regression (regularised, \texttt{max\_iter}$=1000$) \\
-\hline
-Train/test split & $80\% / 20\%$, stratified on the label \\
-\hline
-Feature scaling & Standardisation fitted on the training partition only \\
-\hline
-Class weighting & Balanced (inversely proportional to class frequency) \\
-\hline
-Output & $P(\text{insecure})$ per file via the sigmoid \\
-\hline
-Persisted artifacts & Model and scaler (serialised) for reuse by the gate \\
-\hline
-\end{tabular}
-\end{table}
+A probabilistic binary classifier is fitted to estimate
+$P(y_k=1\mid\mathbf{x}_k)$, where $y_k$ is the label of artifact $k$. The trained model
+and every preprocessing artifact are persisted together. This preserves
+\emph{training--inference parity}: the operational module uses the same feature grouping,
+ordering, transformations, and model parameters that were used during training.
 
-At inference time the gate applies the model to every generated file and takes the worst
-(maximum) probability, so that a single risky file cannot be masked by many benign ones:
+\subsubsection{Inference and score integration}
+
+During inference, the module constructs a feature vector for each artifact and obtains a
+probability from the trained classifier. For a change containing several artifacts, the
+module uses the maximum probability:
 
 \begin{equation}
 \label{eq:ml}
-p \;=\; \max_{k \in \text{files}} \sigma\!\left(\mathbf{w}^{\top}\mathbf{x}_k + b\right),
-\qquad
-\sigma(z) = \frac{1}{1 + e^{-z}},
+p = \max_{k \in \mathcal{A}} \mathcal{M}(\mathbf{x}_k),
 \end{equation}
 
-where $\mathbf{x}_k$ is the per-file feature vector of Table~\ref{tab:ml-features}, and
-$\mathbf{w}, b$ are the learned parameters. The decisive design constraint is
-\emph{inference/training parity}: feature extraction at inference time uses the same two
-analysers, the same severity and confidence grouping, and the same per-file scanning as
-during training, and it reuses the \emph{persisted scaler}, so the inputs seen by the
-classifier match its training distribution. When the model artifacts or the analyser
-binaries are unavailable, the component degrades to a ``skipped'' status and contributes
-zero points, consistent with the graceful-degradation contract of the overall system.
+where $\mathcal{A}$ is the set of evaluated artifacts and $\mathcal{M}$ is the trained
+probability model. The maximum operator prevents a high-risk artifact from being masked
+by a larger number of low-risk artifacts. The probability is converted into the bounded
+machine-learning contribution in Equation~\ref{eq:score}, while the per-artifact
+probabilities remain available in the gate report for explanation and remediation.
 
-The learned coefficients are also interpretable and act as a sanity check: the
-\texttt{semgrep} total, the medium-confidence \texttt{bandit} count, and the
-high-severity \texttt{semgrep} count carry the largest positive weights, matching the
-intuition that a higher volume of medium-to-high-confidence findings is the strongest
-indicator of insecurity. On the cleaned corpus the model reaches roughly $0.87$ accuracy
-and $0.88$ ROC-AUC; the full evaluation, including the comparison against baseline
-scorers, is reported in the results chapter.
+Unavailable assessment sources are recorded explicitly rather than silently treated as
+successful checks. The module may continue with the remaining sources when permitted by
+policy, but the missing evidence must be visible in the report and may require additional review.
 
 \subsection{Deduplication and explainability}
 \label{subsec:rs-explain}
@@ -321,27 +283,3 @@ came from severity, cost, compliance, and the machine-learning model. An operato
 reviewing a \emph{review} or \emph{reject} decision can therefore see \emph{why} the
 score landed where it did and which component to remediate, rather than being handed an
 opaque number.
-
-\subsection{Worked example}
-\label{subsec:rs-example}
-
-Consider a change whose deduplicated findings include one high-severity open
-administrative port and two medium-severity issues, whose estimated monthly cost increase
-falls in the medium band (contributing $10$ points), which trips one non-compliant live
-rule, and whose generated code the machine-learning model scores at $p = 0$ (secure).
-Applying Equation~\ref{eq:score}:
-
-\begin{align*}
-S &= \underbrace{(10 + 5 + 5)}_{\text{severity}}
-   + \underbrace{10}_{\text{cost}}
-   + \underbrace{5 \times 1}_{\text{compliance}}
-   + \underbrace{\mathrm{round}(0 \times 20)}_{\text{ML}} \\
-  &= 20 + 10 + 5 + 0 \;=\; 35.
-\end{align*}
-
-Since $20 < 35 \le 80$, Equation~\ref{eq:decision} yields \emph{review}: the change is not
-auto-deployed but is instead routed to a human approver, whose approval (or rejection) is
-recorded in the audit trail. The per-component breakdown ($\text{severity}=20$,
-$\text{cost}=10$, $\text{compliance}=5$, $\text{ML}=0$) tells the approver that the open
-administrative port and the cost increase are the dominant contributors, directing
-remediation effort precisely.

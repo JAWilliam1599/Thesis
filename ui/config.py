@@ -44,7 +44,7 @@ GATE_COST_HIGH_POINTS = 10
 GATE_COST_MED_USD = 10.0
 GATE_COST_MED_POINTS = 5
 # Mirrors security_gate/scanners/ml_risk_adapter.py ML_MAX_POINTS
-GATE_ML_MAX_POINTS = 20
+GATE_ML_MAX_POINTS = 85
 
 # --- Presentation maps ------------------------------------------------------
 # Gate decision -> (emoji, hex color, human label)

@@ -46,7 +46,7 @@ The evaluation was guided by the following research questions:
     produce consistent, interpretable deployment decisions?
 \end{description}
 
-Two aspects of this formulation deserve comment. First, RQ1 deliberately does
+Two aspects of this formulation need to be reviewed. First, RQ1 deliberately does
 not ask whether runs \emph{complete}. A gate that never blocks anything
 completes every run, so a completion rate cannot by itself distinguish a working
 security control from an inert one. Conformance to a declared expectation, and
@@ -489,7 +489,7 @@ unexplained numeric difference.
 \subsection{Risk-Scoring Evaluation}
 \label{subsec:evaluation-rq3}
 
-RQ3 was examined through two linked evaluations. The first measured the ability of the
+RQ3 was examined through two evaluations. The first measured the ability of the
 logistic-regression component to discriminate between labelled insecure and reference
 secure Python files. The second examined whether the complete gate correctly aggregated
 the machine-learning result with the remaining risk components and produced the decision
@@ -524,17 +524,16 @@ bias.
 \label{subsubsec:evaluation-model-training}
 
 Each file was analysed independently using Bandit and Semgrep. The findings were reduced
-to the eleven-dimensional feature vector defined in Table~\ref{tab:ml-features}. The
-features represented Bandit severity counts, Bandit confidence counts, Semgrep severity
-counts, and the total number of findings returned by each analyser.
+to an eleven-dimensional feature vector comprising Bandit severity counts, Bandit
+confidence counts, Semgrep severity counts, and the total number of findings returned by
+each analyser~\ref{subsubsec:rs-features}.
 
 The corpus was divided into training and test partitions using a stratified $80/20$
 split. Stratification preserved the class distribution in both partitions. A feature
 scaler was fitted exclusively on the training partition and was then applied unchanged
 to the held-out test partition. The logistic-regression classifier was trained with
 balanced class weights, and its output for each file was the estimated probability of
-membership in the insecure class. Fixing the data split and preprocessing configuration
-enabled the experiment to be reproduced under the same conditions.
+membership in the insecure class.
 
 \subsubsection{Classifier Evaluation Measures}
 \label{subsubsec:evaluation-classifier-measures}
@@ -604,85 +603,3 @@ The classifier evaluation and the controlled gate cases addressed different aspe
 RQ3. The classifier measures assessed the discriminatory performance of the learned
 code-risk component. The gate cases assessed whether that component and the other risk
 signals were combined correctly and transparently to govern deployment.
-
-\subsection{Data Collection and Analysis}
-\label{subsec:evaluation-data-analysis}
-
-Evidence from each pipeline scenario was collected from the machine-readable artifacts
-produced by the prototype. These artifacts included stage return states, scanner
-execution states, normalised and deduplicated findings, component scores, final gate
-decisions, approval records, deployment results, and monitoring records. For the
-on-premises scenario, Ansible execution output and direct target-state observations were
-also retained. For the classifier evaluation, the true label, predicted class,
-predicted probability, and source of each test sample were recorded.
-
-Quantitative results were summarised using counts, rates, classification measures, and
-agreement between expected and observed decisions. Qualitative inspection was limited to
-failure classification and assessment of whether a gate report contained sufficient
-information to trace a decision to its contributing evidence. Results were organised by
-research question so that conclusions could be derived from the corresponding evaluation
-evidence rather than from individual tool outputs in isolation.
-
-\subsection{Threats to Validity}
-\label{subsec:evaluation-validity}
-
-The evaluation was conducted as a prototype case study and therefore has limitations in
-external validity. The selected public-cloud resources, on-premises virtual machine, and
-infrastructure scenarios do not represent every hybrid cloud configuration. Network
-conditions, service availability, credentials, and the state of external services may
-also affect execution independently of the proposed process. These environmental states
-were recorded to distinguish transient infrastructure failures from pipeline defects.
-
-The construction of the machine-learning dataset introduces a threat to construct
-validity. SecurityEval provides labelled vulnerable examples, whereas files sampled from
-maintained open-source projects are not formally proven to be free of vulnerabilities.
-The negative class may therefore contain label noise. In addition, the features extracted
-by Bandit and Semgrep represent only weaknesses observable through their configured rule
-sets. Consequently, the classifier was evaluated as an estimator of
-\emph{detector-visible insecurity}, rather than as a general detector of all semantic
-software vulnerabilities.
-
-The fixed risk weights and decision thresholds constitute an operational policy rather
-than a universally optimal definition of risk. The controlled cases can establish that
-the prototype implements this policy consistently, but cannot demonstrate that the same
-thresholds are appropriate for every organisation. Evaluation in additional hybrid
-environments and calibration using organisation-specific risk preferences would be
-required to support broader generalisation.
-
-The expected band of every fixture is declared in a version-controlled
-specification before the reported runs execute, so an unexpected result cannot be
-reinterpreted after the fact. The degradation scenarios declare an outcome derived
-arithmetically from the calibrated breakdown, so they test a prediction that can
-fail. Most importantly, the parity fixtures were deliberately \emph{not} adjusted
-to bring the branches into line; had the rules or weights been tuned until both
-sides returned the same band, the resulting figure would have measured the tuning
-rather than the system.
-
-The coverage design measures eleven weakness classes drawn from an external
-catalogue, which removes the author's discretion over \emph{which} classes are
-counted but not over how each one is expressed. The fixtures are still written
-by the author, so a class counts as covered when the gate names the weakness in
-a fixture the author composed; the figure is an upper bound on what the gate
-would recover from arbitrary generated infrastructure in the field. The eleven
-classes are also the subset of 38 filtered candidates that could be expressed as
-a matched pair, so the measurement speaks to weaknesses with an expression on
-both sides of the boundary rather than to the catalogue as a whole. A different
-selection could yield a different rate.
-
-The specificity control bounds the result from the other side, but only
-partially. A control that produces no findings at all shows that no matcher
-responds to a compliant artifact; it does not show that a matcher will refrain
-from firing on an \emph{unrelated} finding in a report that contains several.
-The first control used in this evaluation demonstrates exactly that failure
-mode, and it was detected only because the control was examined explicitly.
-Relatedly, any coverage gap observed is a property of the particular scanner set
-assembled in this prototype, not an inherent property of the process
-architecture; substituting a scanner with broader on-premises coverage would
-change the measurement without changing the design.
-
-Finally, replicates in this campaign measure the reproducibility of the pipeline
-under fixed conditions rather than its variability across environments. Because
-the cost estimator and live compliance check are disabled in the registered arm,
-repeated runs are expected to reproduce identical scores, and the replicate
-counts should be read as a check on determinism and on timing dispersion, not as
-a sample from a population of deployment environments.

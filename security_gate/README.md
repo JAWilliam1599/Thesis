@@ -56,8 +56,11 @@ flowchart TB
 
 The `ml_risk_adapter.py` adapter reuses the model trained in `risk_scoring/`; it scans
 generated `*.py` code, predicts a per-file probability of insecurity, and contributes
-`round(p * ML_MAX_POINTS)` points (max 20) to the gate score. It degrades to a `skipped`
-status when the `.pkl` model artifacts or bandit/semgrep binaries are unavailable.
+`round(p ** ML_CURVE_EXPONENT * ML_MAX_POINTS)` points (max 85) to the gate score. The
+exponent (2.5) makes the mapping convex: the model's ~0.2 floor on clean code costs
+about 2 points, while a confident prediction alone can reach the reject band. It
+degrades to a `skipped` status when the `.pkl` model artifacts or bandit/semgrep
+binaries are unavailable.
 
 The `ansible_rules_adapter.py` adapter exists because `ansible-lint` enforces style
 rather than security posture, and Checkov's Ansible framework returned no findings on

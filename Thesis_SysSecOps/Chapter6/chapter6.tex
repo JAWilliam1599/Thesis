@@ -129,30 +129,6 @@ not replace established cloud reference architectures, IaC practices, or continu
 security approaches. Instead, it connects these concerns through an explicit sequence of
 artifacts, decisions, and operational records tailored to hybrid infrastructure.
 
-\section{Current Scope and Findings}
-\label{sec:conclusion-scope}
-
-The findings remain bounded by the prototype and evaluation scope. The available RQ3
-evidence concerns a small Python corpus and vulnerabilities observable through Bandit and
-Semgrep. The public-side implementation is centred on AWS, while the private side uses
-Ansible-managed Linux nodes; portability and large-scale operation have not been
-demonstrated. The scoring weights and thresholds also require calibration using expert
-judgement, historical incidents, and organisational risk preferences. The RQ1 and RQ2
-evidence rests on fixtures authored by the same work that built the gate, so it
-establishes that the implementation satisfies its own specification on cases whose
-correct treatment is known, not that the specification grades arbitrary real
-infrastructure correctly. Several results rest on very few runs --- ten
-approved-review runs, sixteen rejections, and three replicates for each of the
-apply, post-apply verification and idempotency checkpoints against a single fresh
-virtual machine --- so they show that each mechanism works when exercised rather
-than how often it fails. Detection coverage rests on eleven weakness classes
-drawn from an external catalogue but expressed in hand-authored fixtures, so the
-coverage figures bound the alignment between the gate's rules and the catalogue
-rather than its recall on real infrastructure.
-The current results therefore indicate internal
-correctness under pre-declared conditions rather than general operational effectiveness
-at scale.
-
 \section{Future Work}
 \label{sec:conclusion-future-work}
 

@@ -125,6 +125,11 @@ Two pairs now agree. The two that still disagree both sit at exactly 20, the
 residual gap is therefore no longer a *detection* gap but a *scoring* asymmetry
 in the risk engine itself.
 
+> These `ml_risk` figures were measured under the earlier linear mapping
+> (`round(p * 20)`). The component is now convex (`round(p ** 2.5 * 85)`), which
+> widens the same asymmetry rather than closing it; the campaign must be re-run
+> to re-measure.
+
 The rules were written to cover the weakness classes the pairs express, and
 their severities mirror the existing CDK heuristics. They were not adjusted
 afterwards to move any pair across a threshold; `open-ingress` and

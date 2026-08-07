@@ -8,7 +8,8 @@ distribution.
 
 The adapter scans every eligible ``*.py`` file under the given source
 directory, predicts a probability per file, and reports the worst (max)
-probability. The gate converts it to points: ``ml_score = round(p * 20)``.
+probability. The gate converts it to points on a convex curve:
+``ml_score = round(p ** ML_CURVE_EXPONENT * ML_MAX_POINTS)``.
 
 Status values returned:
     ok             – model ran and produced a probability
@@ -35,8 +36,15 @@ _MODEL_MISSING_STATUS = "model_missing"
 _NO_FILES_STATUS = "no_python_files"
 _ERROR_STATUS = "error"
 
-# Points added to the gate score at P(insecure) == 1.0.
-ML_MAX_POINTS = 20
+# Points added to the gate score at P(insecure) == 1.0 — enough to reject on
+# its own, so a confident model prediction is not outvoted by the scanners.
+ML_MAX_POINTS = 85
+
+# Convexity of the probability -> points mapping.  The model's floor for clean
+# code is P ~= 0.2, so a linear map would charge every clean template points at
+# this ceiling; the exponent keeps the low band near zero (P=0.2 -> 2 pts,
+# P=0.5 -> 15) while a confident prediction still reaches reject (P=1.0 -> 85).
+ML_CURVE_EXPONENT = 2.5
 
 # Feature order must match the training dataset columns
 # (dataset.csv minus sample_id/label — see scaler.feature_names_in_).
@@ -71,6 +79,14 @@ def _resolve_executable(name: str) -> str:
         return str(candidate)
     found = shutil.which(name)
     return found if found else name
+
+
+def _curve_points(probability: float, max_points: int, curve_exponent: float) -> int:
+    """Map P(insecure) to gate points along the convex curve."""
+    p = min(1.0, max(0.0, float(probability)))
+    ceiling = max(0, int(max_points))
+    exponent = max(1.0, float(curve_exponent))
+    return round(p**exponent * ceiling)
 
 
 def _result(status: str, message: str, **extra: Any) -> dict[str, Any]:
@@ -200,13 +216,14 @@ def run_ml_risk(
     *,
     enabled: bool = True,
     max_points: int = ML_MAX_POINTS,
+    curve_exponent: float = ML_CURVE_EXPONENT,
 ) -> dict[str, Any]:
     """Score the Python source under *source_dir* with the trained model.
 
     Returns a dict with keys:
         status      – see module docstring
         probability – worst-file P(insecure), 0.0-1.0
-        ml_score    – round(probability * max_points)
+        ml_score    – round(probability ** curve_exponent * max_points)
         files       – per-file [{file, probability, features}] breakdown
         message     – human-readable status detail
     """
@@ -276,7 +293,7 @@ def run_ml_risk(
 
     worst = max(per_file, key=lambda item: item["probability"])
     probability = worst["probability"]
-    ml_score = round(probability * max(0, int(max_points)))
+    ml_score = _curve_points(probability, max_points, curve_exponent)
     return {
         "status": _OK_STATUS,
         "probability": probability,

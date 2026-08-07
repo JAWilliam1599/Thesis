@@ -23,6 +23,11 @@ from security_gate.iac_security_gate import (  # noqa: E402
     _new_finding,
     _score_findings,
 )
+from security_gate.scanners.ml_risk_adapter import (  # noqa: E402
+    ML_CURVE_EXPONENT,
+    ML_MAX_POINTS,
+    _curve_points,
+)
 
 
 def _categories_of(resources: dict) -> set[str]:
@@ -137,6 +142,39 @@ def test_a_single_critical_plus_ml_stays_inside_pass_only_when_under_threshold()
                            config_violations=0)["decision"] == "pass"
     assert _score_findings(_findings("critical"), cost_delta_usd=0.0,
                            config_violations=0, ml_score=1)["decision"] == "review"
+
+
+# --------------------------------------------------------------------------- #
+# ML probability -> points curve
+# --------------------------------------------------------------------------- #
+def _ml_points(probability):
+    return _curve_points(probability, ML_MAX_POINTS, ML_CURVE_EXPONENT)
+
+
+def test_ml_curve_is_convex_and_monotonic():
+    """Doubling the probability must more than double the points."""
+    assert _ml_points(0.0) == 0
+    probabilities = [0.2, 0.4, 0.6, 0.8, 1.0]
+    points = [_ml_points(p) for p in probabilities]
+    assert points == sorted(points)
+    assert _ml_points(0.4) > 2 * _ml_points(0.2)
+
+
+def test_ml_curve_keeps_the_clean_code_floor_cheap():
+    """The model scores clean code at P ~= 0.2; that must not consume the pass band."""
+    assert _ml_points(0.2) <= 5
+
+
+def test_a_confident_ml_prediction_rejects_on_its_own():
+    result = _score_findings(
+        [], cost_delta_usd=0.0, config_violations=0, ml_score=_ml_points(1.0)
+    )
+    assert result["decision"] == "reject"
+
+
+def test_ml_probability_is_clamped_to_the_unit_interval():
+    assert _ml_points(-0.5) == 0
+    assert _ml_points(1.5) == ML_MAX_POINTS
 
 
 # --------------------------------------------------------------------------- #

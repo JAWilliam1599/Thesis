@@ -1,21 +1,6 @@
 \section{Evaluation Results}
 \label{sec:evaluation-results}
 
-This section is organised according to the three research questions defined in
-Section~\ref{subsec:evaluation-rqs}. The RQ1 and RQ2 results are drawn from the
-pre-registered campaign described in Section~\ref{subsec:evaluation-campaign}:
-106 runs over 30 declared scenarios, executed in a single batch and analysed from the
-persisted run, gate, approval, and rejection records alone. The one exception is
-the cross-boundary coverage measurement, which is reported from a separate arm
-of 24 scenarios and 72 runs, executed twice --- once at a frozen gate commit and
-once after remediation --- and compiled by reading the finding categories in the
-gate reports each run record points to rather than the aggregate scores. Every
-scenario's
-expected decision was fixed in a version-controlled specification before any of
-the reported runs executed. The optional cost-estimation and cloud-configuration
-components, whose outputs depend on live external state, were disabled
-throughout, so every score reported below is reproducible from the repository.
-
 \subsection{RQ1: Decision Conformance and Enforcement Correctness}
 \label{subsec:results-rq1}
 
@@ -33,8 +18,7 @@ produced identical scores in every case --- for instance, all five replicates of
 pipeline is deterministic once the two live-state components are disabled.
 
 Table~\ref{tab:rq1-confusion} presents the confusion matrix over the three
-decision bands. It is exactly diagonal: no run was assigned a band other than
-the one declared for it. This matters more than the aggregate proportion,
+decision bands. This matters more than the aggregate proportion,
 because a gate can achieve a high overall agreement rate while being
 systematically permissive --- passing changes it should have held --- and that
 bias would be invisible in a single percentage. Here there is neither a
@@ -70,7 +54,7 @@ demonstrates that the implemented system behaves as its specification requires
 on inputs whose correct treatment is known --- it does not demonstrate that the
 specification assigns the right band to arbitrary real-world infrastructure.
 That stronger claim would require fixtures authored independently, and is
-recorded as a limitation in Section~\ref{subsec:evaluation-validity}.
+recorded as a limitation in Section~\ref{sec:discussion-limitations}.
 
 \subsubsection{Enforcement Correctness}
 
@@ -378,20 +362,20 @@ CWE-306 Missing authentication & no & \texttt{api\_auth\_none} & no &
 CWE-269 Improper privilege management & yes & \texttt{iam\_wildcard} & yes &
 \texttt{iam\_wildcard} \\
 \hline
-CWE-732 Incorrect permissions & no & \texttt{permissive\_resource\_policy} &
+CWE-732 Incorrect permissions & no & \texttt{permissive\_resource \_policy} &
 yes & \texttt{file\_world\_writable} \\
 \hline
 CWE-668 Exposure to wrong sphere & yes & \texttt{sg\_ssh\_open} & yes &
 \texttt{sg\_ssh\_open} \\
 \hline
 CWE-552 Externally accessible files & yes &
-\texttt{s3\_public\_access\_block} & no & \texttt{nfs\_world\_export} \\
+\texttt{s3\_public\_access \_block} & no & \texttt{nfs\_world\_export} \\
 \hline
 CWE-770 Unbounded resources & yes & \texttt{lambda\_concurrency} & no &
-\texttt{missing\_resource\_limit} \\
+\texttt{missing\_resource \_limit} \\
 \hline
 CWE-311 Missing encryption & yes & \texttt{ebs\_encryption} & yes &
-\texttt{storage\_encryption}; \texttt{storage\_mount\_encryption} \\
+\texttt{storage \_encryption}; \texttt{storage\_mount \_encryption} \\
 \hline
 CWE-319 Cleartext transmission & yes &
 \texttt{CKV\_AWS\_103}; \texttt{CKV\_AWS\_131} & no &
@@ -401,8 +385,8 @@ CWE-922 Insecure secret storage & no & --- (rule withheld) & yes &
 \texttt{secret\_password}; \texttt{secret\_token} \\
 \hline
 CWE-250 Unnecessary privileges & no &
-\texttt{privileged\_container}; \texttt{runs\_as\_root} & no &
-\texttt{runs\_as\_root}; \texttt{unnecessary\_privileges} \\
+\texttt{privileged \_container}; \texttt{runs\_as\_root} & no &
+\texttt{runs\_as\_root}; \texttt{unnecessary \_privileges} \\
 \hline
 \textbf{Coverage} & \textbf{7/11} & \textbf{10/11} & \textbf{5/11} &
 \textbf{11/11} \\
@@ -534,14 +518,12 @@ vulnerability.
 \subsubsection{Dataset Composition}
 \label{subsubsec:results-dataset}
 
-The corpus was constructed from two classes of Python files. Approximately 80 positive
-examples were selected from SecurityEval. Vulnerability categories that could not be
+The corpus was constructed from two classes of Python files. Approximately 800 positive
+examples were selected from SecurityEval and PyCode-Vul \cite{siddiq2022seceval, karim2025benchmark}. Vulnerability categories that could not be
 represented by the configured Bandit and Semgrep features were excluded from the model
-corpus. The negative reference class contained approximately 80 files sampled from
+corpus. The negative reference class contained approximately 800 files sampled from PyCode-Vul \cite{karim2025benchmark} and
 maintained Python projects, including \texttt{click}, \texttt{rich}, and
-\texttt{typer}. To reduce the difference in scale between the short SecurityEval
-examples and project source files, negative examples were restricted to files containing
-more than 20 and fewer than 300 non-blank, non-comment lines.
+\texttt{typer}.
 
 The negative examples are referred to as \emph{reference secure} files rather than
 formally verified secure files. Maintained project code can still contain unknown
@@ -551,8 +533,8 @@ observable scope of the selected analysers narrows the interpretation of the res
 The reported performance applies to the retained, detector-visible subset and is not an
 estimate of performance over the complete SecurityEval dataset.
 
-The held-out test partition contained 31 files: 16 negative samples and 15 positive
-samples. The near-balanced distribution limited the influence of class frequency on the
+The held-out test partition contained 324 samples: 162 negative samples and 162 positive
+samples. The balanced distribution limited the influence of class frequency on the
 reported accuracy.
 
 \subsubsection{Classification Performance}
@@ -560,8 +542,8 @@ reported accuracy.
 
 Table~\ref{tab:rq3-classification-results} presents the aggregate performance of the
 logistic-regression classifier on the held-out test partition. The classifier achieved
-an accuracy of $0.8710$ and a ROC--AUC of $0.8792$. Precision, recall, and F1-score for
-the positive class were all $0.8667$.
+an accuracy of $0.9259$ and a ROC--AUC of $0.9233$. Precision are $0.9480$, recall are $0.9012$, and F1-score for
+the positive class are $0.9240$.
 
 \begin{table}[ht]
 \centering
@@ -571,26 +553,26 @@ the positive class were all $0.8667$.
 \hline
 \textbf{Measure} & \textbf{Result} \\
 \hline
-Accuracy & $0.8710$ \\
+Accuracy & $0.9259$ \\
 \hline
-Precision & $0.8667$ \\
+Precision & $0.9480$ \\
 \hline
-Recall & $0.8667$ \\
+Recall & $0.9012$ \\
 \hline
-F1-score & $0.8667$ \\
+F1-score & $0.9240$ \\
 \hline
-ROC--AUC & $0.8792$ \\
+ROC--AUC & $0.9233$ \\
 \hline
-Test samples & $31$ \\
+Test samples & $324$ \\
 \hline
 \end{tabular}
 \end{table}
 
-The confusion matrix is presented in Table~\ref{tab:rq3-confusion-matrix}. Of the 16
-negative samples, 14 were classified correctly and two were incorrectly classified as
-insecure. Of the 15 positive samples, 13 were identified correctly and two were
-incorrectly classified as reference secure. The model therefore produced four errors
-across the 31 held-out samples.
+The confusion matrix is presented in Table~\ref{tab:rq3-confusion-matrix}. Of the 162
+negative samples, 146 were classified correctly and 16 were incorrectly classified as
+insecure. Of the 162 positive samples, 154 were identified correctly and 8 were
+incorrectly classified as reference secure. The model therefore produced 24 errors
+across the 324 held-out samples.
 
 \begin{table}[ht]
 \centering
@@ -600,17 +582,17 @@ across the 31 held-out samples.
 \hline
  & \textbf{Predicted negative} & \textbf{Predicted positive} \\
 \hline
-\textbf{Actual negative} & $14$ & $2$ \\
+\textbf{Actual negative} & $146$ & $16$ \\
 \hline
-\textbf{Actual positive} & $2$ & $13$ \\
+\textbf{Actual positive} & $8$ & $154$ \\
 \hline
 \end{tabular}
 \end{table}
 
 Table~\ref{tab:rq3-class-report} gives the class-specific results. The negative class
-obtained precision, recall, and F1-score values of approximately $0.88$, while the
-positive class obtained approximately $0.87$ for all three measures. The macro and
-weighted averages were both approximately $0.87$, indicating that performance was
+obtained precision, recall, and F1-score values of over $0.9$, also the
+positive class obtained over $0.9$ for all three measures. The macro and
+weighted averages were both approximately $0.93$, indicating that performance was
 similar across the two classes in the held-out partition.
 
 \begin{table}[ht]
@@ -622,13 +604,13 @@ similar across the two classes in the held-out partition.
 \textbf{Class} & \textbf{Precision} & \textbf{Recall} & \textbf{F1-score} &
 \textbf{Support} \\
 \hline
-Negative ($0$) & $0.88$ & $0.88$ & $0.88$ & $16$ \\
+Negative ($0$) & $0.95$ & $0.90$ & $0.92$ & $162$ \\
 \hline
-Positive ($1$) & $0.87$ & $0.87$ & $0.87$ & $15$ \\
+Positive ($1$) & $0.91$ & $0.95$ & $0.93$ & $162$ \\
 \hline
-Macro average & $0.87$ & $0.87$ & $0.87$ & $31$ \\
+Macro average & $0.93$ & $0.93$ & $0.93$ & $324$ \\
 \hline
-Weighted average & $0.87$ & $0.87$ & $0.87$ & $31$ \\
+Weighted average & $0.93$ & $0.93$ & $0.93$ & $324$ \\
 \hline
 \end{tabular}
 \end{table}
@@ -653,49 +635,38 @@ the estimated log-odds of the insecure class, with the remaining features held c
 \begin{table}[ht]
 \centering
 \small
-\caption{Coefficients of the trained logistic-regression model.}
+\caption{Feature coefficients learned by the logistic-regression model.}
 \label{tab:rq3-coefficients}
 \begin{tabular}{|L{6.4cm}|C{3.5cm}|}
 \hline
 \textbf{Feature} & \textbf{Coefficient} \\
 \hline
-\texttt{total\_semgrep} & $1.136296$ \\
+\texttt{bandit\_low} & $1.720216$ \\
 \hline
-\texttt{bandit\_conf\_medium} & $1.003949$ \\
+\texttt{bandit\_conf\_high} & $1.656566$ \\
 \hline
-\texttt{semgrep\_high} & $0.914679$ \\
+\texttt{total\_bandit} & $1.555504$ \\
 \hline
-\texttt{semgrep\_medium} & $0.720708$ \\
+\texttt{semgrep\_high} & $0.790939$ \\
 \hline
-\texttt{total\_bandit} & $0.610932$ \\
+\texttt{total\_semgrep} & $0.546920$ \\
 \hline
-\texttt{bandit\_medium} & $0.454592$ \\
+\texttt{bandit\_conf\_medium} & $0.497096$ \\
 \hline
-\texttt{bandit\_high} & $0.435620$ \\
+\texttt{bandit\_high} & $0.381945$ \\
 \hline
-\texttt{bandit\_low} & $0.261740$ \\
+\texttt{semgrep\_medium} & $0.029059$ \\
 \hline
-\texttt{bandit\_conf\_high} & $0.138912$ \\
+\texttt{semgrep\_low} & $0.000000$ \\
 \hline
-\texttt{bandit\_conf\_low} & $0.083852$ \\
+\texttt{bandit\_medium} & $-0.359115$ \\
 \hline
-\texttt{semgrep\_low} & $0.067123$ \\
+\texttt{bandit\_conf\_low} & $-0.366808$ \\
 \hline
 \end{tabular}
 \end{table}
 
-The total number of Semgrep findings had the largest positive coefficient
-($1.136296$), followed by the number of medium-confidence Bandit findings
-($1.003949$) and high-severity Semgrep findings ($0.914679$). This ordering indicates
-that the fitted model relied most strongly on the overall Semgrep signal and on
-medium-to-high-strength findings from the two analysers. Low-severity and low-confidence
-features had smaller positive coefficients and therefore contributed less strongly to
-the predicted probability.
-
-These coefficients must be interpreted with caution. The total-finding features are
-mathematically related to the corresponding severity counts, which introduces correlated
-predictors. The coefficients describe the behaviour of the fitted model and do not
-establish that one feature has a causal relationship with software insecurity.
+The feature \texttt{bandit\_low} received the largest positive coefficient ($1.720216$), followed by \texttt{bandit\_conf\_high} ($1.656566$) and \texttt{total\_bandit} ($1.555504$). These results indicate that the logistic-regression model relied strongly on Bandit-derived signals, particularly low-severity findings and high-confidence detections, when estimating the probability that a code sample was vulnerable. Among the Semgrep-derived features, \texttt{semgrep\_high} ($0.790939$) and \texttt{total\_semgrep} ($0.546920$) also contributed positively, whereas \texttt{semgrep\_medium} ($0.029059$) had only a marginal influence and \texttt{semgrep\_low} had no measurable effect. In contrast,\texttt{bandit\_medium} ($-0.359115$) and \texttt{bandit\_conf\_low} ($-0.366808$) received negative coefficients, indicating that higher values of these features slightly reduced the predicted probability of vulnerability after the other variables were taken into account.
 
 \subsubsection{Per-File Risk Records}
 \label{subsubsec:results-per-file}
@@ -763,23 +734,3 @@ Duplicate finding reported by multiple tools & Counted once & One deduplicated f
 \hline
 \end{tabular}
 \end{table}
-
-\subsubsection{Summary of Risk-Model Findings}
-\label{subsubsec:results-rq3-summary}
-
-Within the detector-visible and filtered evaluation corpus, the logistic-regression
-component achieved an accuracy of $0.8710$, an F1-score of $0.8667$, and a
-ROC--AUC of $0.8792$. The similar class-specific measures indicate that the result was
-not obtained by favouring only one class. The coefficient analysis further shows that
-the model incorporated signals from both Bandit and Semgrep, with the strongest fitted
-influence associated with Semgrep finding volume, medium-confidence Bandit findings, and
-high-severity Semgrep findings.
-
-The observed performance indicates that a learned multi-tool signal can contribute
-discriminatory information to the proposed risk-scoring mechanism within the evaluated
-corpus. It does not establish complete vulnerability detection, because the corpus
-excludes vulnerability categories outside the configured analysers' detection scope and
-uses maintained project files as a reference negative class. Evaluation of the complete
-deployment-decision mechanism additionally requires the per-file gate records and the
-controlled score-boundary cases defined in
-Section~\ref{subsubsec:evaluation-gate-decision}.

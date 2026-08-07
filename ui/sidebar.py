@@ -162,7 +162,8 @@ def render_sidebar() -> dict[str, Any]:
         use_ml_risk = st.checkbox(
             "ML risk model", value=True,
             help="Logistic-regression risk score (bandit + semgrep features) "
-            "on the CDK Python source. Adds up to 20 points.",
+            "on the CDK Python source. Adds up to 85 points on a convex curve, "
+            "so only a confident prediction weighs heavily.",
         )
         use_ansible_lint = True
         use_secret_scan = True
@@ -206,7 +207,8 @@ def render_sidebar() -> dict[str, Any]:
             )
             ml_max_points = st.number_input(
                 "ML risk max points", min_value=0, value=config.GATE_ML_MAX_POINTS, step=1,
-                help="Points added at P(insecure)=1.0 from the logistic-regression model (CDK branch).",
+                help="Points added at P(insecure)=1.0 from the logistic-regression model "
+                "(CDK branch); lower probabilities scale in on a convex curve.",
             )
 
     return {

@@ -210,9 +210,10 @@ def _score_findings(
     Shared by the CloudFormation (CDK) and Ansible (on-prem) gate paths so both
     use the identical severity weights, cost banding, and decision thresholds.
     ``ml_score`` is the pre-computed logistic-regression component
-    (``round(P(insecure) * ml_max_points)``); it is 0 on the Ansible path where
-    the model does not apply.  ``pass_max`` / ``review_max`` and the cost-band
-    weights are adjustable per run; they default to the module constants.
+    (``round(P(insecure) ** ML_CURVE_EXPONENT * ml_max_points)``); it is 0 on
+    the Ansible path where the model does not apply.  ``pass_max`` /
+    ``review_max`` and the cost-band weights are adjustable per run; they
+    default to the module constants.
     """
     severity_score = sum(_severity_points(item.get("severity", "low")) for item in deduped)
 
@@ -576,7 +577,8 @@ class IaCSecurityGate:
             Directory containing the CDK app's Python source (e.g. the project
             dir).  When provided and ``use_ml_risk`` is True, the trained
             logistic-regression model scores the source (bandit + semgrep
-            features) and adds ``round(P(insecure) * ml_max_points)`` points.
+            features) and adds
+            ``round(P(insecure) ** ML_CURVE_EXPONENT * ml_max_points)`` points.
         pass_max / review_max / cost_* / ml_max_points:
             Adjustable scoring weights and decision thresholds; default to the
             module constants when omitted.
