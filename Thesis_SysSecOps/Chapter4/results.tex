@@ -478,8 +478,8 @@ Test samples & $324$ \\
 \end{table}
 
 The confusion matrix is presented in Table~\ref{tab:rq3-confusion-matrix}. Of the 162
-negative samples, 146 were classified correctly and 16 were incorrectly classified as
-insecure. Of the 162 positive samples, 154 were identified correctly and 8 were
+negative samples, 154 were classified correctly and 8 were incorrectly classified as
+insecure. Of the 162 positive samples, 146 were identified correctly and 16 were
 incorrectly classified as reference secure. The model therefore produced 24 errors
 across the 324 held-out samples.
 
@@ -491,9 +491,9 @@ across the 324 held-out samples.
 \hline
  & \textbf{Predicted negative} & \textbf{Predicted positive} \\
 \hline
-\textbf{Actual negative} & $146$ & $16$ \\
+\textbf{Actual negative} & $154$ & $8$ \\
 \hline
-\textbf{Actual positive} & $8$ & $154$ \\
+\textbf{Actual positive} & $16$ & $146$ \\
 \hline
 \end{tabular}
 \end{table}
@@ -524,7 +524,7 @@ Weighted average & $0.93$ & $0.93$ & $0.93$ & $324$ \\
 \end{tabular}
 \end{table}
 
-The classifier produced 16 false positives and 8 false negatives. From an operational
+The classifier produced 8 false positives and 16 false negatives. From an operational
 perspective, false negatives are particularly relevant because they represent labelled
 insecure files that would receive a lower learned risk contribution. False positives may
 instead increase the score of reference negative code and cause unnecessary review.

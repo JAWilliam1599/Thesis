@@ -479,7 +479,7 @@ Baseline discordance: cloud-only **4** · on-prem-only **2** · neither **2** �
 1. **Self-authored fixtures, limited scale** — pre-registration removes selection freedom, not the dependency: the gate's own authors wrote the fixtures. Ten approved-review runs, sixteen rejections, three replicates per deployment checkpoint
 2. **Narrow deployment-side evidence** — apply, verification and idempotency measured against *one* fresh VM, one OS image: nothing on host heterogeneity, concurrency or partial failure
 3. **Restricted implementation scope** — Python + Bandit/Semgrep; AWS CDK/CloudFormation + Ansible. No claim of transfer to other languages, providers or vulnerability classes
-4. **Dataset and model validity** — 31 held-out samples from one split; undetectable categories excluded; negatives are *reference secure*, not verified secure
+4. **Dataset and model validity** — 324 held-out samples from one split; undetectable categories excluded; negatives are *reference secure*, not verified secure
 5. **Risk assumptions and the fail-open score** — weights, bands and thresholds uncalibrated; missing evidence is read as low risk
 6. **Unequal detection coverage** — a shared decision function over unshared scanner sets. The class list is external, but the fixtures are hand-authored, so the figures bound **rule-to-CWE alignment**, not field recall
 7. **Limited comparative measures** — no manual baseline; no operator effort, lead time, change-failure rate or remediation time
