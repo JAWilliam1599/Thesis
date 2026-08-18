@@ -128,39 +128,89 @@ Insecure      : 287
 Saved to dataset.csv
 
 ============================================================
-Accuracy : 0.7835051546391752
-Precision: 0.8775510204081632
-Recall   : 0.7413793103448276
-F1 Score : 0.8037383177570093
-ROC AUC  : 0.8709106984969054
+
+
+Logistic Regression
+============================================================
+Accuracy : 0.9259259259259259
+Precision: 0.948051948051948
+Recall   : 0.9012345679012346
+F1 Score : 0.9240506329113924
+ROC AUC  : 0.9233729614388051
 
 Confusion Matrix
-[[33  6]
- [15 43]]
+[[154   8]
+ [ 16 146]]
 
               precision    recall  f1-score   support
 
-           0       0.69      0.85      0.76        39
-           1       0.88      0.74      0.80        58
+           0       0.91      0.95      0.93       162
+           1       0.95      0.90      0.92       162
 
-    accuracy                           0.78        97
-   macro avg       0.78      0.79      0.78        97
-weighted avg       0.80      0.78      0.79        97
+    accuracy                           0.93       324
+   macro avg       0.93      0.93      0.93       324
+weighted avg       0.93      0.93      0.93       324
 
-============================================================
 Feature Importance
-               Feature  Coefficient
-4   bandit_conf_medium     1.427237
-6         semgrep_high     1.311356
-0          bandit_high     0.967863
-9         total_bandit     0.808595
-10       total_semgrep     0.803885
-3     bandit_conf_high     0.715450
-1        bandit_medium     0.680787
-2           bandit_low     0.574613
-8          semgrep_low     0.132594
-7       semgrep_medium    -0.125491
-5      bandit_conf_low    -0.805208
+               Feature  Importance
+2           bandit_low    1.720216 --> giống expectations, bandit high cao, semgrep high --> tools quá yếu để có thể detect
+3     bandit_conf_high    1.656566 --> unified ổn định cho các tools. --> khả năng phân biệt được vul khi có nhiều tools
+9         total_bandit    1.555504
+6         semgrep_high    0.790939
+10       total_semgrep    0.546920
+4   bandit_conf_medium    0.497096
+0          bandit_high    0.381945
+7       semgrep_medium    0.029059 --> traversal
+8          semgrep_low    0.000000
+1        bandit_medium   -0.359115
+5      bandit_conf_low   -0.366808
+
 ============================================================
+
+Random Forest
+============================================================
+Accuracy : 0.9166666666666666
+Precision: 0.9299363057324841
+Recall   : 0.9012345679012346
+F1 Score : 0.9153605015673981
+ROC AUC  : 0.9272976680384087
+
+Confusion Matrix
+[[151  11] --> 5%
+ [ 16 146]]
+
+              precision    recall  f1-score   support
+
+           0       0.90      0.93      0.92       162
+           1       0.93      0.90      0.92       162
+
+    accuracy                           0.92       324
+   macro avg       0.92      0.92      0.92       324
+weighted avg       0.92      0.92      0.92       324
+
+Feature Importance
+               Feature  Importance
+9         total_bandit    0.424089
+3     bandit_conf_high    0.232883
+2           bandit_low    0.200415
+10       total_semgrep    0.047475
+6         semgrep_high    0.02741
+7       semgrep_medium    0.023943
+4   bandit_conf_medium    0.021137
+1        bandit_medium    0.009749
+0          bandit_high    0.008271
+5      bandit_conf_low    0.007296
+8          semgrep_low    0.000000
 
 limitations of tools
+
+tools: KNN --> tìm những vùng bao hết tất cả các điểm --> không có học, tìm một vùng fit nhất --> overfit
+SVMM --> tìm một đường thẳng nó ngăn hai khu vực
+
+Logistic regression: phân tích P(vul) = w1*x1 + w2*x2
+Khi có sự khác biệt với expectations, vẫn giải thích, dựa vô dataset, dựa do ý tưởng.
+--> tìm trọng số mỗi một features. Phụ thuộc rất nhiều dataset. Phụ thuộc rất mạnh vào một features
+
+Random Forest: phân tích rất nhiều decision trees --> combine features --> phù hợp cho tools distinct
+
+XGBoost --> sửa lỗi sai. Phân biệt, false positives --> sửa lỗi, sửa trọng số, giảm false positives --> chạy lặp lại
