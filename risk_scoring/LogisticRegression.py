@@ -189,5 +189,3 @@ def train_random_forest():
 lr_model = train_logistic_regression()
 
 #rf_model = train_random_forest()
-
-print
